@@ -1,0 +1,108 @@
+name: CI
+
+# Contrôles de chaque push et pull request : lint, tests, build, kit
+# d'installation, secrets. Aucun secret n'est utilisé par ce workflow : il
+# tourne aussi sur les pull requests venues de forks.
+#
+# Sur develop, c'est edge.yml qui l'appelle avant de publier les images :
+# un seul passage par commit.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  # github.workflow vaut « Edge » quand edge.yml appelle ce fichier : les deux
+  # ne s'annulent pas l'un l'autre.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint et nouveautés
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # « Quoi de neuf ? » date ses entrées par l'historique de NOUVEAUTES.md.
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run whats-new:check
+
+  tests:
+    name: Tests (${{ matrix.projet }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # node : utilitaires, scripts et API ; dom : composants Svelte.
+        projet: [node, dom]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            services/api/package-lock.json
+      - run: npm ci
+      - run: npm ci --prefix services/api
+      - run: npx vitest run --project ${{ matrix.projet }}
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+
+  kit:
+    name: Kit d'installation (shellcheck, bats)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - run: shellcheck --severity=warning kit/*.sh kit/lib/*.sh scripts/*.sh
+      - run: npx --yes bats@1.11.1 kit/tests
+
+  garde-fou:
+    name: Garde-fou (IP publiques, fichiers de secrets)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - run: .github/scripts/garde-fou.sh
+
+  gitleaks:
+    name: Secrets (gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+      # Image plutôt que gitleaks-action, qui exige une licence pour les
+      # organisations. Version fixée par empreinte.
+      - run: >-
+          docker run --rm -v "$PWD:/repo" -w /repo
+          zricethezav/gitleaks@sha256:0e99e8821643ea5b235718642b93bb32486af9c8162c8b8731f7cbdc951a7f46
+          detect --source /repo --config /repo/.gitleaks.toml --redact --verbose

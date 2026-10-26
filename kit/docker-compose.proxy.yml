@@ -1,0 +1,201 @@
+# MyBrief — installation sur un serveur qui a DÉJÀ un Traefik.
+#
+#   cp env.example .env && $EDITOR .env      # + renseigner TRAEFIK_NETWORK
+#   docker compose -f docker-compose.proxy.yml up -d
+#
+# Même stack que docker-compose.yml (auth 100 % native, aucun plugin Traefik),
+# mais SANS reverse-proxy ni certificat : ils sont fournis par le Traefik déjà
+# en place. Pour un serveur vierge, prendre docker-compose.yml à la place.
+#
+# ── Ce que le Traefik existant doit fournir ─────────────────────────────────
+#   - version 3.x. En 2.11 le matcher de règle et certains labels diffèrent :
+#     les labels de ce fichier sont à adapter ;
+#   - le provider docker activé, avec `exposedByDefault=false` ou non — chaque
+#     service porte ici `traefik.enable=true` explicitement ;
+#   - un réseau partagé (TRAEFIK_NETWORK) que Traefik ET cette stack joignent ;
+#   - un entrypoint TLS (TRAEFIK_ENTRYPOINT) et un resolver de certificat
+#     (TRAEFIK_CERTRESOLVER) déjà configurés pour ${DOMAIN}.
+#
+# ⚠️ Si `traefik.docker.network` ne désigne pas le réseau réellement utilisé par
+# Traefik pour joindre les conteneurs, la réponse est un 504 Gateway Timeout —
+# sans erreur au démarrage.
+
+name: ${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME manquant — nom du projet, ex. mybrief}
+
+x-logs: &logs
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "3" }
+
+services:
+  mongo:
+    image: mongo:7.0
+    restart: unless-stopped
+    <<: *logs
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASS:?MONGO_PASS manquant — voir env.example}
+    volumes:
+      - mongo_data:/data/db
+    networks: [internal]
+    labels:
+      - traefik.enable=false
+    healthcheck:
+      test: ["CMD", "mongosh", "-u", "root", "-p", "${MONGO_PASS}", "--authenticationDatabase", "admin", "--eval", "db.adminCommand('ping')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  api:
+    image: ${REGISTRE:-ghcr.io/myalfred-ai}/mybrief/api:${MYBRIEF_VERSION:?MYBRIEF_VERSION manquant — version publiée à déployer, ex. 1.3.0}
+    restart: unless-stopped
+    <<: *logs
+    environment:
+      # Amorçage seulement : la clé se règle ensuite dans Administration → IA
+      # et prime sur celle-ci (cf. commentaire dans docker-compose.yml).
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      # Modèles par usage — surchargeables sans redéployer de code (cf.
+      # services/api/lib/config.js). Laisser VIDE garde les défauts du code.
+      # ⚠️ Ces lignes manquaient : les variables du .env n'atteignaient donc
+      # JAMAIS le conteneur, et le modèle de résumé était en réalité figé —
+      # l'échappatoire documentée dans .env.example n'existait pas.
+      - OPENAI_MODEL_SUMMARY=${OPENAI_MODEL_SUMMARY:-}
+      - OPENAI_MODEL_TITLE=${OPENAI_MODEL_TITLE:-}
+      - OPENAI_MODEL_ACTIONS=${OPENAI_MODEL_ACTIONS:-}
+      - OPENAI_MODEL_REFINE=${OPENAI_MODEL_REFINE:-}
+      - OPENAI_MODEL_INFOGRAPHIC=${OPENAI_MODEL_INFOGRAPHIC:-}
+      - OPENAI_MODEL_INFOGRAPHIC_IMAGE=${OPENAI_MODEL_INFOGRAPHIC_IMAGE:-}
+      - OPENAI_MODEL_TRANSCRIPTION=${OPENAI_MODEL_TRANSCRIPTION:-}
+      # Plafond de temps du seul appel de résumé (ms). Vide = 300000.
+      - OPENAI_SUMMARY_TIMEOUT_MS=${OPENAI_SUMMARY_TIMEOUT_MS:-}
+      - MONGO_URL=mongodb://root:${MONGO_PASS}@mongo:27017/mybrief?authSource=admin
+      - MONGO_DB=mybrief
+      - PORT=3000
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - OIDC_ENABLED=false
+      - PASSWORD_LOGIN_ENABLED=true
+      - SESSION_TTL_DAYS=${SESSION_TTL_DAYS:-7}
+      - COOKIE_SECURE=true
+      - ADMIN_SEED_ENABLED=${ADMIN_SEED_ENABLED:-true}
+      - ADMIN_SEED_EMAIL=${ADMIN_SEED_EMAIL:-}
+      - ADMIN_SEED_PASSWORD=${ADMIN_SEED_PASSWORD:-}
+      - ADMIN_EMAILS=${ADMIN_EMAILS:-}
+      # Domaines dont tout compte est administrateur. VIDE ici : chez un client,
+      # un domaine entier promu administrateur n'est jamais ce qu'on veut.
+      - ADMIN_EMAIL_DOMAINS=${ADMIN_EMAIL_DOMAINS:-}
+      - LEGACY_ADMIN_DOMAIN=
+      - APP_PUBLIC_URL=https://${DOMAIN}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_SECURE=${SMTP_SECURE:-false}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      - MAIL_FROM=${MAIL_FROM:-}
+      # Chiffrement AU REPOS des refresh tokens des comptes reliés.
+      # Vide = stockage en clair, comportement historique (cf. lib/crypto/secretBox.js).
+      - CONNECTIONS_ENC_KEY=${CONNECTIONS_ENC_KEY:-}
+      - PASSWORD_RESET_TTL_MIN=${PASSWORD_RESET_TTL_MIN:-30}
+    networks:
+      internal:
+      proxy:
+        # Alias explicite : sur un réseau partagé avec d'autres stacks, un
+        # service nommé `api` peut appartenir à quelqu'un d'autre.
+        aliases: [mybrief-api]
+    depends_on:
+      mongo: { condition: service_healthy }
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=${TRAEFIK_NETWORK:?TRAEFIK_NETWORK manquant — nom du réseau du Traefik existant}
+      - traefik.http.services.mybrief-api.loadbalancer.server.port=3000
+
+      # ── noident : la garde de sécurité de toute l'installation ────────────
+      # L'API accepte une identité fournie par en-tête (héritage du plugin OIDC
+      # Traefik, cf. services/api/lib/auth/resolve.js). Toute route qui l'atteint
+      # SANS middleware d'authentification laisserait donc n'importe qui écrire
+      # `X-User-Email: victime@…` et lire les données d'autrui.
+      # ⚠️ Sur un Traefik partagé, vérifier qu'aucun AUTRE routeur de l'hôte ne
+      # vise ces conteneurs sans ce middleware. Couvert par
+      # services/api/test/traefikWiring.test.js.
+      - "traefik.http.middlewares.mybrief-noident.headers.customRequestHeaders.X-User-Email="
+      - "traefik.http.middlewares.mybrief-noident.headers.customRequestHeaders.X-Auth-Request-User="
+      - "traefik.http.middlewares.mybrief-noident.headers.customRequestHeaders.X-User-Name="
+      - "traefik.http.middlewares.mybrief-noident.headers.customRequestHeaders.X-User-Picture="
+      - "traefik.http.middlewares.mybrief-noident.headers.customRequestHeaders.X-Mybrief-Auth-Path=native"
+      - traefik.http.middlewares.mybrief-allowframe.headers.customFrameOptionsValue=SAMEORIGIN
+
+      - traefik.http.routers.mybrief-api.rule=Host(`${DOMAIN}`) && PathPrefix(`/api`)
+      - traefik.http.routers.mybrief-api.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}
+      - traefik.http.routers.mybrief-api.tls.certresolver=${TRAEFIK_CERTRESOLVER:-myresolver}
+      - traefik.http.routers.mybrief-api.priority=100
+      - traefik.http.routers.mybrief-api.middlewares=mybrief-noident,mybrief-allowframe
+
+      # Retour d'Entra ID — chemin hors /api imposé par l'app registration
+      # (cf. services/api/routes/oauth2.js). Google revient sous /api.
+      - traefik.http.routers.mybrief-oauth2.rule=Host(`${DOMAIN}`) && Path(`/oauth2/callback`)
+      - traefik.http.routers.mybrief-oauth2.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}
+      - traefik.http.routers.mybrief-oauth2.tls.certresolver=${TRAEFIK_CERTRESOLVER:-myresolver}
+      - traefik.http.routers.mybrief-oauth2.priority=110
+      - traefik.http.routers.mybrief-oauth2.service=mybrief-api
+      - traefik.http.routers.mybrief-oauth2.middlewares=mybrief-noident,mybrief-allowframe
+
+  web:
+    image: ${REGISTRE:-ghcr.io/myalfred-ai}/mybrief/web:${MYBRIEF_VERSION:?MYBRIEF_VERSION manquant — version publiée à déployer, ex. 1.3.0}
+    restart: unless-stopped
+    <<: *logs
+    volumes:
+      - ${MOBILE_DOWNLOADS_DIR:-./downloads}:/usr/share/nginx/html/downloads:ro
+    networks: [proxy]
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=${TRAEFIK_NETWORK}
+      - traefik.http.services.mybrief-web.loadbalancer.server.port=80
+      - traefik.http.routers.mybrief-web.rule=Host(`${DOMAIN}`)
+      - traefik.http.routers.mybrief-web.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}
+      - traefik.http.routers.mybrief-web.tls.certresolver=${TRAEFIK_CERTRESOLVER:-myresolver}
+      - traefik.http.routers.mybrief-web.priority=1
+
+  mobile-auth:
+    profiles: [mobile]
+    image: ${REGISTRE:-ghcr.io/myalfred-ai}/mybrief/mobile-auth:${MYBRIEF_VERSION:?MYBRIEF_VERSION manquant — version publiée à déployer, ex. 1.3.0}
+    restart: unless-stopped
+    <<: *logs
+    environment:
+      # Défaut VIDE et non `:?` : Compose interpole tout le fichier AVANT de
+      # filtrer les profils. Le sidecar refuse lui-même de démarrer sans secret
+      # d'au moins 32 caractères, en le disant dans ses journaux.
+      - MOBILE_AUTH_JWT_SECRET=${MOBILE_AUTH_JWT_SECRET:-}
+      - MOBILE_AUTH_IDENTITY=session
+      - MYBRIEF_API_URL=http://mybrief/api:3000
+    networks:
+      proxy:
+        aliases: [mybrief-mobile-auth]
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=${TRAEFIK_NETWORK}
+      - traefik.http.services.mybrief-mauth.loadbalancer.server.port=8080
+      # ⚠️ `mybrief-noident` OBLIGATOIRE : sans lui, un client forgerait
+      # `X-User-Email` pour obtenir un jeton mobile au nom de n'importe qui.
+      - traefik.http.routers.mybrief-mauth-start.rule=Host(`${DOMAIN}`) && Path(`/auth/mobile/start`)
+      - traefik.http.routers.mybrief-mauth-start.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}
+      - traefik.http.routers.mybrief-mauth-start.tls.certresolver=${TRAEFIK_CERTRESOLVER:-myresolver}
+      - traefik.http.routers.mybrief-mauth-start.priority=120
+      - traefik.http.routers.mybrief-mauth-start.service=mybrief-mauth
+      - traefik.http.routers.mybrief-mauth-start.middlewares=mybrief-noident
+      - traefik.http.routers.mybrief-mauth-exchange.rule=Host(`${DOMAIN}`) && Path(`/auth/mobile/exchange`)
+      - traefik.http.routers.mybrief-mauth-exchange.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}
+      - traefik.http.routers.mybrief-mauth-exchange.tls.certresolver=${TRAEFIK_CERTRESOLVER:-myresolver}
+      - traefik.http.routers.mybrief-mauth-exchange.priority=120
+      - traefik.http.routers.mybrief-mauth-exchange.service=mybrief-mauth
+
+networks:
+  # Réseau du Traefik existant — créé par LUI, pas par cette stack.
+  proxy:
+    external: true
+    name: ${TRAEFIK_NETWORK}
+  # Réseau privé api <-> mongo, créé par cette stack.
+  internal:
+    name: mybrief_internal
+
+volumes:
+  mongo_data:

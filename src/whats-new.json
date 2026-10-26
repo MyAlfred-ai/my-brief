@@ -1,0 +1,134 @@
+{
+  "entries": [
+    {
+      "id": "statistiques-pilotage",
+      "date": "2026-10-26",
+      "version": "1.3.0.97",
+      "kind": "new",
+      "audience": "admins",
+      "title": "Statistiques : filtres, usage par personne et rapport PDF",
+      "body": "Administration → Statistiques se filtre par dates, groupe, utilisateur et template, et compare chaque chiffre à la période précédente. « Santé de l'adoption » montre qui utilise myBrief chaque semaine et qui ne l'a jamais démarré ; le tableau par utilisateur se trie et s'exporte en CSV. « Exporter en PDF » produit un rapport des sections choisies.",
+      "en": {
+        "title": "Statistics: filters, usage per person and PDF report",
+        "body": "Administration → Statistics can be filtered by dates, group, user and template, and compares every figure with the previous period. \"Adoption health\" shows who uses myBrief every week and who never started; the per-user table can be sorted and exported as CSV. \"Export as PDF\" produces a report of the chosen sections."
+      }
+    },
+    {
+      "id": "actions-langue-interface",
+      "date": "2026-10-21",
+      "version": "1.3.0.93",
+      "kind": "fix",
+      "audience": "all",
+      "title": "Actions détectées et infographie suivent la langue de l'interface",
+      "body": "Avec l'anglais choisi, les actions détectées pouvaient s'écrire en français, et l'infographie prenait la langue parlée en réunion. Toutes deux suivent désormais la langue choisie, FR ou EN, comme le compte rendu. Pour une infographie dans l'autre langue, changez de langue puis cliquez « Régénérer l'infographie ».",
+      "en": {
+        "title": "Detected actions and the infographic follow the interface language",
+        "body": "With English selected, detected actions could be written in French, and the infographic took the language spoken in the meeting. Both now follow the chosen language, FR or EN, like the report. For an infographic in the other language, switch language, then click “Regenerate the infographic”."
+      }
+    },
+    {
+      "id": "transcription-nombres-colles",
+      "date": "2026-10-19",
+      "version": "1.3.0.92",
+      "kind": "fix",
+      "audience": "all",
+      "title": "Transcription : un nombre ne se colle plus au mot qui le précède",
+      "body": "En direct, un nombre dit après un mot s'écrivait collé à lui : « jusqu'à4 h », « le12 mars ». L'espace est de retour, à l'écran comme dans la transcription exportée et résumée. Les réunions déjà enregistrées gardent leur texte.",
+      "en": {
+        "title": "Transcription: a number no longer sticks to the word before it",
+        "body": "During live transcription, a number spoken after a word was written stuck to it: “until4 pm”, “March12”. The space is back, on screen and in the exported and summarized transcript. Meetings already recorded keep their text."
+      }
+    },
+    {
+      "id": "modeles-transcription-retires",
+      "date": "2026-10-15",
+      "version": "1.3.0.84",
+      "kind": "improvement",
+      "audience": "admins",
+      "title": "Transcription : les modèles qu'OpenAI arrête sont déjà remplacés",
+      "body": "OpenAI arrête trois modèles de transcription le 26 février 2027 : Administration → IA ne les propose plus. Si l'un d'eux était choisi, un modèle qui transcrit de la même façon a déjà pris le relais ; la carte le dit, et un clic confirme ce choix.",
+      "en": {
+        "title": "Transcription: the models OpenAI is shutting down are already replaced",
+        "body": "OpenAI shuts down three transcription models on 26 February 2027: Administration → AI no longer offers them. If one of them was chosen, a model that transcribes the same way has already taken over; the card says so, and one click confirms the choice."
+      }
+    },
+    {
+      "id": "menu-compte-ce-mois",
+      "date": "2026-10-14",
+      "version": "1.3.0.83",
+      "kind": "improvement",
+      "audience": "all",
+      "title": "Un menu de compte qui dit où vous en êtes ce mois-ci",
+      "body": "En bas de la colonne de gauche, un anneau autour de votre avatar et la ligne sous votre nom disent ce qu'il vous reste ce mois-ci. Votre nom ouvre le menu de compte : « Ce mois-ci » y résume votre crédit, vos réunions et vos comptes rendus, et la langue s'y choisit. Sur téléphone, Configuration et Administration sont dans ce menu.",
+      "en": {
+        "title": "An account menu that shows where you stand this month",
+        "body": "At the bottom of the left column, a ring around your avatar and the line under your name show what you have left this month. Your name opens the account menu: “This month” sums up your credit, meetings and summaries, and you pick the language there. On phones, Settings and Administration are in this menu."
+      }
+    },
+    {
+      "id": "phrase-accueil-anglaise",
+      "date": "2026-10-13",
+      "version": "1.3.0.82",
+      "kind": "improvement",
+      "audience": "admins",
+      "title": "La phrase d'accueil, aussi en anglais",
+      "body": "Dans Administration → Configuration, la carte « Phrase d'accueil » accepte une seconde phrase, en anglais : elle s'affiche sous le logo quand l'interface est en anglais. Laissée vide, la phrase en français reste affichée.",
+      "en": {
+        "title": "The tagline, in English too",
+        "body": "In Administration → Configuration, the \"Tagline\" card takes a second line, in English: it shows under the logo when the interface is in English. Left empty, the French tagline stays."
+      }
+    },
+    {
+      "id": "actions-detectees-restent-courtes",
+      "date": "2026-10-13",
+      "version": "1.3.0.81",
+      "kind": "fix",
+      "audience": "all",
+      "title": "Les actions détectées en direct restent courtes",
+      "body": "Pendant une longue réunion, une action détectée pouvait grossir au fil de la conversation, ajout après ajout, jusqu'à recopier tout ce qui s'était dit. Elle reste désormais une tâche courte : la carte se complète quand on précise qui la fait, pour quand ou ce qu'il faut livrer ; le reste de la discussion va au compte rendu.",
+      "en": {
+        "title": "Live-detected actions stay short",
+        "body": "During a long meeting, a detected action could grow with the conversation, addition after addition, until it copied everything that was said. It now stays a short task: the card is completed when someone says who does it, by when or what to deliver; the rest of the discussion goes into the report."
+      }
+    },
+    {
+      "id": "interface-anglaise-complete",
+      "date": "2026-10-13",
+      "version": "1.3.0.80",
+      "kind": "fix",
+      "audience": "all",
+      "title": "Interface en anglais : plus de textes restés en français",
+      "body": "Avec l'anglais choisi, l'écran d'accueil, la phrase sous le logo, les groupes de l'historique (cette semaine, semaine dernière, les mois), le menu d'une réunion et l'écran d'enregistrement restaient en partie en français. Tout s'affiche désormais en anglais, jusqu'au titre de l'onglet du navigateur.",
+      "en": {
+        "title": "English interface: no more text left in French",
+        "body": "With English selected, the home screen, the line under the logo, the history groups (this week, last week, the months), a meeting's menu and the recording screen still partly showed in French. Everything now shows in English, down to the browser tab title."
+      }
+    },
+    {
+      "id": "transcription-debut-en-double",
+      "date": "2026-10-13",
+      "version": "1.3.0.79",
+      "kind": "fix",
+      "audience": "all",
+      "title": "Transcription : le début d'une phrase ne s'écrit plus en double",
+      "body": "Avec certains modèles de transcription, quand quelqu'un enchaînait deux phrases sans marquer de pause, la première pouvait s'écrire deux fois, et se retrouver en double dans le compte rendu. Elle ne s'écrit plus qu'une fois : quand la personne s'arrête de parler, ses phrases se regroupent sur une seule ligne.",
+      "en": {
+        "title": "Transcription: the start of a sentence is no longer written twice",
+        "body": "With some transcription models, when someone ran two sentences together without pausing, the first one could be written twice and end up twice in the report. It is now written only once: when the person stops speaking, their sentences come together on a single line."
+      }
+    },
+    {
+      "id": "visio-ordre-des-repliques",
+      "date": "2026-10-13",
+      "version": "1.3.0.78",
+      "kind": "fix",
+      "audience": "all",
+      "title": "En visio, votre dernière phrase ne reste plus en avant-dernier",
+      "body": "Quand vous vous taisiez pendant une visio, votre dernière phrase restait affichée en avant-dernier, au-dessus des répliques de vos interlocuteurs pourtant dites après elle, parfois pendant plusieurs minutes. Elle reprend sa place dès qu'ils parlent : la transcription suit l'ordre de la conversation.",
+      "en": {
+        "title": "In a video call, your last sentence no longer stays second to last",
+        "body": "When you went quiet during a video call, your last sentence stayed second to last, above what the others said after it, sometimes for minutes. It now takes its place as soon as they speak: the transcript follows the order of the conversation."
+      }
+    }
+  ]
+}

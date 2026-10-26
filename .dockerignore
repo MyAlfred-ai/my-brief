@@ -1,0 +1,53 @@
+# Build context hygiene — keep image lean and secrets out.
+
+# Node + build artefacts
+node_modules
+dist
+.vite
+.svelte-kit
+.svelte-cache
+.eslintcache
+*.cache
+*.local
+coverage
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Git + IDE noise
+.git
+.gitignore
+.github
+.idea
+.vscode
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Secrets / env (build args inject VITE_*; runtime envs come from compose)
+.env
+.env.*
+!.env.example
+
+# Docker config + traefik plugin payload (not needed inside the web image)
+docker
+Dockerfile
+.dockerignore
+
+# Scripts that don't belong in the image
+update.sh
+
+# Mobile (Capacitor) : projets natifs + services annexes — jamais dans
+# l'image web (garantit qu'ajouter du natif ne change pas le build web)
+android
+ios
+resources
+services
+capacitor.config.json
+www
+
+# Docs / plans
+*.md
+plans

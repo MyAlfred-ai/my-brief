@@ -1,0 +1,7 @@
+/build/*
+!/build/.npmkeep
+
+# Capacitor : copie du webDir + fichiers generes par `cap sync` (parite iOS)
+/src/main/assets/public
+/src/main/assets/capacitor.config.json
+/src/main/assets/capacitor.plugins.json

@@ -1,0 +1,20 @@
+# Périmètre volontairement réduit au code applicatif : src/, services/, scripts/.
+# Le reste (compose YAML aux labels Traefik sensibles, markdown français, JSON,
+# HTML, shells natifs android/ios, bundles) ne passe pas sous Prettier.
+node_modules
+dist
+www
+android
+ios
+public
+docs
+documentations
+install
+docker
+*.md
+*.json
+*.yml
+*.yaml
+*.html
+*.sh
+package-lock.json

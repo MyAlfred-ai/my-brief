@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex" />
+  <title>Reconnexion…</title>
+  <style>
+    :root { color-scheme: light dark; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: #f3f4f6;
+      color: #1f2937;
+      display: flex; align-items: center; justify-content: center;
+      padding: 24px;
+    }
+    .card {
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 10px 30px rgba(0,0,0,.08);
+      padding: 28px 26px;
+      max-width: 420px; width: 100%;
+      text-align: center;
+    }
+    .spinner {
+      width: 38px; height: 38px; margin: 4px auto 18px;
+      border: 4px solid #e5e7eb; border-top-color: #6366f1;
+      border-radius: 50%; animation: spin .9s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    h1 { font-size: 1.15rem; margin: 0 0 8px; color: #111827; }
+    p { font-size: .92rem; line-height: 1.5; margin: 0 0 6px; color: #4b5563; }
+    .btn {
+      display: inline-block; margin-top: 16px; padding: 11px 20px;
+      background: #6366f1; color: #fff; text-decoration: none;
+      border-radius: 8px; font-weight: 600; font-size: .95rem; border: 0; cursor: pointer;
+    }
+    .btn:hover { background: #4f46e5; }
+    .muted { font-size: .78rem; color: #9ca3af; margin-top: 14px; }
+    #manual { display: none; }
+    @media (prefers-color-scheme: dark) {
+      body { background: #0f172a; color: #e5e7eb; }
+      .card { background: #1e293b; box-shadow: 0 10px 30px rgba(0,0,0,.4); }
+      h1 { color: #f1f5f9; } p { color: #cbd5e1; } .muted { color: #64748b; }
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div id="auto">
+      <div class="spinner" aria-hidden="true"></div>
+      <h1>Reconnexion en cours…</h1>
+      <p>Votre session a expiré. On vous reconnecte automatiquement.</p>
+      <p class="muted">Si rien ne se passe, <a href="/">cliquez ici</a>.</p>
+    </div>
+    <div id="manual">
+      <h1>Session expirée</h1>
+      <p>Veuillez vous reconnecter pour continuer.</p>
+      <a class="btn" id="manualBtn" href="/">Se reconnecter</a>
+    </div>
+  </div>
+
+  <script>
+  /*
+   * Page d'auto-récupération servie par le middleware Traefik `errors` quand le
+   * plugin OIDC renvoie 400 sur /oauth2/callback ("Invalid state parameter
+   * (CSRF mismatch)").
+   *
+   * Cause de l'erreur : le plugin traefikoidc stocke UN seul CSRF dans le cookie
+   * de session ; deux initiations de login concurrentes (ré-ouverture PWA +
+   * onglet, navigations multiples après expiration du token Google ~1h)
+   * s'écrasent mutuellement -> le `state` qui revient au callback ne correspond
+   * plus -> page d'erreur 400 sans récupération.
+   *
+   * Parade : au lieu de la page d'erreur rouge en cul-de-sac, on purge l'état
+   * client (SW + caches + cookies non-HttpOnly) puis on relance UN SEUL flux
+   * propre vers `/`. Une garde anti-boucle (sessionStorage) limite à 2 essais
+   * automatiques avant de basculer sur un bouton manuel.
+   */
+  (function () {
+    var KEY = 'mybrief_auth_recover_count';
+    var MAX_AUTO = 2;
+
+    function showManual() {
+      try {
+        document.getElementById('auto').style.display = 'none';
+        document.getElementById('manual').style.display = 'block';
+        // Le bouton repart d'un compteur remis à zéro.
+        document.getElementById('manualBtn').addEventListener('click', function () {
+          try { sessionStorage.removeItem(KEY); } catch (e) {}
+        });
+      } catch (e) {}
+    }
+
+    var count = 0;
+    try { count = parseInt(sessionStorage.getItem(KEY) || '0', 10) || 0; } catch (e) {}
+
+    if (count >= MAX_AUTO) {
+      // Trop de tentatives : on arrête la boucle et on laisse l'utilisateur agir.
+      showManual();
+      return;
+    }
+
+    try { sessionStorage.setItem(KEY, String(count + 1)); } catch (e) {}
+
+    // Nettoyage best-effort puis navigation dure vers `/` (un unique flux OIDC).
+    function go() { window.location.replace('/'); }
+
+    var done = false;
+    function finish() { if (done) return; done = true; go(); }
+
+    // Filet : si le nettoyage traîne, on redirige quand même au bout de 1,5 s.
+    setTimeout(finish, 1500);
+
+    Promise.resolve()
+      .then(function () {
+        // Invalidation de la session SERVEUR (RP-logout). Le cookie de session
+        // OIDC (_oidc_raczylo_*) est HttpOnly -> INEFFAÇABLE côté JS ; s'il est
+        // périmé/corrompu, la simple purge des cookies non-HttpOnly ci-dessous ne
+        // suffit pas et le callback re-renvoie 400 en boucle (jusqu'au bouton
+        // manuel). On appelle donc le logout serveur pour forcer l'expiration du
+        // cookie HttpOnly côté serveur -> le prochain flux repart d'une session
+        // vierge. callbackURL + "/logout" = /oauth2/callback/logout (et non
+        // /oauth2/logout, non routé -> 404). redirect:'manual' : on ignore la
+        // redirection de logout, on enchaîne nous-mêmes sur `/`.
+        return fetch('/oauth2/callback/logout', { method: 'GET', cache: 'no-store', redirect: 'manual' })
+          .catch(function () {});
+      })
+      .then(function () {
+        // Purge cookies non-HttpOnly liés à l'auth (complément du logout serveur).
+        try {
+          var host = window.location.hostname;
+          document.cookie.split(';').forEach(function (c) {
+            var name = c.split('=')[0].trim();
+            if (name && (/oidc|oauth|traefik|_state|csrf/i).test(name)) {
+              document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+              document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=' + host + ';';
+            }
+          });
+        } catch (e) {}
+      })
+      .then(function () {
+        if ('serviceWorker' in navigator) {
+          return navigator.serviceWorker.getRegistrations()
+            .then(function (regs) { return Promise.all(regs.map(function (r) { return r.unregister(); })); })
+            .catch(function () {});
+        }
+      })
+      .then(function () {
+        if (window.caches && caches.keys) {
+          return caches.keys()
+            .then(function (keys) { return Promise.all(keys.map(function (k) { return caches.delete(k); })); })
+            .catch(function () {});
+        }
+      })
+      .then(finish, finish);
+  })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,107 @@
+{
+  "extName": {
+    "message": "MyBrief"
+  },
+  "extDesc": {
+    "message": "Ouvrez MyBrief ou démarrez une réunion d'un clic, depuis n'importe quel onglet."
+  },
+  "cmdStartMeeting": {
+    "message": "Démarrer une réunion"
+  },
+  "linkTitle": {
+    "message": "Lier l'extension à votre MyBrief"
+  },
+  "linkIntro": {
+    "message": "L'extension lit l'adresse de MyBrief dans l'onglet ouvert : rien à saisir."
+  },
+  "linkUse": {
+    "message": "Utiliser $HOST$ comme mon MyBrief",
+    "placeholders": {
+      "host": {
+        "content": "$1"
+      }
+    }
+  },
+  "linkChecking": {
+    "message": "Vérification de cet onglet…"
+  },
+  "linkNotFound": {
+    "message": "Cet onglet n'est pas MyBrief. Ouvrez votre MyBrief, puis cliquez à nouveau sur cette icône."
+  },
+  "linkDenied": {
+    "message": "Autorisation refusée : sans elle, l'extension ne peut pas retrouver votre onglet."
+  },
+  "linkFailed": {
+    "message": "La liaison a échoué. Réessayez depuis l'onglet MyBrief."
+  },
+  "newMeeting": {
+    "message": "Nouvelle réunion"
+  },
+  "openApp": {
+    "message": "Ouvrir MyBrief"
+  },
+  "history": {
+    "message": "Historique"
+  },
+  "config": {
+    "message": "Ma configuration"
+  },
+  "signedIn": {
+    "message": "Connecté · $NAME$",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "signedInAnon": {
+    "message": "Connecté"
+  },
+  "changeSite": {
+    "message": "Changer de site"
+  },
+  "backToMeeting": {
+    "message": "Revenir à la réunion"
+  },
+  "meetingRunning": {
+    "message": "Réunion en cours · $ELAPSED$",
+    "placeholders": {
+      "elapsed": {
+        "content": "$1"
+      }
+    }
+  },
+  "meetingPaused": {
+    "message": "Réunion en pause · $ELAPSED$",
+    "placeholders": {
+      "elapsed": {
+        "content": "$1"
+      }
+    }
+  },
+  "videoCallHint": {
+    "message": "Une visio est ouverte dans un onglet. Démarrer une réunion MyBrief ?"
+  },
+  "reminderLabel": {
+    "message": "Me rappeler quand une visio est ouverte"
+  },
+  "titleRecording": {
+    "message": "MyBrief — enregistrement en cours ($MIN$ min)",
+    "placeholders": {
+      "min": {
+        "content": "$1"
+      }
+    }
+  },
+  "titlePaused": {
+    "message": "MyBrief — réunion en pause ($MIN$ min)",
+    "placeholders": {
+      "min": {
+        "content": "$1"
+      }
+    }
+  },
+  "titleVideoCall": {
+    "message": "MyBrief — une visio est ouverte : démarrer une réunion ?"
+  }
+}

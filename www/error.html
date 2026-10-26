@@ -1,0 +1,29 @@
+<!doctype html>
+<!-- Page servie par Capacitor (errorPath) quand le site distant est
+     inaccessible : hors ligne, DNS, serveur indisponible. Filet documenté de
+     l'approche server.url (même mécanisme que MIA). -->
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>MyBrief — connexion impossible</title>
+  <style>
+    body { margin: 0; min-height: 100vh; display: flex; align-items: center;
+           justify-content: center; background: #FFFEFC;
+           font-family: -apple-system, system-ui, sans-serif; color: #1a1a1a; }
+    .card { text-align: center; padding: 2rem; max-width: 320px; }
+    h1 { font-size: 1.25rem; margin: 0 0 .5rem; }
+    p { color: #555; line-height: 1.4; margin: 0 0 1.5rem; }
+    button { padding: .9rem 1.6rem; border: none; border-radius: 12px;
+             background: #F38400; color: #fff; font-size: 1.05rem;
+             font-weight: 600; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Connexion impossible</h1>
+    <p>MyBrief n'arrive pas à joindre le serveur. Vérifiez votre connexion internet puis réessayez.</p>
+    <button onclick="location.reload()">Réessayer</button>
+  </div>
+</body>
+</html>

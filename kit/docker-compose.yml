@@ -1,0 +1,287 @@
+# MyBrief — installation autonome sur un serveur vierge (VPS Ubuntu).
+#
+#   cp env.example .env && $EDITOR .env
+#   docker compose up -d
+#
+# Cette stack est COMPLÈTE : elle embarque son reverse-proxy (Traefik) et
+# obtient son certificat TLS toute seule. Rien à installer d'autre que Docker.
+#
+# ⚠️ AVANT le premier `up` : le nom de domaine `DOMAIN` doit DÉJÀ pointer sur
+# l'IP de ce serveur, et les ports 80 et 443 doivent être libres et ouverts.
+# Let's Encrypt valide le domaine en appelant http://$DOMAIN/.well-known/… ;
+# sans DNS en place, la demande de certificat échoue et le site répond en TLS
+# auto-signé. Un `docker compose restart traefik` suffit à réessayer une fois
+# le DNS propagé.
+#
+# ── Authentification ────────────────────────────────────────────────────────
+# Cette installation est 100 % NATIVE : c'est l'API qui authentifie.
+#   - email / mot de passe dès le premier démarrage ;
+#   - Google et/ou Entra ID branchés ENSUITE depuis le panneau d'administration
+#     (onglet « Authentification »), sans redéploiement ni variable d'environnement.
+# Aucun plugin Traefik n'est requis — contrairement à la stack de
+# développement historique (docker/docker-compose.yml), qui garde le plugin
+# `traefikoidc` le temps de sa bascule.
+#
+# ── Pour un serveur qui a DÉJÀ un Traefik ───────────────────────────────────
+# Utiliser docker-compose.proxy.yml à la place : même stack, sans le service
+# traefik, branchée sur le réseau du proxy existant.
+
+name: ${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME manquant — nom du projet, ex. mybrief}
+
+x-logs: &logs
+  # Sans plafond, les journaux d'un conteneur remplissent le disque d'un petit
+  # VPS en quelques semaines — panne franche et difficile à diagnostiquer.
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "3" }
+
+services:
+  traefik:
+    # v3.7 et non v3.3 : v3.3 négocie l'API Docker en 1.24, et Docker Engine 29
+    # refuse tout ce qui est antérieur à 1.40. Le provider docker échoue alors
+    # en boucle — aucune route créée, aucun certificat Let's Encrypt demandé, et
+    # le site répond en TLS auto-signé. `DOCKER_API_VERSION` ne rattrape rien :
+    # v3.3 impose la version en dur. Constaté sur un VPS en Docker 29.7,
+    # qui a dû poser un docker-compose.override.yml hors dépôt pour démarrer.
+    image: traefik:v3.7.10
+    restart: unless-stopped
+    <<: *logs
+    command:
+      - --providers.docker=true
+      # Rien n'est exposé sans `traefik.enable=true` explicite : un conteneur
+      # ajouté plus tard sur ce serveur ne se retrouve pas publié par accident.
+      - --providers.docker.exposedByDefault=false
+      - --providers.docker.network=mybrief_proxy
+      - --entrypoints.web.address=:80
+      # Tout le trafic clair est redirigé — sauf le challenge ACME, que Traefik
+      # sert lui-même en amont de cette redirection.
+      - --entrypoints.web.http.redirections.entryPoint.to=websecure
+      - --entrypoints.web.http.redirections.entryPoint.scheme=https
+      - --entrypoints.websecure.address=:443
+      - --certificatesresolvers.le.acme.email=${ACME_EMAIL}
+      - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.le.acme.httpchallenge=true
+      - --certificatesresolvers.le.acme.httpchallenge.entrypoint=web
+      - --log.level=${TRAEFIK_LOG_LEVEL:-INFO}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # Lecture seule : Traefik n'a besoin que de LIRE les conteneurs et leurs
+      # labels. Monter la socket en écriture donnerait à ce conteneur le contrôle
+      # total de l'hôte.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Le certificat DOIT survivre aux redémarrages : sans volume, chaque
+      # `up` redemande un certificat et Let's Encrypt limite à 5 par domaine
+      # et par semaine.
+      - letsencrypt:/letsencrypt
+    networks: [proxy]
+
+  mongo:
+    image: mongo:7.0
+    restart: unless-stopped
+    <<: *logs
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASS:?MONGO_PASS manquant — voir env.example}
+    # Aucun port publié et réseau `internal` uniquement : la base n'est
+    # joignable que par l'API. Pour une session d'administration :
+    #   docker compose exec mongo mongosh -u root -p "$MONGO_PASS" \
+    #     --authenticationDatabase admin mybrief
+    volumes:
+      - mongo_data:/data/db
+    networks: [internal]
+    healthcheck:
+      test: ["CMD", "mongosh", "-u", "root", "-p", "${MONGO_PASS}", "--authenticationDatabase", "admin", "--eval", "db.adminCommand('ping')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  api:
+    # Version publiée et signée, choisie par MYBRIEF_VERSION (update.sh).
+    image: ${REGISTRE:-ghcr.io/myalfred-ai}/mybrief/api:${MYBRIEF_VERSION:?MYBRIEF_VERSION manquant — version publiée à déployer, ex. 1.3.0}
+    restart: unless-stopped
+    <<: *logs
+    environment:
+      # Amorçage seulement : la clé se règle ensuite dans Administration → IA,
+      # où elle est vérifiée auprès d'OpenAI avant d'être enregistrée, et où
+      # elle PRIME sur celle-ci. Laisser vide est un choix valable — l'IA répond
+      # alors 503 en disant où la renseigner.
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      # Modèles par usage — surchargeables sans redéployer de code (cf.
+      # services/api/lib/config.js). Laisser VIDE garde les défauts du code.
+      # ⚠️ Ces lignes manquaient : les variables du .env n'atteignaient donc
+      # JAMAIS le conteneur, et le modèle de résumé était en réalité figé —
+      # l'échappatoire documentée dans .env.example n'existait pas.
+      - OPENAI_MODEL_SUMMARY=${OPENAI_MODEL_SUMMARY:-}
+      - OPENAI_MODEL_TITLE=${OPENAI_MODEL_TITLE:-}
+      - OPENAI_MODEL_ACTIONS=${OPENAI_MODEL_ACTIONS:-}
+      - OPENAI_MODEL_REFINE=${OPENAI_MODEL_REFINE:-}
+      - OPENAI_MODEL_INFOGRAPHIC=${OPENAI_MODEL_INFOGRAPHIC:-}
+      - OPENAI_MODEL_INFOGRAPHIC_IMAGE=${OPENAI_MODEL_INFOGRAPHIC_IMAGE:-}
+      - OPENAI_MODEL_TRANSCRIPTION=${OPENAI_MODEL_TRANSCRIPTION:-}
+      # Plafond de temps du seul appel de résumé (ms). Vide = 300000.
+      - OPENAI_SUMMARY_TIMEOUT_MS=${OPENAI_SUMMARY_TIMEOUT_MS:-}
+      - MONGO_URL=mongodb://root:${MONGO_PASS}@mongo:27017/mybrief?authSource=admin
+      - MONGO_DB=mybrief
+      - PORT=3000
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      # Auth native. `OIDC_ENABLED=false` retire de l'écran de connexion le
+      # bouton « SSO » du plugin Traefik, qui n'existe pas sur cette install.
+      - OIDC_ENABLED=false
+      - PASSWORD_LOGIN_ENABLED=true
+      - SESSION_TTL_DAYS=${SESSION_TTL_DAYS:-7}
+      - COOKIE_SECURE=true
+      # Compte d'amorçage. Créé UNIQUEMENT si la base ne contient encore aucun
+      # compte, et avec changement de mot de passe obligatoire à la première
+      # connexion (cf. services/api/lib/bootstrap.js).
+      - ADMIN_SEED_ENABLED=${ADMIN_SEED_ENABLED:-true}
+      - ADMIN_SEED_EMAIL=${ADMIN_SEED_EMAIL:-}
+      - ADMIN_SEED_PASSWORD=${ADMIN_SEED_PASSWORD:-}
+      # Promotion d'administrateurs par email, rejouée à chaque démarrage.
+      - ADMIN_EMAILS=${ADMIN_EMAILS:-}
+      # Domaines dont tout compte est administrateur. VIDE ici : chez un client,
+      # un domaine entier promu administrateur n'est jamais ce qu'on veut.
+      - ADMIN_EMAIL_DOMAINS=${ADMIN_EMAIL_DOMAINS:-}
+      # Aucune promotion automatique par domaine sur une install neuve.
+      - LEGACY_ADMIN_DOMAIN=
+      - APP_PUBLIC_URL=https://${DOMAIN}
+      # Mot de passe oublié : SMTP_HOST vide = désactivé proprement (le lien
+      # disparaît de l'écran de connexion, l'endpoint répond 501).
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_SECURE=${SMTP_SECURE:-false}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      - MAIL_FROM=${MAIL_FROM:-}
+      # Chiffrement AU REPOS des refresh tokens des comptes reliés.
+      # Vide = stockage en clair, comportement historique (cf. lib/crypto/secretBox.js).
+      - CONNECTIONS_ENC_KEY=${CONNECTIONS_ENC_KEY:-}
+      - PASSWORD_RESET_TTL_MIN=${PASSWORD_RESET_TTL_MIN:-30}
+    networks:
+      internal:
+      proxy:
+        aliases: [mybrief-api]
+    depends_on:
+      mongo: { condition: service_healthy }
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=mybrief_proxy
+      - traefik.http.services.mybrief-api.loadbalancer.server.port=3000
+
+      # ── noident : la garde de sécurité de toute l'installation ────────────
+      # L'API accepte une identité fournie par en-tête (héritage du plugin OIDC
+      # Traefik, cf. services/api/lib/auth/resolve.js). Toute route qui l'atteint
+      # SANS middleware d'authentification laisserait donc n'importe qui écrire
+      # `X-User-Email: victime@…` et lire les données d'autrui.
+      # Deux couches :
+      #   1. valeur vide  => Traefik SUPPRIME l'en-tête entrant ;
+      #   2. `X-Mybrief-Auth-Path: native`, toujours réécrit donc infalsifiable,
+      #      fait ignorer à l'API tout en-tête d'identité.
+      # ⚠️ Ne JAMAIS retirer ce middleware d'un routeur qui vise l'API, et ne
+      # jamais placer l'API derrière un autre proxy sans reproduire ces cinq
+      # lignes. Couvert par services/api/test/traefikWiring.test.js.
+      - "traefik.http.middlewares.mybrief-noident.headers.customRequestHeaders.X-User-Email="
+      - "traefik.http.middlewares.mybrief-noident.headers.customRequestHeaders.X-Auth-Request-User="
+      - "traefik.http.middlewares.mybrief-noident.headers.customRequestHeaders.X-User-Name="
+      - "traefik.http.middlewares.mybrief-noident.headers.customRequestHeaders.X-User-Picture="
+      - "traefik.http.middlewares.mybrief-noident.headers.customRequestHeaders.X-Mybrief-Auth-Path=native"
+      - traefik.http.middlewares.mybrief-allowframe.headers.customFrameOptionsValue=SAMEORIGIN
+
+      # Toute l'API, sans stripprefix : les routes sont montées sous /api.
+      - traefik.http.routers.mybrief-api.rule=Host(`${DOMAIN}`) && PathPrefix(`/api`)
+      - traefik.http.routers.mybrief-api.entrypoints=websecure
+      - traefik.http.routers.mybrief-api.tls.certresolver=le
+      - traefik.http.routers.mybrief-api.priority=100
+      - traefik.http.routers.mybrief-api.middlewares=mybrief-noident,mybrief-allowframe
+
+      # Retour d'Entra ID. Ce chemin est hors /api et n'est pas négociable :
+      # c'est l'URI de redirection enregistrée côté app registration
+      # (cf. services/api/routes/oauth2.js). Google, lui, revient sur
+      # /api/auth/google/callback, déjà couvert par le routeur ci-dessus.
+      - traefik.http.routers.mybrief-oauth2.rule=Host(`${DOMAIN}`) && Path(`/oauth2/callback`)
+      - traefik.http.routers.mybrief-oauth2.entrypoints=websecure
+      - traefik.http.routers.mybrief-oauth2.tls.certresolver=le
+      - traefik.http.routers.mybrief-oauth2.priority=110
+      - traefik.http.routers.mybrief-oauth2.service=mybrief-api
+      - traefik.http.routers.mybrief-oauth2.middlewares=mybrief-noident,mybrief-allowframe
+
+  web:
+    # Version publiée et signée, choisie par MYBRIEF_VERSION (update.sh).
+    image: ${REGISTRE:-ghcr.io/myalfred-ai}/mybrief/web:${MYBRIEF_VERSION:?MYBRIEF_VERSION manquant — version publiée à déployer, ex. 1.3.0}
+    restart: unless-stopped
+    <<: *logs
+    volumes:
+      # APK de l'app mobile + QR code, servis sur /downloads/ (page /app).
+      # Répertoire vide tant que l'app mobile n'est pas déployée : sans effet.
+      - ${MOBILE_DOWNLOADS_DIR:-./downloads}:/usr/share/nginx/html/downloads:ro
+    networks: [proxy]
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=mybrief_proxy
+      - traefik.http.services.mybrief-web.loadbalancer.server.port=80
+      # Priorité la plus basse : l'application n'est servie que sur les chemins
+      # qu'aucun routeur plus spécifique ne réclame. nginx renvoie index.html
+      # pour toute route inconnue (SPA sans routeur côté serveur).
+      - traefik.http.routers.mybrief-web.rule=Host(`${DOMAIN}`)
+      - traefik.http.routers.mybrief-web.entrypoints=websecure
+      - traefik.http.routers.mybrief-web.tls.certresolver=le
+      - traefik.http.routers.mybrief-web.priority=1
+
+  # ── Optionnel : authentification de l'app mobile (Capacitor) ──────────────
+  # Démarré seulement avec `docker compose --profile mobile up -d`.
+  # Inutile pour un usage web : ne pas l'activer évite d'avoir à générer et à
+  # protéger un secret de signature supplémentaire.
+  mobile-auth:
+    profiles: [mobile]
+    image: ${REGISTRE:-ghcr.io/myalfred-ai}/mybrief/mobile-auth:${MYBRIEF_VERSION:?MYBRIEF_VERSION manquant — version publiée à déployer, ex. 1.3.0}
+    restart: unless-stopped
+    <<: *logs
+    environment:
+      # Défaut VIDE et non `:?` : Compose interpole tout le fichier AVANT de
+      # filtrer les profils — une variable obligatoire ici bloquerait
+      # l'installation de base, qui ne démarre pourtant pas ce service. Le
+      # sidecar refuse lui-même de démarrer sans secret d'au moins 32
+      # caractères, en le disant dans ses journaux.
+      - MOBILE_AUTH_JWT_SECRET=${MOBILE_AUTH_JWT_SECRET:-}
+      # `session` : le sidecar lit le cookie de session natif. C'est la valeur
+      # qui va avec `mybrief-noident` sur la route /start ci-dessous ; `headers`
+      # attendrait un plugin OIDC devant, qui n'existe pas ici.
+      - MOBILE_AUTH_IDENTITY=session
+      - MYBRIEF_API_URL=http://mybrief/api:3000
+    networks:
+      proxy:
+        aliases: [mybrief-mobile-auth]
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=mybrief_proxy
+      - traefik.http.services.mybrief-mauth.loadbalancer.server.port=8080
+      # ⚠️ `mybrief-noident` est OBLIGATOIRE ici : sans lui, un client forgerait
+      # `X-User-Email` pour obtenir un jeton mobile au nom de n'importe qui.
+      - traefik.http.routers.mybrief-mauth-start.rule=Host(`${DOMAIN}`) && Path(`/auth/mobile/start`)
+      - traefik.http.routers.mybrief-mauth-start.entrypoints=websecure
+      - traefik.http.routers.mybrief-mauth-start.tls.certresolver=le
+      - traefik.http.routers.mybrief-mauth-start.priority=120
+      - traefik.http.routers.mybrief-mauth-start.service=mybrief-mauth
+      - traefik.http.routers.mybrief-mauth-start.middlewares=mybrief-noident
+      # /exchange est public : la protection est l'OTT à usage unique lié par PKCE.
+      - traefik.http.routers.mybrief-mauth-exchange.rule=Host(`${DOMAIN}`) && Path(`/auth/mobile/exchange`)
+      - traefik.http.routers.mybrief-mauth-exchange.entrypoints=websecure
+      - traefik.http.routers.mybrief-mauth-exchange.tls.certresolver=le
+      - traefik.http.routers.mybrief-mauth-exchange.priority=120
+      - traefik.http.routers.mybrief-mauth-exchange.service=mybrief-mauth
+
+networks:
+  # Créés par cette stack — rien à préparer à la main sur le serveur.
+  # Le nom est FIXE (`mybrief_proxy`) parce que les labels `traefik.docker.network`
+  # le désignent : un nom calculé depuis celui du projet casserait le routage
+  # si le dossier était renommé.
+  proxy:
+    name: mybrief_proxy
+  internal:
+    name: mybrief_internal
+
+volumes:
+  mongo_data:
+  letsencrypt:

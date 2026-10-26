@@ -1,0 +1,107 @@
+{
+  "extName": {
+    "message": "MyBrief"
+  },
+  "extDesc": {
+    "message": "Open MyBrief or start a meeting in one click, from any tab."
+  },
+  "cmdStartMeeting": {
+    "message": "Start a meeting"
+  },
+  "linkTitle": {
+    "message": "Link the extension to your MyBrief"
+  },
+  "linkIntro": {
+    "message": "The extension reads the MyBrief address from the open tab: nothing to type."
+  },
+  "linkUse": {
+    "message": "Use $HOST$ as my MyBrief",
+    "placeholders": {
+      "host": {
+        "content": "$1"
+      }
+    }
+  },
+  "linkChecking": {
+    "message": "Checking this tab…"
+  },
+  "linkNotFound": {
+    "message": "This tab is not MyBrief. Open your MyBrief, then click this icon again."
+  },
+  "linkDenied": {
+    "message": "Permission denied: without it, the extension cannot find your tab."
+  },
+  "linkFailed": {
+    "message": "Linking failed. Try again from the MyBrief tab."
+  },
+  "newMeeting": {
+    "message": "New meeting"
+  },
+  "openApp": {
+    "message": "Open MyBrief"
+  },
+  "history": {
+    "message": "History"
+  },
+  "config": {
+    "message": "My configuration"
+  },
+  "signedIn": {
+    "message": "Signed in · $NAME$",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "signedInAnon": {
+    "message": "Signed in"
+  },
+  "changeSite": {
+    "message": "Change site"
+  },
+  "backToMeeting": {
+    "message": "Back to the meeting"
+  },
+  "meetingRunning": {
+    "message": "Meeting in progress · $ELAPSED$",
+    "placeholders": {
+      "elapsed": {
+        "content": "$1"
+      }
+    }
+  },
+  "meetingPaused": {
+    "message": "Meeting paused · $ELAPSED$",
+    "placeholders": {
+      "elapsed": {
+        "content": "$1"
+      }
+    }
+  },
+  "videoCallHint": {
+    "message": "A video call is open in a tab. Start a MyBrief meeting?"
+  },
+  "reminderLabel": {
+    "message": "Remind me when a video call is open"
+  },
+  "titleRecording": {
+    "message": "MyBrief — recording ($MIN$ min)",
+    "placeholders": {
+      "min": {
+        "content": "$1"
+      }
+    }
+  },
+  "titlePaused": {
+    "message": "MyBrief — meeting paused ($MIN$ min)",
+    "placeholders": {
+      "min": {
+        "content": "$1"
+      }
+    }
+  },
+  "titleVideoCall": {
+    "message": "MyBrief — a video call is open: start a meeting?"
+  }
+}

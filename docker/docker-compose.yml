@@ -1,0 +1,400 @@
+
+services:
+  web:
+    env_file: .env
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        # VITE_* are baked into the SPA bundle at build time. Set them in
+        # the .env file next to this compose file (kept out of git).
+        VITE_ADMIN_PASSWORD: ${VITE_ADMIN_PASSWORD:-}
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
+        VITE_AUTH_BASE_URL: ${VITE_AUTH_BASE_URL:-}
+        VITE_AUTH_SIGNIN_URL: ${VITE_AUTH_SIGNIN_URL:-}
+        VITE_AUTH_LOGOUT_URL: ${VITE_AUTH_LOGOUT_URL:-}
+        VITE_AUTH_RETURN_URL: ${VITE_AUTH_RETURN_URL:-}
+        VITE_AUTH_LOGOUT_RETURN_URL: ${VITE_AUTH_LOGOUT_RETURN_URL:-}
+    image: ghcr.io/myalfred-ai/mybrief/web
+    restart: unless-stopped
+    volumes:
+      # APK de l'app mobile (+ QR code) déposés par la CI mobile-android.yml,
+      # servis statiquement sur /downloads/ (page publique /app). Montés dans
+      # nginx pour survivre aux rebuilds d'image (même mécanisme que MIA).
+      - ${MOBILE_DOWNLOADS_DIR:-./downloads}:/usr/share/nginx/html/downloads:ro
+    networks:
+      - internal
+      - proxy
+    labels:
+      - traefik.enable=true
+      # Réseau que Traefik utilise pour joindre ce conteneur. DOIT être celui de
+      # Traefik (ici `webproxy`), sinon 504 Gateway Timeout. Paramétrable.
+      - traefik.docker.network=${TRAEFIK_NETWORK:-webproxy}
+      # Router principal — SPA servi PUBLIQUEMENT (plus de middleware OIDC).
+      # Correctif racine du CSRF mismatch : tant que le shell était protégé OIDC,
+      # toute navigation/asset/onglet sur session expirée déclenchait une
+      # redirection vers Google ; deux initiations concurrentes écrasaient le
+      # cookie d'état (CSRF unique par session côté plugin) -> mismatch. En
+      # servant le SPA en clair, plus AUCUNE redirection automatique : le login
+      # est déclenché par UNE navigation délibérée vers /login (voir web-dev-auth).
+      # La protection réelle reste OIDC sur /api/ (l'API) + /oauth2 (callback).
+      - traefik.http.routers.web-dev.rule=Host(`${DOMAIN}`)
+      - traefik.http.routers.web-dev.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}
+      - traefik.http.routers.web-dev.tls.certresolver=${TRAEFIK_CERTRESOLVER:-myresolver}
+      - traefik.http.routers.web-dev.priority=1
+      - traefik.http.routers.web-dev.middlewares=notfound-dev
+      - traefik.http.services.web-dev.loadbalancer.server.port=80
+      # Page 404 custom pour tout chemin invalide (et 403 résiduel observé sur
+      # certains chemins morts) — même mécanisme que oidc-error-dev ci-dessous.
+      - traefik.http.middlewares.notfound-dev.errors.status=403,404
+      - traefik.http.middlewares.notfound-dev.errors.service=web-dev
+      - traefik.http.middlewares.notfound-dev.errors.query=/404.html
+      # Router d'authentification — protégé OIDC. Couvre /login (déclencheur de
+      # login : une navigation top-level unique => un seul flux OIDC, pas de
+      # clobber) et /oauth2/* (callback OIDC géré par le plugin). `oidc-error-dev`
+      # (OUTERMOST) intercepte le 400 résiduel (CSRF mismatch en cas de tabs
+      # concurrents) et sert /auth-recover.html au lieu de la page d'erreur.
+      - "traefik.http.routers.web-dev-auth.rule=Host(`${DOMAIN}`) && (Path(`/login`) || PathPrefix(`/oauth2`))"
+      - traefik.http.routers.web-dev-auth.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}
+      - traefik.http.routers.web-dev-auth.tls.certresolver=${TRAEFIK_CERTRESOLVER:-myresolver}
+      - traefik.http.routers.web-dev-auth.priority=60
+      - traefik.http.routers.web-dev-auth.service=web-dev
+      # ⚠️ BASCULE : en natif, /login n'est plus un déclencheur OIDC (les boutons
+      # de l'écran de connexion appellent /api/auth/<fournisseur>/start) — ce
+      # routeur ne fait plus que servir le SPA : WEB_AUTH_MIDDLEWARES=notfound-dev.
+      - traefik.http.routers.web-dev-auth.middlewares=${WEB_AUTH_MIDDLEWARES:-oidc-error-dev,oidc-dev}
+      - traefik.http.middlewares.oidc-error-dev.errors.status=400
+      - traefik.http.middlewares.oidc-error-dev.errors.service=web-dev
+      - traefik.http.middlewares.oidc-error-dev.errors.query=/auth-recover.html
+      # Router secondaire — assets PWA publics (sw.js, manifest, icons, favicon)
+      # + page d'auto-récupération. (Redondant avec le shell public, conservé pour
+      # priorité explicite et parité.)
+      - "traefik.http.routers.web-dev-public.rule=Host(`${DOMAIN}`) && (Path(`/auth-recover.html`) || Path(`/sw.js`) || Path(`/mybrief/sw.js`) || Path(`/workbox-{[a-f0-9]+}.js`) || Path(`/registerSW.js`) || Path(`/manifest.webmanifest`) || Path(`/favicon.ico`) || PathPrefix(`/android-chrome-`) || Path(`/apple-touch-icon.png`) || Path(`/mask-icon.svg`))"
+      - traefik.http.routers.web-dev-public.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}
+      - traefik.http.routers.web-dev-public.tls.certresolver=${TRAEFIK_CERTRESOLVER:-myresolver}
+      - traefik.http.routers.web-dev-public.priority=50
+      - traefik.http.routers.web-dev-public.service=web-dev
+
+  # Sidecar d'auth mobile — DÉROUTÉ : le flux OTT -> JWT -> ForwardAuth vit
+  # désormais dans l'API (services/api/routes/mobileAuth.js), et ce sont les
+  # labels du service `api` qui portent les routeurs `mauth-*`.
+  #
+  # Le conteneur reste ici le temps de valider le flux mobile en recette : il
+  # n'est plus routé (aucun routeur ne le désigne), mais il est démarré et sain.
+  # Retour arrière = rendre ses routeurs au sidecar dans ce fichier ; suppression
+  # définitive du service (et du dossier services/mobile-auth) une fois la
+  # validation faite.
+  mobile-auth:
+    build:
+      context: ../services/mobile-auth
+    image: mybrief-mobile-auth
+    restart: unless-stopped
+    environment:
+      # openssl rand -hex 32 — MÊME valeur que celle donnée à `api` ci-dessous,
+      # sinon les jetons émis d'un côté sont refusés de l'autre.
+      - MOBILE_AUTH_JWT_SECRET=${MOBILE_AUTH_JWT_SECRET}
+      - MOBILE_AUTH_IDENTITY=${MOBILE_AUTH_IDENTITY:-headers}
+      - MYBRIEF_API_URL=${MYBRIEF_API_URL:-http://mybrief-api:3000}
+    networks:
+      proxy:
+        # Alias explicite : évite toute collision de nom de service sur le
+        # réseau partagé avec d'autres stacks du VPS.
+        aliases:
+          - mybrief-mobile-auth
+    labels:
+      # Plus aucun routeur : le trafic mobile va à `api`.
+      - traefik.enable=false
+
+  mongo:
+    image: mongo:7.0
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASS}
+      MONGO_INITDB_DATABASE: mybrief
+    # No published port: Mongo reachable only on the internal docker network.
+    # For local access use:
+    #   docker compose exec mongo mongosh -u root -p "$MONGO_PASS" \
+    #     --authenticationDatabase admin mybrief
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - internal
+    labels:
+      - traefik.enable=false
+    healthcheck:
+      test: ["CMD", "mongosh", "-u", "root", "-p", "${MONGO_PASS}", "--authenticationDatabase", "admin", "--eval", "db.adminCommand('ping')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # Backend applicatif natif (services/api, Fastify) — remplace n8n.
+  # IMPORTANT : ce service PORTE les définitions des middlewares partagés
+  # (`oidc-dev`, `mobile-bearer-dev`, `allowframe`) référencés par les routeurs
+  # de `web` et `mobile-auth` — dans le provider docker de Traefik, un
+  # middleware défini sur un conteneur est référençable par toute la stack.
+  # Ne jamais supprimer ce bloc sans le reloger ailleurs.
+  api:
+    build:
+      context: ../services/api
+    image: mybrief-api
+    restart: unless-stopped
+    environment:
+      # Clé serveur uniquement (vivait avant dans l'UI credentials n8n).
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      # Modèles par usage — surchargeables sans redéployer de code (cf.
+      # services/api/lib/config.js). Laisser VIDE garde les défauts du code.
+      # ⚠️ Ces lignes manquaient : les variables du .env n'atteignaient donc
+      # JAMAIS le conteneur, et le modèle de résumé était en réalité figé —
+      # l'échappatoire documentée dans .env.example n'existait pas.
+      - OPENAI_MODEL_SUMMARY=${OPENAI_MODEL_SUMMARY:-}
+      - OPENAI_MODEL_TITLE=${OPENAI_MODEL_TITLE:-}
+      - OPENAI_MODEL_ACTIONS=${OPENAI_MODEL_ACTIONS:-}
+      - OPENAI_MODEL_REFINE=${OPENAI_MODEL_REFINE:-}
+      - OPENAI_MODEL_INFOGRAPHIC=${OPENAI_MODEL_INFOGRAPHIC:-}
+      - OPENAI_MODEL_INFOGRAPHIC_IMAGE=${OPENAI_MODEL_INFOGRAPHIC_IMAGE:-}
+      - OPENAI_MODEL_TRANSCRIPTION=${OPENAI_MODEL_TRANSCRIPTION:-}
+      # Plafond de temps du seul appel de résumé (ms). Vide = 300000.
+      - OPENAI_SUMMARY_TIMEOUT_MS=${OPENAI_SUMMARY_TIMEOUT_MS:-}
+      - MONGO_URL=mongodb://root:${MONGO_PASS}@mongo:27017/mybrief?authSource=admin
+      - MONGO_DB=mybrief
+      - PORT=3000
+      # Authentification native (email/mot de passe) — cf. services/api/lib/config.js
+      - SESSION_TTL_DAYS=${SESSION_TTL_DAYS:-7}
+      - COOKIE_SECURE=${COOKIE_SECURE:-true}
+      - OIDC_ENABLED=${OIDC_ENABLED:-true}
+      - PASSWORD_LOGIN_ENABLED=${PASSWORD_LOGIN_ENABLED:-true}
+      - ADMIN_SEED_ENABLED=${ADMIN_SEED_ENABLED:-true}
+      - ADMIN_SEED_EMAIL=${ADMIN_SEED_EMAIL:-}
+      - ADMIN_SEED_PASSWORD=${ADMIN_SEED_PASSWORD:-}
+      - LEGACY_ADMIN_DOMAIN=${LEGACY_ADMIN_DOMAIN:-}
+      # Emails promus administrateurs à chaque démarrage (séparés par des
+      # virgules) — moyen le plus fin de désigner un admin sur une base déjà
+      # peuplée.
+      - ADMIN_EMAILS=${ADMIN_EMAILS:-}
+      # Domaines dont TOUT compte est administrateur, réappliqué à chaque
+      # démarrage. Sur cette recette, `myalfred.ai` EST le domaine interne, et
+      # la création de compte y est déjà restreinte à ce domaine.
+      # `LEGACY_ADMIN_DOMAIN` ci-dessus ne suffit pas : il ne promeut que les
+      # comptes antérieurs au champ `role`, donc jamais un compte créé depuis.
+      # ⚠️ Chez un client, laisser VIDE et désigner les admins un par un.
+      - ADMIN_EMAIL_DOMAINS=${ADMIN_EMAIL_DOMAINS:-myalfred.ai}
+      # Connexion Google native (amorçage ; ensuite modifiable dans l'admin)
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - ALLOWED_EMAIL_DOMAINS=${ALLOWED_EMAIL_DOMAINS:-}
+      # ── Entra ID natif (bascule hors du plugin Traefik) ──────────────────
+      # MÊMES variables que le plugin ci-dessous : la bascule ne demande aucun
+      # nouvel identifiant, ni aucune déclaration côté Entra. L'API n'amorce le
+      # fournisseur que si l'URL de découverte est bien une autorité Microsoft
+      # (sur cette stack elles portent du Google), et le laisse DÉSACTIVÉ tant
+      # que ENTRA_LOGIN_ENABLED ne vaut pas 1.
+      - PROVIDER_URL=${PROVIDER_URL:-}
+      - OIDC_DISCOVERY_URL=${OIDC_DISCOVERY_URL:-}
+      - CLIENT_ID=${CLIENT_ID:-}
+      - CLIENT_SECRET=${CLIENT_SECRET:-}
+      - ENTRA_LOGIN_ENABLED=${ENTRA_LOGIN_ENABLED:-false}
+      # Mot de passe oublié — SMTP_HOST vide = fonctionnalité désactivée proprement
+      - APP_PUBLIC_URL=${APP_PUBLIC_URL:-https://${DOMAIN}}
+      - PASSWORD_RESET_TTL_MIN=${PASSWORD_RESET_TTL_MIN:-30}
+      # Formulaire de « Déclarer un bug ou une idée » — vide = entrée masquée
+      - FEEDBACK_URL=${FEEDBACK_URL:-}
+      # Documentation de « Aide » — vide = documentation publique
+      - DOCS_URL=${DOCS_URL:-}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_SECURE=${SMTP_SECURE:-false}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      - MAIL_FROM=${MAIL_FROM:-}
+      # Chiffrement AU REPOS des refresh tokens des comptes reliés.
+      # Vide = stockage en clair, comportement historique (cf. lib/crypto/secretBox.js).
+      - CONNECTIONS_ENC_KEY=${CONNECTIONS_ENC_KEY:-}
+      # ── Authentification de l'app mobile (ex-sidecar mobile-auth) ────────
+      # Secret vide = flux mobile éteint proprement (503 sur /auth/mobile/*,
+      # refus sur /auth/verify) ; l'API sert le web normalement.
+      # ⚠️ Changer ce secret invalide TOUS les jetons mobiles en circulation.
+      - MOBILE_AUTH_JWT_SECRET=${MOBILE_AUTH_JWT_SECRET:-}
+      - MOBILE_JWT_TTL_DAYS=${MOBILE_JWT_TTL_DAYS:-30}
+      - OTT_TTL_SECONDS=${OTT_TTL_SECONDS:-60}
+      - APP_CALLBACK=${APP_CALLBACK:-mybrief://auth/callback}
+    networks:
+      internal:
+      proxy:
+        # Alias explicite : le sidecar mobile joint l'API par ce nom sur le
+        # réseau partagé du VPS, où un service nommé `api` peut appartenir à
+        # une autre stack.
+        aliases:
+          - mybrief-api
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=${TRAEFIK_NETWORK:-webproxy}
+      # Routes montées nativement sous /api : pas de stripprefix (contrairement
+      # à /n8n qui était réécrit).
+      - traefik.http.routers.api-dev.rule=Host(`${DOMAIN}`) && PathPrefix(`/api`)
+      - traefik.http.routers.api-dev.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}
+      - traefik.http.routers.api-dev.tls.certresolver=${TRAEFIK_CERTRESOLVER:-myresolver}
+      - traefik.http.routers.api-dev.priority=100
+      - traefik.http.services.api-dev.loadbalancer.server.port=3000
+      # Middleware OIDC (nommé `oidc-dev` pour éviter collision avec d'autres
+      # stacks docker sur le même host qui définissent aussi `oidc`).
+      # sessionEncryptionKey persistante : sans elle, chaque restart traefik
+      # régénère une clé aléatoire et invalide tous les state cookies en vol
+      # → "Invalid state parameter (CSRF mismatch)" pour les users actifs.
+      - traefik.http.middlewares.oidc-dev.plugin.traefikoidc.sessionEncryptionKey=${OIDC_SESSION_KEY}
+      - traefik.http.middlewares.oidc-dev.plugin.traefikoidc.providerURL=${PROVIDER_URL}
+      - traefik.http.middlewares.oidc-dev.plugin.traefikoidc.clientID=${CLIENT_ID}
+      - traefik.http.middlewares.oidc-dev.plugin.traefikoidc.clientSecret=${CLIENT_SECRET}
+      - traefik.http.middlewares.oidc-dev.plugin.traefikoidc.callbackURL=/oauth2/callback
+      # cookieDomain explicite : sans lui, le plugin auto-détecte le domaine et peut
+      # créer 2 jeux de cookies de session (host-only + dot-domain). Le navigateur les
+      # accumule, le plugin lit le mauvais au callback -> "State parameter does not match
+      # CSRF token in session". Fixer le domaine de l'host = 1 seul cookie cohérent.
+      - traefik.http.middlewares.oidc-dev.plugin.traefikoidc.cookieDomain=${DOMAIN}
+      # forceHTTPS : TLS terminé à Traefik -> forcer https pour les redirect URIs.
+      # NB : le plugin force lui-même cookie Secure=(scheme==https || forceHTTPS)
+      # et SameSite=Lax (hardcodé, session.go getSessionOptions). Lax est correct
+      # ici : le cookie d'état est bien envoyé sur le callback (navigation GET
+      # top-level cross-site). Les anciens labels cookieSecure/cookieSameSite
+      # n'existent PAS dans la config du plugin (no-op) -> retirés.
+      - traefik.http.middlewares.oidc-dev.plugin.traefikoidc.forceHTTPS=true
+      - "traefik.http.middlewares.oidc-dev.plugin.traefikoidc.scopes=openid,profile,email"
+      # stripAuthCookies : retire les cookies _oidc_raczylo_* avant de forwarder
+      # vers l'upstream (web/api). Évite les HTTP 431 "Request Header Fields Too
+      # Large" quand les cookies de session Google gonflent (issue plugin #122)
+      # et la pollution de l'app par des cookies d'auth. Hygiène, parité prd/rec.
+      - traefik.http.middlewares.oidc-dev.plugin.traefikoidc.stripAuthCookies=true
+      - "traefik.http.middlewares.oidc-dev.plugin.traefikoidc.discoveryUrl=${OIDC_DISCOVERY_URL:-https://accounts.google.com/.well-known/openid-configuration}"
+      - "traefik.http.middlewares.oidc-dev.plugin.traefikoidc.headers[0].name=X-User-Name"
+      - "traefik.http.middlewares.oidc-dev.plugin.traefikoidc.headers[0].value={{.Claims.name}}"
+      - "traefik.http.middlewares.oidc-dev.plugin.traefikoidc.headers[1].name=X-User-Picture"
+      - "traefik.http.middlewares.oidc-dev.plugin.traefikoidc.headers[1].value={{.Claims.picture}}"
+      - "traefik.http.middlewares.oidc-dev.plugin.traefikoidc.headers[2].name=X-User-Email"
+      - "traefik.http.middlewares.oidc-dev.plugin.traefikoidc.headers[2].value={{.Claims.email}}"
+      # ⚠️ BASCULE : `oidc-dev,allowframe` = le plugin authentifie et injecte les
+      # en-têtes d'identité. `noident-dev,allowframe` = c'est l'API qui
+      # authentifie (cookie `mybrief_sess`), et les en-têtes sont effacés.
+      # Une seule variable à changer dans le .env, retour arrière immédiat.
+      - traefik.http.routers.api-dev.middlewares=${API_AUTH_MIDDLEWARES:-oidc-dev,allowframe}
+      - traefik.http.middlewares.allowframe.headers.customFrameOptionsValue=SAMEORIGIN
+      # ── Routeur BEARER (app mobile) ─────────────────────────────────────────
+      # Prioritaire (110 > 100) UNIQUEMENT quand la requête porte un jeton
+      # Bearer — le flux web cookie reste sur api-dev, strictement inchangé.
+      # Pas de CORS/OPTIONS : en mode server.url la WebView est sur l'origine
+      # du site, les fetch /api sont même-origine (aucun preflight).
+      # ForwardAuth -> /auth/verify de l'API : valide le JWT et réinjecte les
+      # mêmes en-têtes d'identité que le plugin OIDC => même contrat backend.
+      - "traefik.http.routers.api-dev-bearer.rule=Host(`${DOMAIN}`) && PathPrefix(`/api`) && HeaderRegexp(`Authorization`, `^Bearer `)"
+      - traefik.http.routers.api-dev-bearer.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}
+      - traefik.http.routers.api-dev-bearer.tls.certresolver=${TRAEFIK_CERTRESOLVER:-myresolver}
+      - traefik.http.routers.api-dev-bearer.priority=110
+      - traefik.http.routers.api-dev-bearer.service=api-dev
+      - traefik.http.routers.api-dev-bearer.middlewares=mobile-bearer-dev,allowframe
+      # ForwardAuth vers l'API elle-même (routes/mobileAuth.js) : /auth/verify
+      # n'est routé publiquement par aucun compose, Traefik l'appelle sur le
+      # réseau interne.
+      - traefik.http.middlewares.mobile-bearer-dev.forwardauth.address=http://mybrief-api:3000/auth/verify
+      - "traefik.http.middlewares.mobile-bearer-dev.forwardauth.authResponseHeaders=X-Auth-Request-User,X-User-Email,X-User-Name,X-User-Picture"
+      # ── Flux d'auth mobile (ex-sidecar) ────────────────────────────────────
+      # /auth/mobile/start — hors /api, donc AUCUN des routeurs ci-dessus ne le
+      # couvre : il lui faut le sien. Il doit porter un middleware qui établit
+      # l'identité, sinon la route ne peut rien émettre (cf. routes/mobileAuth.js).
+      #
+      # ⚠️ BASCULE : `oidc-dev` = le plugin authentifie et injecte l'identité.
+      # `noident-dev` = l'API lit le cookie natif, et les en-têtes sont EFFACÉS
+      # (sans quoi un client forgerait `X-User-Email` pour obtenir un jeton
+      # mobile au nom de n'importe qui). Il n'y a plus de variable à garder en
+      # phase côté service : l'API déduit le chemin du marqueur posé par
+      # `noident-dev`, elle ne le devine pas.
+      - "traefik.http.routers.mauth-start-dev.rule=Host(`${DOMAIN}`) && Path(`/auth/mobile/start`)"
+      - traefik.http.routers.mauth-start-dev.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}
+      - traefik.http.routers.mauth-start-dev.tls.certresolver=${TRAEFIK_CERTRESOLVER:-myresolver}
+      - traefik.http.routers.mauth-start-dev.priority=70
+      - traefik.http.routers.mauth-start-dev.service=api-dev
+      - traefik.http.routers.mauth-start-dev.middlewares=${MOBILE_START_MIDDLEWARES:-oidc-dev}
+      # /auth/mobile/exchange — public (l'OTT à usage unique lié PKCE est la
+      # protection). `noident-dev` quand même : la route ne lit aucune identité
+      # d'en-tête, mais rien ne doit atteindre l'API sans que les en-têtes
+      # d'identité soient réécrits.
+      - "traefik.http.routers.mauth-pub-dev.rule=Host(`${DOMAIN}`) && Path(`/auth/mobile/exchange`)"
+      - traefik.http.routers.mauth-pub-dev.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}
+      - traefik.http.routers.mauth-pub-dev.tls.certresolver=${TRAEFIK_CERTRESOLVER:-myresolver}
+      - traefik.http.routers.mauth-pub-dev.priority=70
+      - traefik.http.routers.mauth-pub-dev.service=api-dev
+      - traefik.http.routers.mauth-pub-dev.middlewares=noident-dev
+      # ── Authentification native (email/mot de passe) ─────────────────────────
+      # Deux routeurs supplémentaires atteignent l'API SANS le middleware OIDC :
+      # c'est l'API qui authentifie sur ce chemin (cookie de session).
+      #
+      # ⚠️ Un routeur sans middleware d'auth ne réécrit plus les en-têtes
+      # d'identité : sans parade, n'importe qui pourrait envoyer
+      # `X-User-Email: victime@…` et lire les données d'autrui. `noident-dev`
+      # ferme ça de deux façons :
+      #   1. valeur vide => Traefik SUPPRIME l'en-tête ;
+      #   2. X-Mybrief-Auth-Path est TOUJOURS réécrit, donc infalsifiable, et
+      #      l'API ignore toute identité d'en-tête dès qu'elle le voit
+      #      (services/api/lib/auth/resolve.js).
+      - "traefik.http.middlewares.noident-dev.headers.customRequestHeaders.X-User-Email="
+      - "traefik.http.middlewares.noident-dev.headers.customRequestHeaders.X-Auth-Request-User="
+      - "traefik.http.middlewares.noident-dev.headers.customRequestHeaders.X-User-Name="
+      - "traefik.http.middlewares.noident-dev.headers.customRequestHeaders.X-User-Picture="
+      - "traefik.http.middlewares.noident-dev.headers.customRequestHeaders.X-Mybrief-Auth-Path=native"
+      # Endpoints d'authentification : PUBLICS par nature (on ne peut pas exiger
+      # une session pour se connecter). Priorité dans l'intervalle libre
+      # 100 (api-dev, cookie OIDC) < p < 110 (api-dev-bearer, mobile).
+      - "traefik.http.routers.api-dev-auth.rule=Host(`${DOMAIN}`) && PathPrefix(`/api/auth`)"
+      - traefik.http.routers.api-dev-auth.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}
+      - traefik.http.routers.api-dev-auth.tls.certresolver=${TRAEFIK_CERTRESOLVER:-myresolver}
+      - traefik.http.routers.api-dev-auth.priority=106
+      - traefik.http.routers.api-dev-auth.service=api-dev
+      - traefik.http.routers.api-dev-auth.middlewares=noident-dev,allowframe
+      # ── Callback OIDC natif (Entra) ─────────────────────────────────────────
+      # `/oauth2/callback` est l'URI de redirection DÉJÀ enregistrée dans l'app
+      # registration Entra du client — nous n'avons pas les droits pour en
+      # déclarer une autre, donc l'API reprend celle-là (routes/oauth2.js).
+      #
+      # Le discriminant est le cookie d'état `mybrief_oauth`, posé UNIQUEMENT par
+      # le flux natif : tant que personne ne l'utilise, ce routeur ne matche
+      # jamais et le plugin garde le callback. Les deux flux cohabitent donc sans
+      # bascule — c'est ce qui permet de passer le web en natif alors que le
+      # mobile est encore servi par le plugin (son flux n'a pas ce cookie).
+      #
+      # Priorité 80 > 60 (web-dev-auth, qui couvre PathPrefix(`/oauth2`)).
+      - "traefik.http.routers.api-dev-oauth2.rule=Host(`${DOMAIN}`) && Path(`/oauth2/callback`) && HeaderRegexp(`Cookie`, `(^|;\\s*)mybrief_oauth=`)"
+      - traefik.http.routers.api-dev-oauth2.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}
+      - traefik.http.routers.api-dev-oauth2.tls.certresolver=${TRAEFIK_CERTRESOLVER:-myresolver}
+      - traefik.http.routers.api-dev-oauth2.priority=80
+      - traefik.http.routers.api-dev-oauth2.service=api-dev
+      - traefik.http.routers.api-dev-oauth2.middlewares=noident-dev,allowframe
+
+      # Requêtes porteuses d'un cookie de session native : elles doivent éviter
+      # oidc-dev, qui répondrait 401 faute de cookie OIDC.
+      # Regexp RE2 non ancrée : `(^|;\s*)` évite le faux positif sur un cookie
+      # nommé `xx_mybrief_sess`.
+      - "traefik.http.routers.api-dev-native.rule=Host(`${DOMAIN}`) && PathPrefix(`/api`) && HeaderRegexp(`Cookie`, `(^|;\\s*)mybrief_sess=`)"
+      - traefik.http.routers.api-dev-native.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}
+      - traefik.http.routers.api-dev-native.tls.certresolver=${TRAEFIK_CERTRESOLVER:-myresolver}
+      - traefik.http.routers.api-dev-native.priority=104
+      - traefik.http.routers.api-dev-native.service=api-dev
+      - traefik.http.routers.api-dev-native.middlewares=noident-dev,allowframe
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+networks:
+  # `proxy` = réseau partagé avec Traefik (doit exister, créé par la stack
+  # Traefik). Sur ce VPS il s'appelle `webproxy`. Paramétrable via .env pour ne
+  # jamais avoir à éditer ce fichier en local (ce qui bloquait les git pull).
+  proxy:
+    external: true
+    name: ${TRAEFIK_NETWORK:-webproxy}
+  # `internal` = réseau inter-services (api <-> mongo). Historiquement
+  # `ubuntu_default`.
+  internal:
+    external: true
+    name: ${INTERNAL_NETWORK:-ubuntu_default}
+
+volumes:
+  mongo_data:

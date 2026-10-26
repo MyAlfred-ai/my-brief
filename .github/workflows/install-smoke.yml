@@ -1,0 +1,31 @@
+name: Installation de bout en bout
+
+# Rejoue une installation complète avec le kit (kit/) et les images
+# construites depuis ce commit : refus sans mot de passe d'amorçage, API saine
+# derrière Traefik, update.sh puis rollback.sh. C'est le chemin que personne
+# n'exécute au quotidien, donc celui qui casse sans qu'on le voie.
+#
+# Sur les pull requests vers main (la branche des versions publiées), à la
+# demande, et chaque semaine pour les ruptures venues de l'extérieur (images
+# de base, MongoDB, Traefik). Trop lent pour chaque push.
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: "0 4 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  installation:
+    # Nom de la vérification exigée par la protection de main : le changer ici
+    # demande de le changer là.
+    name: Installation depuis le kit
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - run: scripts/smoke-install.sh

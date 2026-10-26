@@ -1,0 +1,17 @@
+# Configuration gitleaks : règles par défaut, plus les exceptions ci-dessous.
+# Toute exception ajoutée ici doit citer le fichier et la raison.
+[extend]
+useDefault = true
+
+# Valeurs factices des tests, reconnues une à une : un fichier de test entier
+# n'est jamais exclu, une vraie clé collée dans un test serait signalée.
+# Fichiers : services/api/test/{aiSettings,infographic,record}.test.js,
+# src/components/admin/UsersTab.component.test.js.
+[allowlist]
+description = "Valeurs factices des tests"
+regexes = [
+  '''^sk-proj-abcdefghijklmnopqrstuvwxyz0123456789$''',
+  '''^sk-env-key-0123456789$''',
+  '''^sk-test-record-0123456789$''',
+  '''^Provisoire-4821$''',
+]

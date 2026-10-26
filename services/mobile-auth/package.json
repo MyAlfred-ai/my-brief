@@ -1,0 +1,14 @@
+{
+  "name": "mybrief-mobile-auth",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "version": "1.0.0",
+  "description": "Sidecar d'authentification mobile MyBrief : OTT -> JWT -> ForwardAuth Traefik",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "jsonwebtoken": "^9.0.2"
+  }
+}

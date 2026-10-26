@@ -1,0 +1,93 @@
+# myBrief — stack de DÉVELOPPEMENT LOCAL (Mongo + backend).
+#
+# Volontairement séparé de docker-compose.yml (déploiement), qui suppose un
+# Traefik existant et ses réseaux externes — absents sur un poste de dev.
+# Ici : pas de Traefik, pas d'OIDC, pas de nginx. Les ports sont exposés en
+# clair sur localhost et le front tourne à côté via Vite (npm run dev:local),
+# dont le proxy injecte les en-têtes d'identité que poserait normalement le
+# plugin OIDC (cf. vite.config.local.js).
+#
+#   docker compose -f docker/docker-compose.dev.yml up -d
+#   npm run dev:local
+#
+# Secrets lus dans docker/.env (hors git). OPENAI_API_KEY y est requise :
+# sans elle le backend refuse de démarrer (message explicite dans les logs).
+
+services:
+  mongo:
+    image: mongo:7.0
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASS:-devpass}
+      MONGO_INITDB_DATABASE: mybrief
+    ports:
+      # Exposé pour mongosh / Compass depuis l'hôte. Base de dev uniquement.
+      - "27017:27017"
+    volumes:
+      - mongo_dev_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  api:
+    build:
+      context: ../services/api
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      # Modèles par usage — surchargeables sans redéployer de code (cf.
+      # services/api/lib/config.js). Laisser VIDE garde les défauts du code.
+      # ⚠️ Ces lignes manquaient : les variables du .env n'atteignaient donc
+      # JAMAIS le conteneur, et le modèle de résumé était en réalité figé —
+      # l'échappatoire documentée dans .env.example n'existait pas.
+      - OPENAI_MODEL_SUMMARY=${OPENAI_MODEL_SUMMARY:-}
+      - OPENAI_MODEL_TITLE=${OPENAI_MODEL_TITLE:-}
+      - OPENAI_MODEL_ACTIONS=${OPENAI_MODEL_ACTIONS:-}
+      - OPENAI_MODEL_REFINE=${OPENAI_MODEL_REFINE:-}
+      - OPENAI_MODEL_INFOGRAPHIC=${OPENAI_MODEL_INFOGRAPHIC:-}
+      - OPENAI_MODEL_INFOGRAPHIC_IMAGE=${OPENAI_MODEL_INFOGRAPHIC_IMAGE:-}
+      - OPENAI_MODEL_TRANSCRIPTION=${OPENAI_MODEL_TRANSCRIPTION:-}
+      # Plafond de temps du seul appel de résumé (ms). Vide = 300000.
+      - OPENAI_SUMMARY_TIMEOUT_MS=${OPENAI_SUMMARY_TIMEOUT_MS:-}
+      - MONGO_URL=mongodb://root:${MONGO_PASS:-devpass}@mongo:27017/mybrief?authSource=admin
+      - MONGO_DB=mybrief
+      - PORT=3000
+      - LOG_LEVEL=debug
+      # Dev local en http : un cookie Secure ne serait jamais renvoyé par le
+      # navigateur, la session serait perdue à chaque requête sans message.
+      - COOKIE_SECURE=false
+      # Compte d'amorçage de DÉVELOPPEMENT LOCAL — admin@example.test /
+      # dev-local-password, changement forcé à la première connexion. Jamais
+      # utilisé hors du poste : les composes d'installation n'ont aucun défaut.
+      - ADMIN_SEED_EMAIL=${ADMIN_SEED_EMAIL:-admin@example.test}
+      - ADMIN_SEED_PASSWORD=${ADMIN_SEED_PASSWORD:-dev-local-password}
+      # Mêmes leviers de désignation d'administrateur qu'en recette et en
+      # production, pour que le comportement se vérifie en local.
+      - ADMIN_EMAILS=${ADMIN_EMAILS:-}
+      - ADMIN_EMAIL_DOMAINS=${ADMIN_EMAIL_DOMAINS:-}
+      - APP_PUBLIC_URL=${APP_PUBLIC_URL:-http://localhost:5173}
+      # SMTP_HOST vide = « mot de passe oublié » désactivé proprement. Pour le
+      # tester en local : MailHog (SMTP_HOST=host.docker.internal SMTP_PORT=1025).
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-1025}
+      - MAIL_FROM=${MAIL_FROM:-myBrief <no-reply@localhost>}
+    ports:
+      - "3000:3000"
+    volumes:
+      # Code monté depuis le repo : `node --watch` redémarre à chaque édition,
+      # pas de rebuild d'image pendant le développement.
+      - ../services/api/server.js:/app/server.js:ro
+      - ../services/api/app.js:/app/app.js:ro
+      - ../services/api/lib:/app/lib:ro
+      - ../services/api/routes:/app/routes:ro
+    command: ["node", "--watch", "server.js"]
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+volumes:
+  # Volume dédié au dev : ne partage RIEN avec les données de recette/prod.
+  mongo_dev_data:

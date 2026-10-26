@@ -1,0 +1,16 @@
+{
+  // Socle du typage progressif JSDoc (décision : pas de migration TypeScript).
+  // checkJs reste à false globalement — l'activation se fait fichier par
+  // fichier via // @ts-check en tête des modules qu'on veut couvrir.
+  // `npm run check` (svelte-check) lit cette config.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "checkJs": false,
+    "noEmit": true,
+    "skipLibCheck": true
+  },
+  "include": ["src/**/*.js", "src/**/*.svelte", "services/**/*.js"],
+  "exclude": ["node_modules", "dist", "android", "ios", "www"]
+}

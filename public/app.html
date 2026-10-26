@@ -1,0 +1,54 @@
+<!doctype html>
+<!-- Page d'installation de l'app mobile (équivalent de la page /app de MIA).
+     Servie statiquement par nginx sur /app (location exacte, cf. nginx.conf),
+     PUBLIQUE comme le shell SPA. L'APK et le QR sont déposés par la CI
+     (mobile-android.yml, job publish) dans /downloads/. -->
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>MyBrief — Application mobile</title>
+  <link rel="icon" href="/favicon.ico">
+  <style>
+    body { margin: 0; min-height: 100vh; display: flex; align-items: center;
+           justify-content: center; background: #FFFEFC;
+           font-family: -apple-system, system-ui, sans-serif; color: #1a1a1a; }
+    .card { text-align: center; padding: 2.5rem 1.5rem; max-width: 420px; }
+    img.logo { width: 96px; height: 96px; border-radius: 12px; }
+    h1 { font-size: 1.5rem; margin: 1rem 0 .25rem; }
+    p.sub { color: #555; margin: 0 0 2rem; line-height: 1.45; }
+    .btn { display: inline-block; padding: .95rem 1.7rem; border-radius: 8px;
+           background: #F38400; color: #fff; text-decoration: none;
+           font-weight: 600; font-size: 1.05rem; }
+    .qr { margin-top: 2rem; }
+    .qr img { width: 180px; height: 180px; image-rendering: pixelated; }
+    .hint { color: #888; font-size: .85rem; margin-top: 1.5rem; line-height: 1.5; }
+    .ios { margin-top: 2.25rem; padding-top: 1.5rem; border-top: 1px solid #eee;
+           color: #777; font-size: .95rem; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <img class="logo" src="/logo.png" alt="MyBrief">
+    <h1>MyBrief sur votre téléphone</h1>
+    <p class="sub">Enregistrez et résumez vos réunions, même écran verrouillé.<br>
+       L'app affiche toujours la dernière version du site — aucune mise à jour à installer.</p>
+
+    <a class="btn" href="/downloads/mybrief.apk" download>Télécharger pour Android (APK)</a>
+
+    <div class="qr">
+      <!-- QR généré par la CI, pointant vers cette page. Masqué s'il n'existe pas encore. -->
+      <img src="/downloads/qr-app.png" alt="QR code d'installation" onerror="this.parentElement.style.display='none'">
+    </div>
+
+    <p class="hint">Android : autorisez l'installation depuis cette source si demandé.<br>
+       L'APK est resigné à chaque release native (versions dans le nom du fichier côté téléchargements).</p>
+
+    <div class="ios">
+      iPhone / iPad : disponible prochainement via TestFlight.<br>
+      En attendant, MyBrief s'installe comme application depuis Safari
+      (Partager&nbsp;→ «&nbsp;Sur l'écran d'accueil&nbsp;»).
+    </div>
+  </div>
+</body>
+</html>

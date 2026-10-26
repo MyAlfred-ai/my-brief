@@ -1,0 +1,149 @@
+name: Release
+
+# Publie une version : sur le tag vX.Y.Z, construit les trois images aux tags
+# X.Y.Z et X.Y, les signe, et prépare la publication GitHub en BROUILLON avec
+# le kit d'installation (mybrief-kit-vX.Y.Z.tar.gz) et SHA256SUMS. Un humain
+# relit les notes puis publie.
+#
+# Signature cosign sans clé : l'identité signée est CE fichier sur
+# refs/tags/v…, celle qu'attend le kit (kit/lib/kit.sh,
+# kit_verifier_signatures). Le renommer casse la vérification.
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    name: Tag et package.json
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - id: v
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "$TAG" != "v$version" ]; then
+            echo "::error::le tag $TAG ne correspond pas à package.json ($version)"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  ci:
+    needs: version
+    uses: ./.github/workflows/ci.yml
+
+  image:
+    name: Image (${{ matrix.nom }})
+    needs: [version, ci]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+      # Certificat éphémère de signature (Fulcio).
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - nom: web
+            contexte: .
+          - nom: api
+            contexte: services/api
+          - nom: mobile-auth
+            contexte: services/mobile-auth
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
+        with:
+          # Même version que celle qui vérifie, dans le kit.
+          cosign-release: v2.4.1
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/mybrief/${{ matrix.nom }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: ${{ matrix.contexte }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # SBOM et provenance attachés à l'image (attestations).
+          sbom: true
+          provenance: mode=max
+          cache-from: type=gha,scope=${{ matrix.nom }}
+
+      - name: Signature
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: echo "$TAGS" | xargs -I {} cosign sign --yes "{}@$DIGEST"
+
+  kit:
+    name: Kit et publication (brouillon)
+    needs: [version, image]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Kit d'installation
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          # VERSION : lue par install.sh pour la première installation.
+          echo "$VERSION" > kit/VERSION
+          tar czf "mybrief-kit-v$VERSION.tar.gz" --exclude=kit/tests \
+            --exclude=kit/.etat --exclude=kit/sauvegardes kit
+          sha256sum "mybrief-kit-v$VERSION.tar.gz" > SHA256SUMS
+
+      - name: Notes de version
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        # La section de CHANGELOG.md de cette version, sans son titre.
+        run: |
+          awk -v v="$VERSION" '
+            $0 ~ "^## \\[" v "\\]" { dedans = 1; next }
+            dedans && /^## \[/ { exit }
+            dedans && /^\[[^]]+\]: / { exit }
+            dedans { print }
+          ' CHANGELOG.md > notes.md
+          [ -s notes.md ] || { echo "::error::pas de section [$VERSION] dans CHANGELOG.md"; exit 1; }
+
+      - name: Brouillon de publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          gh release create "v$VERSION" --draft --verify-tag \
+            --title "MyBrief $VERSION" --notes-file notes.md \
+            "mybrief-kit-v$VERSION.tar.gz" SHA256SUMS

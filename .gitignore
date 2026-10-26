@@ -1,0 +1,43 @@
+# Secrets et configuration locale : jamais dans le dépôt public.
+.env
+.env.*
+!.env.example
+*.keystore
+*.jks
+acme.json
+
+# Dépendances installées par le build.
+vendor/
+node_modules/
+
+# Données d'exécution : seuls les .gitkeep sont suivis.
+storage/**
+!storage/**/
+!storage/**/.gitkeep
+!storage/.htaccess
+
+# Outillage local.
+.claude/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Produits de build et caches (règles reprises de l'ancien dépôt).
+dist/
+coverage/
+.vite/
+.svelte-kit/
+.svelte-cache/
+.eslintcache
+*.cache
+*.local
+npm-debug.log*
+public/mybrief-extension.zip
+kit/downloads/
+docker/downloads/
+kit/letsencrypt/
+
+# État et sauvegardes écrits par le kit sur un serveur.
+kit/.etat/
+kit/sauvegardes/

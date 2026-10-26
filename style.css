@@ -1,0 +1,4600 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ═══════════════════════════════════════════════
+   DESIGN SYSTEM — Identité visuelle MyBrief
+   Light chaud, Lexend, accent orange #F38400 (primaire) + #FFAF00 (secondaire).
+   Les deux sont RÉGLABLES : aucune de ces deux teintes ne doit réapparaître en
+   littéral ailleurs — tout passe par --mb-orange* / --brand-secondary*.
+   Réf. : Identité Visuelle MyBrief (claude.ai/design)
+═══════════════════════════════════════════════ */
+:root {
+  /* Couleurs primaires */
+  --mb-orange: #f38400;
+  --mb-orange-10: rgb(var(--brand-rgb) / 0.1);
+  --mb-orange-20: rgb(var(--brand-rgb) / 0.2);
+  /* Couleur secondaire, réglable (cf. --brand-secondary, styles/tokens.css). */
+  --mb-amber: var(--brand-secondary);
+  --mb-tag-text: var(--brand-text);
+
+  /* Fonds — TOUS les fonds « orange clair » (cartes, bandeaux, badges) sont
+     des dilutions de la couleur SECONDAIRE, pas des littéraux : régler la
+     secondaire en administration → Configuration les repeint tous d'un coup.
+     Mélange avec du blanc (et non alpha) : ces fonds se posent sur des
+     surfaces variées et doivent rester opaques. Les pourcentages retombent à
+     quelques unités près sur les crèmes d'origine (#fffefc, #fff6eb, #fffaf5,
+     #ffe7ca) tant que la secondaire vaut l'orange clair par défaut. */
+  --mb-bg-app: color-mix(in srgb, var(--brand-secondary) 1.2%, #fff);
+  --mb-bg-surface: #ffffff;
+  --mb-bg-warm: color-mix(in srgb, var(--brand-secondary) 8%, #fff);
+  --mb-bg-warm-light: color-mix(in srgb, var(--brand-secondary) 4%, #fff);
+  --mb-bg-tabs: color-mix(in srgb, var(--brand-secondary) 21%, #fff);
+
+  /* Bordures — même teinte que les fonds, mais mélangées à un GRIS et non à du
+     blanc : le gris borne la clarté, si bien qu'une secondaire très pâle
+     délave le liseré sans le faire disparaître. */
+  --mb-border-card: color-mix(in srgb, var(--brand-secondary) 38%, #f0f0f0);
+  --mb-border-default: color-mix(in srgb, var(--brand-secondary) 27%, #ececec);
+  --mb-border-badge: color-mix(in srgb, var(--brand-secondary) 25%, #f5f5f5);
+  --mb-border-subtle: color-mix(in srgb, var(--brand-secondary) 9%, #eee);
+  /* Bordure des champs de saisie (connexion, mots de passe). */
+  --mb-border-input: color-mix(in srgb, var(--brand-secondary) 4%, #d7d7d7);
+
+  /* Ascenseurs — fond de la gouttière et liseré du curseur. Les règles
+     historiques peignaient `--bg-dark`/`--bg-light` (#0f172a / #1e293b), restes
+     du thème sombre d'origine : sur l'interface claire actuelle, ça dessinait
+     une bande noire le long des colonnes qui défilent. Un jeton dédié plutôt
+     que `--mb-bg-surface` en direct : les ascenseurs longent des fonds variés
+     (blanc, warm) et la gouttière, elle, reste unie. */
+  --mb-scrollbar-track: var(--mb-bg-surface);
+
+  /* Texte */
+  --mb-text-primary: #000000;
+  --mb-text-secondary: #5f5f5f;
+  --mb-text-tertiary: #727272;
+  --mb-text-muted: #7d7d7d;
+  --mb-text-placeholder: #b4b4b4;
+
+  /* Rayons — échelle alignée sur MIA/myLLM (12 / 10 / 8).
+     `pill` garde son nom historique mais n'est plus une capsule : c'est le
+     rayon des contrôles (boutons, champs de saisie) depuis l'alignement. */
+  --mb-radius-pill: 10px;
+  --mb-radius-card: 10px;
+  --mb-radius-panel: 12px;
+  --mb-radius-badge: 8px;
+  --mb-radius-sm: 8px;
+
+  /* Ombres */
+  --mb-shadow-card: 0px 3px 5px rgb(var(--brand-rgb) / 0.05);
+  --mb-glow-float: 0px 4px 40px rgb(var(--brand-rgb) / 0.35);
+  --mb-shadow-date: 0px 2px 5px rgb(var(--brand-rgb) / 0.21);
+
+  /* Alias héritage — anciens noms mappés sur la nouvelle palette */
+  --purple: var(--mb-orange);
+  --purple-light: var(--mb-amber);
+  --purple-soft: var(--mb-bg-warm);
+  --sidebar-bg: var(--mb-bg-app);
+
+  /* Override dark theme (panneaux legacy) */
+  --primary-color: var(--mb-orange);
+  --secondary-color: var(--mb-amber);
+  --bg-dark: #0f172a;
+  --bg-light: #1e293b;
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  /* Dégradé des boutons pleins : secondaire en haut, primaire assombrie en
+     bas — le « dégradé orange » d'origine, désormais tiré des deux couleurs
+     réglables. */
+  --button-new-primary: var(--brand-secondary);
+  --button-new-secondary: var(--brand-strong);
+  --accent: #10b981;
+  --error: #ef4444;
+  --warning: #f59e0b;
+  --border-color: #334155;
+
+  /* Safe-area iOS */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+
+  /* Barre d'app mobile (logo + menu). Les paddings de contenu mobiles
+     (64px + safe-top) comptent dessus : 52px de barre + 12px d'air. */
+  --mobile-appbar-h: 52px;
+}
+
+html,
+body {
+  overscroll-behavior-y: contain;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-family:
+    'Lexend',
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif;
+  background: var(--mb-bg-app);
+  color: #000000;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+}
+
+/* ══════════════════════════════════════════════
+   NEW APP LAYOUT
+══════════════════════════════════════════════ */
+.app-layout {
+  display: flex;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--mb-bg-app);
+  font-family: 'Lexend', sans-serif;
+}
+
+/* ── Main area ── */
+.main-area {
+  flex: 1;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+
+/* Administration ouverte : elle prend toute la zone à droite de l'historique.
+   `display: none` plutôt qu'un {#if} autour du <main> — le markup de la zone
+   principale porte l'état de la réunion en cours (transcription, dock,
+   enregistrement) ; le démonter le détruirait. */
+.main-area-hidden {
+  display: none;
+}
+
+/* Fondu bas sous le dock (Bottom Rectangle Figma) : le contenu défile
+   derrière avec un dégradé chaud + léger flou. Sous le dock (z 50). */
+.main-area::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 110px;
+  background: linear-gradient(
+    to bottom,
+    rgba(255, 254, 252, 0) 0%,
+    rgba(255, 254, 252, 0.79) 49%,
+    var(--mb-bg-app) 100%
+  );
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 60%);
+  mask-image: linear-gradient(to bottom, transparent 0%, #000 60%);
+  pointer-events: none;
+  z-index: 40;
+}
+
+/* ── Barre d'app mobile ─────────────────────────────────────────────────
+   Logo + wordmark + bouton menu, TOUJOURS visibles sur mobile. Remplace
+   l'ancien bouton flottant seul (.sidebar-reopen-btn) : sans repère de
+   marque ni menu permanent, l'écran réunion n'offrait qu'une icône nue.
+
+   Échelle de z-index mobile (style.css + composants) :
+     8000  panneaux plein écran (PanelShell — décalés SOUS la barre)
+     8500  cette barre
+     8600  backdrop du drawer   (style.css, media ≤768)
+     8700  drawer historique    (Sidebar.svelte, media ≤768)
+     9999+ modales (suppression, type de réunion, avertissements…)
+   Le drawer passe au-dessus de la barre (le bouton menu l'ouvre), les
+   modales au-dessus de tout. Desktop : jamais rendue ({#if isNarrow}),
+   le display:none est une ceinture de sécurité au resize. */
+.mobile-appbar {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .mobile-appbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 8500;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: var(--mobile-appbar-h);
+    padding-top: var(--safe-top);
+    padding-left: calc(14px + var(--safe-left));
+    padding-right: calc(8px + var(--safe-right));
+    box-sizing: content-box; /* la hauteur utile reste 52px sous l'encoche */
+    background: rgba(255, 254, 252, 0.92);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--mb-border-subtle);
+  }
+  /* Logo + nom : un bouton, retour à l'accueil (action `welcome`).
+     Cible de 44 px de haut ; le nom garde son ellipse (min-width: 0). */
+  .mobile-appbar-home {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    min-height: 44px;
+    padding: 0 6px;
+    margin-left: -6px; /* la cible s'étend, le logo ne bouge pas */
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .mobile-appbar-home:active {
+    background: var(--mb-orange-10);
+  }
+  .mobile-appbar-logo {
+    height: 38px;
+    width: auto;
+    flex-shrink: 0;
+  }
+  .mobile-appbar-name {
+    font-family: 'Congenial', 'Lexend', sans-serif;
+    font-weight: 500;
+    font-size: 18px;
+    letter-spacing: -0.3px;
+    color: #000;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* À droite : « + » (nouvelle réunion, quand aucune n'est en cours) puis
+     le menu. Le « + » est un disque de marque de 36 px dans une cible de
+     44 px : le geste principal de l'app, visible sans peser dans la barre. */
+  .mobile-appbar-actions {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 0;
+    flex-shrink: 0;
+  }
+  /* Menu (le tiroir), à gauche du logo : la marge négative cale l'icône de
+     22 px à ~14 px du bord, comme le logo l'était, sans rogner la cible. */
+  .mobile-appbar-menu {
+    min-width: 44px;
+    min-height: 44px;
+    margin-left: -11px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--mb-orange);
+    cursor: pointer;
+  }
+  .mobile-appbar-menu:active {
+    background: var(--mb-orange-10);
+    transform: scale(0.96);
+  }
+  /* Avatar, roue crantée, bouclier : cibles de 40 × 44 px. Quatre boutons à
+     droite (« + » compris) tiennent ainsi à 375 px sans rogner le nom. */
+  .mobile-appbar-icon {
+    /* Repère de la pastille de configuration, posée sur le coin de l'icône. */
+    position: relative;
+    --cad-corner-offset: 6px;
+    min-width: 40px;
+    min-height: 44px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--ink-muted);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .mobile-appbar-icon:active {
+    background: var(--mb-orange-10);
+    color: var(--mb-orange);
+  }
+  .mobile-appbar-avatar {
+    --cad-corner-offset: 0px;
+  }
+  /* Menu de compte (AccountMenu) : sous la barre, calé à droite. La barre,
+     en position: fixed, est son bloc conteneur. Assez large pour les trois
+     chiffres de « Ce mois-ci ». */
+  .mobile-appbar-account-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: calc(8px + var(--safe-right));
+    width: min(340px, calc(100vw - 16px));
+    box-sizing: border-box;
+    max-height: calc(100dvh - var(--mobile-appbar-h) - var(--safe-top) - 24px);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    background: #fff;
+    border: 1px solid var(--mb-border-card);
+    border-radius: 14px;
+    box-shadow:
+      var(--mb-shadow-card),
+      0 18px 44px -12px rgb(var(--brand-rgb) / 0.22);
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    font-family: 'Lexend', sans-serif;
+  }
+  .mobile-appbar-start {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .mobile-appbar-start-disc {
+    width: 36px;
+    height: 36px;
+    border-radius: 999px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--brand);
+    color: #fff;
+    box-shadow: 0 4px 12px rgb(var(--brand-rgb) / 0.35);
+    transition:
+      transform 0.15s,
+      box-shadow 0.15s;
+  }
+  .mobile-appbar-start:active .mobile-appbar-start-disc {
+    transform: scale(0.92);
+    box-shadow: 0 2px 6px rgb(var(--brand-rgb) / 0.3);
+  }
+  /* Quota de minutes atteint (MobileAppBar `startBlocked`) : le disque
+     s'éteint, App explique au tap. */
+  .mobile-appbar-start-blocked .mobile-appbar-start-disc {
+    background: var(--line-strong);
+    color: var(--ink-muted);
+    box-shadow: none;
+  }
+}
+
+.welcome-logo {
+  width: clamp(120px, 18vw, 180px);
+  height: auto;
+  display: block;
+  margin-bottom: 6px;
+  user-select: none;
+}
+
+/* ══════════════════════════════════════════════
+   WELCOME SCREEN
+══════════════════════════════════════════════ */
+.welcome-screen {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+
+.welcome-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  text-align: center;
+}
+
+.welcome-title {
+  font-family: 'Lexend', sans-serif;
+  font-weight: 700;
+  font-size: clamp(40px, 6vw, 72px);
+  color: #000;
+  line-height: 1;
+}
+
+.welcome-sub {
+  font-family: 'Lexend', sans-serif;
+  font-size: 18px;
+  color: rgb(160, 160, 160);
+}
+
+/* ══════════════════════════════════════════════
+   RECORDING SCREEN
+══════════════════════════════════════════════ */
+.recording-screen {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 0;
+  min-height: 0;
+}
+
+/* Compact top bar */
+.rec-topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid rgb(235, 235, 235);
+  flex-shrink: 0;
+}
+
+.rec-mic-ring {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--purple);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  animation: mic-pulse 1.5s ease-in-out infinite;
+}
+
+.rec-mic-paused {
+  background: rgb(160, 160, 160);
+  animation: none;
+}
+
+@keyframes mic-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgb(var(--brand-rgb) / 0.3);
+  }
+  50% {
+    transform: scale(1.08);
+    box-shadow: 0 0 0 10px rgb(var(--brand-rgb) / 0);
+  }
+}
+
+.rec-label {
+  font-family: 'Lexend', sans-serif;
+  font-size: 14px;
+  color: #555;
+  flex: 1;
+}
+
+.rec-timer {
+  font-family: 'Lexend', sans-serif;
+  font-size: 13px;
+  color: #aaa;
+  flex-shrink: 0;
+}
+
+/* Sélecteur de tag dans la barre d'enregistrement : borné, pour que le timer
+   reste visible même avec un libellé de tag long (l'ellipse est dans TagChip). */
+.rec-topbar .ts-btn {
+  max-width: min(45vw, 200px);
+}
+
+/* Live transcript area.
+   Réserve bas = place du dock flottant, sinon la ligne en cours de
+   transcription (auto-scroll en bas) passe DERRIÈRE l'onde audio.
+   Le dock est en position:absolute bottom:32px (.dock-recording) pour 55px de
+   haut, soit 87px depuis le bas de .main-area ; la liste s'arrête déjà 20px
+   au-dessus (padding de .content-layout) → 67px à compenser, + une marge pour
+   le halo orange de .wave-pill (box-shadow 40px). */
+.rec-live-transcript {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 20px 104px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--brand-rgb) / 0.15) transparent;
+}
+
+.rec-waiting {
+  font-family: 'Lexend', sans-serif;
+  font-size: 14px;
+  color: rgb(180, 180, 180);
+  padding-top: 24px;
+  text-align: center;
+}
+
+/* ══════════════════════════════════════════════
+   ACTIVE SCREEN — CONTENT LAYOUT
+══════════════════════════════════════════════ */
+
+.content-layout {
+  display: flex;
+  flex: 1;
+  gap: 0;
+  padding: 20px;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  transition: padding-left 0.3s cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+/* ── Main tab panel ── */
+.main-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--mb-border-card);
+  border-radius: var(--mb-radius-panel);
+  background: var(--mb-bg-surface);
+  overflow: hidden;
+  min-width: 0;
+}
+
+/* Sparkle (asset Figma) : indicateur de génération en cours — rotation
+   continue + respiration. 8 rayons à 45° -> rotation parfaitement cyclique. */
+.tab-sparkle {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  pointer-events: none;
+  animation: sparkle-turn 1.6s linear infinite;
+}
+
+@keyframes sparkle-turn {
+  0% {
+    transform: rotate(0deg) scale(1);
+  }
+  50% {
+    transform: rotate(180deg) scale(0.78);
+  }
+  100% {
+    transform: rotate(360deg) scale(1);
+  }
+}
+
+/* ── Tab content ── */
+.tab-content {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.tab-resume-wrap,
+.tab-transcript-wrap {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px;
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--brand-rgb) / 0.2) transparent;
+  position: relative;
+}
+
+/* Onglet Résumé : page blanche pleine largeur */
+.tab-resume-wrap {
+  background: color-mix(in srgb, var(--brand-secondary) 1.1%, #fefefe);
+  padding: 0;
+}
+
+.resume-loading-state {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 24px;
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  color: var(--mb-text-muted);
+  font-family: 'Lexend', sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.2px;
+  z-index: 5;
+  pointer-events: none;
+  animation: resume-loading-fade-in 0.2s ease;
+}
+.resume-loading-state span {
+  text-align: center;
+  line-height: 1.4;
+}
+@keyframes resume-loading-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Indicateur d'autosave du résumé — vit à DROITE de la barre d'outils de
+   l'éditeur (slot `status` de MarkdownEditor), pas en overlay : il reste
+   visible au scroll avec la barre sticky. */
+.save-status {
+  font-family: 'Lexend', sans-serif;
+  font-size: 11px;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  padding-right: 2px;
+  pointer-events: none;
+  animation: save-status-in 0.25s ease;
+  /* La barre défile horizontalement sur petit écran : l'indicateur reste
+     collé au bord droit visible, sur le fond de la barre. */
+  position: sticky;
+  right: 0;
+  background: inherit;
+  padding-left: 8px;
+}
+.save-status-pending {
+  color: var(--ink-faint);
+  animation: save-status-pulse 1.4s ease-in-out infinite;
+}
+.save-status-saved {
+  color: var(--ink-muted);
+}
+.save-status-error {
+  color: var(--danger-strong);
+}
+@keyframes save-status-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes save-status-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* Badge template au-dessus du résumé (Tag Container Figma : Standard).
+   `top` compte la barre d'outils de l'éditeur (~44 px, en flux au-dessus du
+   texte) : le badge flotte dans le padding haut du texte, pas sur la barre. */
+.resume-template-tag {
+  position: absolute;
+  top: 58px;
+  left: clamp(28px, 7%, 120px);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: var(--mb-radius-badge);
+  background: var(--mb-bg-warm-light);
+  border: 1px solid var(--mb-border-badge);
+  color: var(--mb-tag-text);
+  font-family: 'Lexend', sans-serif;
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.3px;
+  line-height: 1;
+  z-index: 1;
+  pointer-events: none;
+  user-select: none;
+  opacity: 0.95;
+  transition: opacity 0.15s ease;
+}
+.resume-template-tag:hover {
+  opacity: 1;
+}
+.resume-template-tag-icon {
+  font-size: 12px;
+  line-height: 1;
+}
+.resume-template-tag-label {
+  line-height: 1;
+}
+
+@media (max-width: 768px) {
+  /* 64 px : sous la barre d'outils, que le padding mobile de .tab-resume-wrap
+     (14 px) décale — à 52 px, le badge passait sous la barre. Même ligne que
+     l'infographie, à droite (ResumeOverlays) : chacun sa moitié. */
+  .resume-template-tag {
+    top: 64px;
+    left: 14px;
+    max-width: calc(50% - 24px);
+    font-size: 10.5px;
+    padding: 3px 8px;
+  }
+  .resume-template-tag-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.resume-spinner-ring {
+  width: 36px;
+  height: 36px;
+  border: 3px solid var(--mb-border-card);
+  border-top-color: var(--purple);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Page blanche pleine largeur — sans effet feuille A4 */
+.resume-text-area {
+  min-height: 100%;
+  padding: 44px clamp(28px, 7%, 120px);
+  background: color-mix(in srgb, var(--brand-secondary) 1.1%, #fefefe);
+  color: color-mix(in srgb, var(--brand-secondary) 3.8%, #1f1f1f);
+  font-family: 'Lexend', sans-serif;
+  font-size: 15px;
+  line-height: 1.7;
+  outline: none;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Mise en forme du contenu HTML du résumé */
+.resume-text-area > *:first-child {
+  margin-top: 0;
+}
+.resume-text-area > *:last-child {
+  margin-bottom: 0;
+}
+
+.resume-text-area p {
+  margin: 0 0 0.6em;
+}
+
+.resume-text-area h1,
+.resume-text-area h2,
+.resume-text-area h3,
+.resume-text-area h4,
+.resume-text-area h5,
+.resume-text-area h6 {
+  font-weight: 600;
+  line-height: 1.3;
+  margin: 1em 0 0.4em;
+}
+.resume-text-area h1 {
+  font-size: 1.35em;
+}
+.resume-text-area h2 {
+  font-size: 1.18em;
+}
+.resume-text-area h3 {
+  font-size: 1.05em;
+}
+.resume-text-area h4,
+.resume-text-area h5,
+.resume-text-area h6 {
+  font-size: 1em;
+}
+
+.resume-text-area ul,
+.resume-text-area ol {
+  margin: 0.4em 0 0.4em 1.5em;
+  padding-left: 1.6em;
+}
+
+.resume-text-area ul ul,
+.resume-text-area ul ol,
+.resume-text-area ol ul,
+.resume-text-area ol ol {
+  margin: 0.2em 0;
+  padding-left: 1.4em;
+}
+
+.resume-text-area li {
+  margin: 0.2em 0;
+  line-height: 1.55;
+}
+
+/* TipTap encapsule le contenu des <li> dans des <p> : pas de marge en doublon */
+.resume-text-area li > p {
+  margin: 0;
+}
+
+/* Liens posés depuis la barre d'outils (ou autolink). Dans l'éditeur le clic
+   pose le caret (openOnClick désactivé) ; ils restent cliquables dans le mail.
+   Le PDF étant une capture d'image, ils y sont visibles mais inertes. */
+.resume-text-area a {
+  color: var(--brand-text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.transcript-empty {
+  color: rgb(180, 180, 180);
+  font-size: 14px;
+  text-align: center;
+  padding-top: 32px;
+}
+
+/* Pied de l'onglet Transcription — bouton discret de téléchargement TXT.
+   Reste hors de la zone scrollable (.tab-transcript-wrap), aligné à droite.
+
+   `position: relative` + z-index 45 : ce pied tombe dans les 110 px du fondu
+   bas `.main-area::after` (z 40), qui le recouvrait d'un voile crème à 79-100 %
+   d'opacité PLUS un flou — le bouton « Télécharger l'audio » y devenait
+   illisible dès la fin de la transcription. Le fondu existe pour que le contenu
+   défile derrière le dock (z 50) : le pied passe donc au-dessus du voile, mais
+   reste sous le dock. */
+.transcript-footer {
+  position: relative;
+  z-index: 45;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 24px 14px;
+  border-top: 1px solid rgb(238, 233, 245);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--brand-secondary) 1.9%, #ffffff) 0%,
+    color-mix(in srgb, var(--brand-secondary) 4.9%, #fefefe) 100%
+  );
+  flex-shrink: 0;
+}
+/* Teinte de TEXTE (--brand-text) et non la teinte de marque : l'orange vif sur
+   blanc plafonne à ~2.4:1 de contraste, sous le seuil AA — le bouton se lisait
+   à peine sur le pied clair. Fond légèrement teinté et bordure franche pour
+   qu'il se détache aussi comme cible cliquable. */
+.transcript-download-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgb(var(--brand-rgb) / 0.08);
+  border: 1px solid rgb(var(--brand-rgb) / 0.55);
+  color: var(--brand-text);
+  border-radius: 10px;
+  padding: 7px 15px;
+  font-family: 'Lexend', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s,
+    transform 0.1s,
+    box-shadow 0.15s;
+}
+.transcript-download-btn:hover {
+  background: rgb(var(--brand-rgb) / 0.16);
+  border-color: var(--brand);
+  color: var(--brand-text-strong);
+  box-shadow: 0 4px 12px -4px rgb(var(--brand-rgb) / 0.3);
+}
+.transcript-download-btn:active {
+  transform: scale(0.97);
+}
+.transcript-download-btn svg {
+  flex-shrink: 0;
+}
+
+@media (max-width: 640px) {
+  .transcript-footer {
+    padding: 10px 14px 14px;
+  }
+  .transcript-download-btn {
+    font-size: 12px;
+    padding: 6px 12px;
+  }
+}
+
+/* ── Actions panel (new design) ── */
+/* Tasks Container Figma (1:125) : panneau transparent, cartes sur fond crème */
+.actions-panel-new {
+  position: relative;
+  width: 340px;
+  flex-shrink: 0;
+  margin-left: 16px;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  /* même timing que la sidebar (.sb) */
+  transition:
+    width 0.3s cubic-bezier(0.33, 1, 0.68, 1),
+    margin-left 0.3s cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+.ap-header {
+  /* padding-top 12px + icône 18px (pas de min-height : avec align-items:center
+       sur une min-height, le padding-top asymétrique ne détermine pas la position
+       réelle -> écart observé avec la barre des documents). Ici la hauteur de la ligne flex
+       = hauteur de l'icône, donc le contenu démarre exactement à padding-top. */
+  padding: 12px 52px 0 20px; /* réserve à droite pour le bouton repli absolu */
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.ap-header .ap-title-icon {
+  color: var(--mb-orange);
+  flex-shrink: 0;
+}
+
+.ap-count {
+  margin-left: 2px;
+}
+
+.ap-title {
+  font-family: 'Lexend', sans-serif;
+  font-size: 15.5px;
+  font-weight: 400;
+  color: var(--mb-orange);
+}
+
+.ap-count {
+  font-family: 'Lexend', sans-serif;
+  font-size: 12px;
+  color: rgb(160, 160, 160);
+}
+
+/* Bouton repli : ancré top-right du panneau (bord droit constant en flex)
+   -> position identique replié/déplié, ne saute pas au toggle.
+   top:7px => centre à 21px du haut du panneau, même centre que la barre des
+   documents du panneau principal (DocumentBar : padding 5px + moitié de 32px). */
+.ap-collapse-btn {
+  position: absolute;
+  top: 7px;
+  right: 12px;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--mb-orange);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  cursor: pointer;
+  flex-shrink: 0;
+  z-index: 2;
+  transition: background 0.15s;
+}
+
+.ap-collapse-btn:hover {
+  background: var(--mb-orange-10);
+}
+
+/* État replié : rail fin, bouton de réouverture + ajout rapide */
+.actions-panel-new.ap-collapsed {
+  width: 46px;
+  margin-left: 12px;
+  background: transparent;
+  border: none;
+  overflow: hidden;
+}
+
+/* Contenu : fondu (pas display:none) pour animer proprement avec la largeur */
+.ap-collapsed .ap-content {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.ap-collapsed .ap-title,
+.ap-collapsed .ap-count {
+  display: none;
+}
+
+/* Rail replié : icône statique par défaut (ap-title-icon), bouton repli
+   (ap-collapse-btn) au survol seulement — même emplacement, l'un remplace
+   l'autre plutôt que d'empiler deux icônes. */
+.ap-collapsed .ap-header {
+  padding: 12px 0 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  position: relative;
+  height: 40px;
+}
+
+.ap-collapsed .ap-title-icon {
+  display: flex;
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.ap-collapsed .ap-collapse-btn {
+  top: 8px;
+  right: auto;
+  left: 50%;
+  transform: translateX(-50%);
+  opacity: 0;
+}
+
+.ap-collapsed .ap-collapse-btn:hover {
+  opacity: 1;
+}
+
+.ap-collapsed .ap-header:has(.ap-collapse-btn:hover) .ap-title-icon {
+  opacity: 0;
+}
+
+/* Ajout rapide (rail replié) : pill pointillée orange, alignée sous le repli */
+.ap-collapsed-add {
+  position: absolute;
+  top: 42px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 34px;
+  height: 27px;
+  border: none;
+  background: transparent;
+  color: var(--mb-orange);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  border-radius: 10px;
+  transition:
+    color 0.15s,
+    transform 0.12s;
+}
+
+.ap-collapsed-add:hover {
+  color: var(--brand-strong);
+}
+
+.ap-collapsed-add:active {
+  transform: translateX(-50%) scale(0.94);
+}
+
+.ap-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 21px;
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--brand-rgb) / 0.15) transparent;
+  transition: opacity 0.2s ease;
+}
+
+/* Add Action Container Figma : pill pointillée orange */
+.ap-add-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 28px;
+  font-family: 'Lexend', sans-serif;
+  font-size: 12px;
+  padding: 0 14px;
+  border: 1px dashed var(--mb-orange);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--mb-orange);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+
+.ap-add-btn:hover {
+  background: var(--mb-orange-10);
+}
+
+/* Task Container Figma : carte deux parties, ombre douce */
+.ap-card {
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--mb-shadow-card);
+  animation: fadeSlideIn 0.3s ease both;
+}
+
+@keyframes fadeSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Barre titre : fond chaud, bordure, coins hauts arrondis */
+.ap-card-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--mb-bg-warm);
+  border: 1px solid var(--mb-border-default);
+  border-radius: 10px 10px 0 0;
+  padding: 7px 10px;
+}
+
+/* Corps : blanc, coins bas arrondis */
+.ap-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--mb-bg-surface);
+  border: 1px solid var(--mb-border-default);
+  border-top: none;
+  border-radius: 0 0 10px 10px;
+  padding: 9px 10px 11px;
+}
+
+/* Ligne méta en bas de carte, séparée par un liseré (Vector 28 Figma) */
+.ap-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid var(--mb-border-default);
+  padding-top: 7px;
+  margin-top: 2px;
+}
+
+/* Avatar initiale (Date Icon Container Figma : cercle orange, ombre douce) */
+.ap-avatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--mb-orange);
+  box-shadow: var(--mb-shadow-date);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Lexend', sans-serif;
+  font-size: 10px;
+  font-weight: 400;
+  color: #fff;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.ap-owner-input {
+  flex: 1;
+  font-family: 'Lexend', sans-serif;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--mb-text-secondary);
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  outline: none;
+  min-width: 0;
+  padding: 2px 6px;
+  cursor: text;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+
+.ap-owner-input:hover {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+.ap-owner-input:focus {
+  background: #fff;
+  border-color: rgb(var(--brand-rgb) / 0.5);
+}
+
+.ap-date-input {
+  font-family: 'Lexend', sans-serif;
+  font-size: 11px;
+  color: var(--mb-text-secondary);
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  outline: none;
+  cursor: pointer;
+  max-width: 110px;
+  padding: 2px 6px;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+
+.ap-date-input:hover {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+.ap-date-input:focus {
+  background: #fff;
+  border-color: rgb(var(--brand-rgb) / 0.5);
+}
+
+.ap-delete-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--mb-amber);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition:
+    color 0.15s,
+    background 0.15s;
+  flex-shrink: 0;
+}
+
+/* La corbeille masque, elle ne supprime pas (l'action se rétablit depuis
+   « Actions masquées ») : pas de rouge de danger au survol. */
+.ap-delete-btn:hover {
+  color: var(--brand-text);
+  background: var(--brand-soft-08);
+}
+
+/* Titre : orange bold sur la barre chaude (Task Title Text Figma) */
+.ap-title-input {
+  flex: 1;
+  font-family: 'Lexend', sans-serif;
+  font-size: 12.8px;
+  font-weight: 700;
+  color: var(--mb-orange);
+  border: 1px solid transparent;
+  background: transparent;
+  outline: none;
+  min-width: 0;
+  padding: 2px 6px;
+  border-radius: 4px;
+  cursor: text;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+
+.ap-title-input::placeholder {
+  color: rgb(var(--brand-rgb) / 0.45);
+}
+
+.ap-title-input:hover {
+  background: rgb(var(--brand-rgb) / 0.06);
+  border-color: rgb(var(--brand-rgb) / 0.12);
+}
+
+.ap-title-input:focus {
+  background: #fff;
+  border-color: rgb(var(--brand-rgb) / 0.5);
+}
+
+.ap-desc {
+  font-family: 'Lexend', sans-serif;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--mb-text-muted);
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 5px;
+  padding: 2px 6px;
+  outline: none;
+  resize: vertical;
+  width: 100%;
+  min-height: 36px;
+  cursor: text;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+
+.ap-desc:hover {
+  background: rgb(var(--brand-rgb) / 0.05);
+  border-color: rgb(var(--brand-rgb) / 0.1);
+}
+
+.ap-desc:focus {
+  background: #fff;
+  border-color: rgb(var(--brand-rgb) / 0.5);
+}
+
+.ap-empty {
+  font-family: 'Lexend', sans-serif;
+  font-size: 12px;
+  color: rgb(200, 200, 200);
+  text-align: center;
+  padding: 20px 0;
+}
+
+/* ══════════════════════════════════════════════
+   DÉTECTION EN DIRECT — état d'analyse et signalement
+   Une action doit se voir apparaître et se voir changer, sans que la réunion
+   ait l'air de clignoter : chaque animation est BORNÉE (jamais `infinite`,
+   sauf le point d'écoute qui est le seul témoin permanent).
+══════════════════════════════════════════════ */
+
+/* SparkleIcon se pose en position absolute : sans conteneur dimensionné, elle
+   se cale sur le panneau entier. */
+.ap-analysis-slot {
+  position: relative;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+/* Apparition : le glissement existant, plus un halo qui s'ouvre et s'éteint.
+   `var(--mb-shadow-card)` est répété dans chaque étape — l'animation remplace
+   la box-shadow de la carte, et sans lui l'ombre disparaîtrait le temps du
+   halo. */
+.ap-card-flash-new {
+  animation:
+    fadeSlideIn 0.3s ease both,
+    ap-glow-new 1.4s cubic-bezier(0.33, 1, 0.68, 1) 0.15s both;
+}
+
+@keyframes ap-glow-new {
+  0% {
+    box-shadow:
+      0 0 0 0 rgb(var(--brand-rgb) / 0.45),
+      var(--mb-shadow-card);
+  }
+  60% {
+    box-shadow:
+      0 0 0 5px rgb(var(--brand-rgb) / 0.12),
+      var(--mb-shadow-card);
+  }
+  100% {
+    box-shadow:
+      0 0 0 0 rgb(var(--brand-rgb) / 0),
+      var(--mb-shadow-card);
+  }
+}
+
+/* Mise à jour : trois battements de la barre de titre, puis retour au calme.
+   Le compte d'itérations est FINI à dessein — si le nettoyage côté JS venait à
+   manquer, la carte s'arrêterait quand même de pulser. */
+.ap-card-flash-updated .ap-card-titlebar {
+  animation: ap-titlebar-pulse 0.85s cubic-bezier(0.4, 0, 0.6, 1) 3;
+}
+
+@keyframes ap-titlebar-pulse {
+  0%,
+  100% {
+    background: var(--mb-bg-warm);
+    box-shadow: 0 0 0 0 rgb(var(--brand-rgb) / 0.3);
+  }
+  50% {
+    background: rgb(var(--brand-rgb) / 0.16);
+    box-shadow: 0 0 0 5px rgb(var(--brand-rgb) / 0);
+  }
+}
+
+/* Le champ précisé par le modèle s'éclaire brièvement : on voit CE qui a
+   changé, pas seulement QUE quelque chose a changé. */
+.ap-field-updated {
+  animation: ap-field-fade 1.6s ease-out both;
+}
+
+@keyframes ap-field-fade {
+  from {
+    background: var(--brand-secondary-soft-15);
+  }
+  to {
+    background: transparent;
+  }
+}
+
+/* Panneau vide pendant l'enregistrement : la détection tourne, elle n'a encore
+   rien trouvé. Seule animation en boucle du lot, volontairement lente. */
+.ap-listening {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 26px 0;
+}
+
+.ap-listening-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--mb-orange);
+  animation: ap-listen-ping 1.8s cubic-bezier(0.33, 1, 0.68, 1) infinite;
+}
+
+@keyframes ap-listen-ping {
+  0% {
+    box-shadow: 0 0 0 0 rgb(var(--brand-rgb) / 0.35);
+  }
+  70%,
+  100% {
+    box-shadow: 0 0 0 10px rgb(var(--brand-rgb) / 0);
+  }
+}
+
+.ap-listening-text {
+  font-family: 'Lexend', sans-serif;
+  font-size: 12px;
+  color: rgb(200, 200, 200);
+  text-align: center;
+}
+
+/* Le bas du panneau tombe dans les 110 px du fondu `.main-area::after` (z 40),
+   qui le recouvre d'un voile crème et d'un flou. Même recette que
+   `.transcript-footer` : au-dessus du voile, sous le dock (z 50). */
+.actions-panel-new.ap-live {
+  position: relative;
+  z-index: 45;
+}
+
+/* ══════════════════════════════════════════════
+   SIDE COLUMN — Actions (haut) + Notes (bas)
+══════════════════════════════════════════════ */
+
+/* La colonne de droite : grille deux lignes qui partage la hauteur autrefois
+   entière du panneau Actions — réduites, les notes n'en prennent qu'un quart
+   (une bande d'appoint, les actions gardent la place). Les `fr` s'animent
+   (Chrome/Safari/Firefox récents) : agrandir/réduire les notes glisse au lieu
+   de sauter. Largeur/marge reprises de .actions-panel-new, qui ne se
+   dimensionne plus lui-même (voir plus bas). */
+.side-col {
+  display: grid;
+  grid-template-rows: 3fr 1fr;
+  gap: 12px;
+  /* 340 px sur grand écran, 280 sous 1000 px : à 820 px (iPad en portrait), à
+     côté du rail de la barre latérale, le document garde 420 px au lieu de 360.
+     Pas moins : « Ajouter une action manuellement » ne tient plus sur une ligne
+     sous 272 px et déborde de sa pilule. */
+  width: clamp(280px, 28vw, 340px);
+  flex-shrink: 0;
+  margin-left: 16px;
+  min-height: 0;
+  /* même timing que la sidebar (.sb) et le panneau Actions */
+  transition:
+    width 0.3s cubic-bezier(0.33, 1, 0.68, 1),
+    margin-left 0.3s cubic-bezier(0.33, 1, 0.68, 1),
+    gap 0.3s cubic-bezier(0.33, 1, 0.68, 1),
+    grid-template-rows 0.3s cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+/* Notes agrandies : trois quarts de la colonne, les actions gardent le reste. */
+.side-col.notes-expanded {
+  grid-template-rows: 1fr 3fr;
+}
+
+/* Rail replié (bouton du panneau Actions) : 46px de large, les notes n'ont
+   pas de forme rail — leur ligne fond à 0 et le contenu s'efface. */
+.side-col.side-col-collapsed {
+  width: 46px;
+  margin-left: 12px;
+  gap: 0;
+  grid-template-rows: 1fr 0fr;
+}
+
+.side-col-collapsed .notes-panel {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Écran d'enregistrement : toute la colonne au-dessus du fondu bas (recette
+   .ap-live ci-dessus — le voile délaverait la carte des notes). */
+.side-col-live {
+  position: relative;
+  z-index: 45;
+}
+
+/* Dans la colonne, le panneau Actions est dimensionné par la grille. */
+.side-col .actions-panel-new,
+.side-col .actions-panel-new.ap-collapsed {
+  width: auto;
+  margin-left: 0;
+  min-height: 0;
+}
+
+/* ── Panneau Notes ── */
+.notes-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  transition: opacity 0.2s ease;
+}
+
+/* Même gabarit que .ap-header : réserve à droite pour le bouton absolu. */
+.np-header {
+  position: relative;
+  padding: 4px 52px 0 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.np-header .np-title-icon {
+  color: var(--mb-orange);
+  flex-shrink: 0;
+}
+
+.np-title {
+  font-family: 'Lexend', sans-serif;
+  font-size: 15.5px;
+  font-weight: 400;
+  color: var(--mb-orange);
+}
+
+/* Chevron agrandir/réduire — même géométrie que .ap-collapse-btn. */
+.np-expand-btn {
+  position: absolute;
+  top: -1px;
+  right: 12px;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--mb-orange);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+
+.np-expand-btn:hover {
+  background: var(--mb-orange-10);
+}
+
+.np-expand-btn svg {
+  transition: transform 0.25s cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+.np-expanded .np-expand-btn svg {
+  transform: rotate(180deg);
+}
+
+/* Carte d'écriture : même langage que les cartes d'action (bordure chaude,
+   coins 15px, ombre douce), halo brand au focus. */
+.np-card {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  margin: 8px 16px 16px;
+  border: 1px solid var(--mb-border-default);
+  border-radius: 10px;
+  background: var(--mb-bg-surface);
+  box-shadow: var(--mb-shadow-card);
+  transition: border-color 0.15s;
+}
+
+.np-card:focus-within {
+  border-color: rgb(var(--brand-rgb) / 0.5);
+}
+
+.np-textarea {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  border: none;
+  outline: none;
+  resize: none;
+  background: transparent;
+  padding: 11px 13px;
+  font-family: 'Lexend', sans-serif;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--mb-text-primary);
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--brand-rgb) / 0.15) transparent;
+}
+
+.np-textarea::placeholder {
+  color: rgb(185, 185, 185);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ap-card-flash-new,
+  .ap-card-flash-updated .ap-card-titlebar,
+  .ap-field-updated,
+  .ap-listening-dot,
+  .mobile-actions-fab-flash {
+    animation: none;
+  }
+}
+
+/* ══════════════════════════════════════════════
+   DOCK
+══════════════════════════════════════════════ */
+.dock-wrapper {
+  position: absolute;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  max-width: calc(100vw - 32px);
+}
+
+.dock-recording {
+  bottom: 32px;
+}
+
+/* ══════════════════════════════════════════════
+   OVERRIDES: keep modals working with new theme
+══════════════════════════════════════════════ */
+.disconnected-modal,
+.history-modal {
+  font-family: 'Lexend', sans-serif;
+}
+
+/* Transcript items in new layout */
+.tab-transcript-wrap .transcript-item {
+  display: flex;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid rgb(240, 240, 240);
+}
+
+.tab-transcript-wrap .transcript-time-container {
+  display: flex;
+  flex-direction: column;
+  min-width: 50px;
+}
+
+.tab-transcript-wrap .transcript-time {
+  font-size: 11px;
+  color: rgb(180, 180, 180);
+  font-family: 'Lexend', sans-serif;
+}
+
+.tab-transcript-wrap .transcript-timestamp {
+  font-size: 10px;
+  color: rgb(200, 200, 200);
+  font-family: 'Lexend', sans-serif;
+}
+
+.tab-transcript-wrap .transcript-text {
+  font-family: 'Lexend', sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  color: #222;
+  flex: 1;
+}
+
+.tab-transcript-wrap .transcript-delta-indicator {
+  color: var(--mb-orange);
+  font-size: 12px;
+}
+
+/* Live transcript during recording — same overrides */
+.rec-live-transcript .transcript-item {
+  display: flex;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid rgb(240, 240, 240);
+  background: none;
+  border-left: none;
+  transform: none;
+  transition: none;
+}
+
+.rec-live-transcript .transcript-item:hover {
+  background: none;
+  transform: none;
+}
+
+.rec-live-transcript .transcript-time-container {
+  display: flex;
+  flex-direction: column;
+  min-width: 50px;
+}
+
+.rec-live-transcript .transcript-time {
+  font-size: 11px;
+  color: rgb(180, 180, 180);
+  font-family: 'Lexend', sans-serif;
+}
+
+.rec-live-transcript .transcript-timestamp {
+  font-size: 10px;
+  color: rgb(200, 200, 200);
+  font-family: 'Lexend', sans-serif;
+}
+
+.rec-live-transcript .transcript-text {
+  font-family: 'Lexend', sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #111;
+  flex: 1;
+}
+
+.rec-live-transcript .transcript-delta-indicator {
+  color: var(--mb-orange);
+  font-size: 12px;
+}
+
+/* ── Transcription éditable (double-clic pour éditer une ligne finale) ── */
+.transcript-text.transcript-editable {
+  cursor: text;
+  border-radius: 4px;
+  transition: background 0.12s ease;
+}
+
+.transcript-text.transcript-editable:hover {
+  background: rgb(var(--brand-rgb) / 0.06);
+}
+
+/* Textarea d'édition : se fond dans la ligne (mêmes police/taille que le span) */
+.transcript-text.transcript-edit {
+  margin: 0;
+  padding: 2px 4px;
+  border: 1px solid rgb(var(--brand-rgb) / 0.45);
+  border-radius: 4px;
+  background: #fff;
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  resize: none;
+  overflow: hidden;
+  width: 100%;
+  box-sizing: border-box;
+  outline: none;
+}
+
+.transcript-text.transcript-edit:focus {
+  border-color: var(--mb-orange);
+  box-shadow: 0 0 0 2px rgb(var(--brand-rgb) / 0.15);
+}
+
+/* Transcription venant de l'audio ordinateur (personne distante). Le micro
+   (toi) reste en couleur normale. Plus spécifique que les règles
+   .tab-transcript-wrap/.rec-live-transcript .transcript-text → l'emporte.
+
+   Teinte de TEXTE (--brand-text) et non l'orange de marque : celui-ci plafonne
+   à ~2.4:1 sur blanc, sous le seuil AA — une réunion entière lue dans cette
+   couleur était pénible. La distinction ne repose plus sur la seule couleur :
+   le badge de locuteur (.transcript-speaker) la nomme, la barre latérale la
+   double. */
+.transcript-item.transcript-remote {
+  border-left: 3px solid var(--mb-orange);
+  padding-left: 10px;
+}
+.transcript-item.transcript-remote .transcript-text {
+  color: var(--brand-text);
+}
+.transcript-item.transcript-remote .transcript-edit {
+  color: var(--brand-text);
+}
+
+/* Badge de locuteur : pastille INLINE en tête de réplique, posée au
+   changement de canal audio, jamais répétée ligne à ligne (cf.
+   EditableTranscript.speakerBadge). Dans le fil du texte — une ligne dédiée
+   espaçait verticalement chaque prise de parole. N'apparaît que sur une
+   réunion enregistrée sur les deux flux. */
+.transcript-speaker {
+  display: inline-block;
+  margin-right: 8px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid rgb(0 0 0 / 0.12);
+  background: rgb(0 0 0 / 0.04);
+  color: #4a4a4a;
+  font-family: 'Lexend', sans-serif;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.4;
+  /* Optique : remonte la pastille sur la ligne de base du texte 14px, et le
+     double-clic d'édition ne doit pas surligner l'étiquette avec la phrase. */
+  vertical-align: 1px;
+  user-select: none;
+}
+.transcript-speaker.transcript-speaker-remote {
+  border-color: rgb(var(--brand-rgb) / 0.55);
+  background: rgb(var(--brand-rgb) / 0.1);
+  color: var(--brand-text);
+}
+
+/* Voix de la visio : la pastille est un BOUTON — cliquer nomme le participant
+   (« Visio » → « Marie », cf. SpeakerNamePopover). Le crayon reste visible en
+   léger : c'est l'indice que l'étiquette se corrige, sans bouger au survol. */
+.transcript-speaker-btn {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  font-family: 'Lexend', sans-serif;
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease;
+}
+.transcript-speaker-btn:hover,
+.transcript-speaker-btn:focus-visible,
+.transcript-speaker-btn.transcript-speaker-open {
+  background: rgb(var(--brand-rgb) / 0.2);
+  border-color: rgb(var(--brand-rgb) / 0.85);
+}
+.transcript-speaker-btn:focus-visible {
+  outline: 2px solid rgb(var(--brand-rgb) / 0.5);
+  outline-offset: 1px;
+}
+.transcript-speaker-btn .transcript-speaker-pen {
+  opacity: 0.45;
+  transition: opacity 0.12s ease;
+}
+.transcript-speaker-btn:hover .transcript-speaker-pen,
+.transcript-speaker-btn:focus-visible .transcript-speaker-pen,
+.transcript-speaker-btn.transcript-speaker-open .transcript-speaker-pen {
+  opacity: 1;
+}
+
+/* Ligne de SUITE d'une voix distante : « autre participant à partir d'ici ».
+   Bouton rond posé en absolu au bord droit (la ligne réserve la place, le
+   texte ne bouge jamais), révélé au survol ou au focus de la ligne ; toujours
+   discrètement visible sans souris (tactile). */
+.transcript-item.transcript-remote {
+  position: relative;
+  padding-right: 32px;
+}
+.transcript-speaker-split {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid rgb(var(--brand-rgb) / 0.45);
+  background: var(--mb-bg-app, #fffefc);
+  color: var(--brand-text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity 0.12s ease,
+    background 0.12s ease;
+}
+.transcript-item:hover .transcript-speaker-split,
+.transcript-item:focus-within .transcript-speaker-split,
+.transcript-speaker-split.transcript-speaker-open {
+  opacity: 1;
+}
+.transcript-speaker-split:hover,
+.transcript-speaker-split:focus-visible,
+.transcript-speaker-split.transcript-speaker-open {
+  background: rgb(var(--brand-rgb) / 0.14);
+  border-color: rgb(var(--brand-rgb) / 0.85);
+}
+.transcript-speaker-split:focus-visible {
+  outline: 2px solid rgb(var(--brand-rgb) / 0.5);
+  outline-offset: 1px;
+}
+@media (hover: none) {
+  .transcript-speaker-split {
+    opacity: 0.55;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Éditeur de template WYSIWYG (TemplateScaffoldEditor) — styles GLOBAUX.
+   Le DOM ProseMirror (surface, chips variables, poignée de drag) et le
+   composant éditeur sont rendus hors du scoping Svelte de UserTemplatesPanel →
+   ces règles doivent être globales.
+   ───────────────────────────────────────────────────────────────────────── */
+.ut-ed-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Toolbar de formatage */
+.ut-ed-wrap .ut-format-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  background: color-mix(in srgb, var(--brand-secondary) 5.3%, #fdfdfd);
+  border: 1px solid color-mix(in srgb, var(--brand-secondary) 6.5%, #f0f0f0);
+  border-radius: 8px;
+}
+.ut-ed-wrap .ut-fmt-btn {
+  min-width: 32px;
+  height: 30px;
+  padding: 0 9px;
+  background: #ffffff;
+  border: 1px solid color-mix(in srgb, var(--brand-secondary) 8.7%, #eaeaea);
+  border-radius: 8px;
+  color: color-mix(in srgb, var(--brand-secondary) 17.5%, #121212);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s,
+    transform 0.1s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.ut-ed-wrap .ut-fmt-btn:hover {
+  background: rgb(var(--brand-rgb) / 0.08);
+  border-color: var(--brand);
+  color: var(--brand-strong);
+}
+.ut-ed-wrap .ut-fmt-btn.is-active {
+  background: rgb(var(--brand-rgb) / 0.14);
+  border-color: var(--brand);
+  color: var(--brand-strong);
+}
+.ut-ed-wrap .ut-fmt-btn:active {
+  transform: scale(0.94);
+}
+.ut-ed-wrap .ut-fmt-bold {
+  font-weight: 800;
+}
+.ut-ed-wrap .ut-fmt-italic {
+  font-style: italic;
+  font-family: Georgia, 'Times New Roman', serif;
+}
+.ut-ed-wrap .ut-fmt-underline {
+  text-decoration: underline;
+}
+.ut-ed-wrap .ut-fmt-h {
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+}
+.ut-ed-wrap .ut-fmt-sep {
+  width: 1px;
+  height: 18px;
+  background: color-mix(in srgb, var(--brand-secondary) 8.6%, #e3e3e3);
+  margin: 0 4px;
+}
+
+/* Toolbar d'insertion de variables — deux familles étiquetées : blocs
+   générés par l'IA (résumé principal + complémentaires) / infos réunion. */
+.ut-ed-wrap .ut-var-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 8px;
+  background: color-mix(in srgb, var(--brand-secondary) 5.3%, #fdfdfd);
+  border: 1px solid color-mix(in srgb, var(--brand-secondary) 6.5%, #f0f0f0);
+  border-radius: 8px;
+}
+.ut-ed-wrap .ut-var-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.ut-ed-wrap .ut-var-group-label {
+  flex-basis: 88px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--brand-secondary) 55%, #6a6a6a);
+}
+.ut-ed-wrap .ut-var-chip:disabled {
+  opacity: 0.45;
+  cursor: default;
+  transform: none;
+}
+.ut-ed-wrap .ut-var-chip:disabled:hover {
+  background: rgb(var(--brand-rgb) / 0.1);
+  border-color: rgb(var(--brand-rgb) / 0.45);
+  color: var(--brand-strong);
+}
+.ut-ed-wrap .ut-var-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 11px;
+  background: #ffffff;
+  border: 1px solid color-mix(in srgb, var(--brand-secondary) 8.7%, #eaeaea);
+  border-radius: 999px;
+  color: color-mix(in srgb, var(--brand) 37%, #000000);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s,
+    transform 0.1s;
+}
+.ut-ed-wrap .ut-var-chip:hover {
+  background: rgb(var(--brand-rgb) / 0.08);
+  border-color: var(--brand);
+  color: var(--brand-strong);
+}
+.ut-ed-wrap .ut-var-chip:active {
+  transform: scale(0.96);
+}
+.ut-ed-wrap .ut-var-chip-ai {
+  background: rgb(var(--brand-rgb) / 0.1);
+  border-color: rgb(var(--brand-rgb) / 0.45);
+  color: var(--brand-strong);
+  font-weight: 700;
+}
+.ut-ed-wrap .ut-var-icon {
+  font-size: 13px;
+  line-height: 1;
+}
+
+/* Surface éditable (ProseMirror) — gouttière gauche pour la poignée de drag */
+.ut-ed-surface {
+  position: relative;
+}
+.ut-ed-surface-input {
+  min-height: 180px;
+  padding: 12px 14px 12px 28px;
+  background: #ffffff;
+  border: 1px solid color-mix(in srgb, var(--brand-secondary) 8.7%, #eaeaea);
+  border-radius: 8px;
+  font-family: 'Lexend', sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #222;
+  outline: none;
+}
+.ut-ed-surface-input:focus {
+  border-color: var(--brand);
+}
+.ut-ed-surface-input h1 {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0.4em 0 0.3em;
+}
+.ut-ed-surface-input h2 {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 0.4em 0 0.2em;
+}
+.ut-ed-surface-input p {
+  margin: 0.25em 0;
+}
+.ut-ed-surface-input ul {
+  margin: 0.25em 0;
+  padding-left: 20px;
+}
+.ut-ed-surface-input li {
+  margin: 0.1em 0;
+}
+
+/* Chip variable DANS le document (atomique, déplaçable) */
+.ut-ed-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  margin: 0 1px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--brand-secondary) 13.1%, #f5f5f5);
+  border: 1px solid color-mix(in srgb, var(--brand-secondary) 25.7%, #dadada);
+  color: color-mix(in srgb, var(--brand) 38%, #000000);
+  font-size: 0.92em;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: grab;
+  user-select: none;
+  vertical-align: baseline;
+}
+.ut-ed-chip-ai {
+  background: rgb(var(--brand-rgb) / 0.12);
+  border-color: rgb(var(--brand-rgb) / 0.5);
+  color: var(--brand-strong);
+}
+.ProseMirror-selectednode.ut-ed-chip {
+  outline: 2px solid var(--brand);
+  outline-offset: 1px;
+}
+
+/* Poignée de drag par bloc (B1) — flottante dans la gouttière gauche */
+.ut-ed-drag-handle {
+  position: absolute;
+  left: 2px;
+  width: 18px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  color: color-mix(in srgb, var(--brand-secondary) 15.7%, #797979);
+  font-size: 14px;
+  line-height: 1;
+  border-radius: 6px;
+  cursor: grab;
+  user-select: none;
+  background: transparent;
+  transition:
+    background 0.12s,
+    color 0.12s;
+  z-index: 5;
+}
+.ut-ed-drag-handle:hover {
+  background: rgb(var(--brand-rgb) / 0.1);
+  color: var(--brand-strong);
+}
+.ut-ed-drag-handle:active {
+  cursor: grabbing;
+}
+
+/* ── Delete modal ── */
+.delete-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  animation: backdrop-fade 0.18s ease-out;
+}
+
+@keyframes backdrop-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.delete-modal {
+  background: #fff;
+  border-radius: 10px;
+  padding: 28px 28px 24px;
+  width: 340px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+  animation: modal-scale-in 0.22s cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+@keyframes modal-scale-in {
+  from {
+    transform: scale(0.92) translateY(8px);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+}
+
+.delete-modal-icon {
+  margin-bottom: 2px;
+}
+
+.delete-modal-title {
+  font-family: 'Lexend', sans-serif;
+  font-size: 17px;
+  font-weight: 600;
+  color: #111;
+  margin: 0;
+  text-align: center;
+}
+
+.delete-modal-body {
+  font-family: 'Lexend', sans-serif;
+  font-size: 13px;
+  color: #666;
+  text-align: center;
+  line-height: 1.5;
+  margin: 0 0 6px;
+}
+
+.delete-modal-actions {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+}
+
+.delete-modal-cancel {
+  flex: 1;
+  height: 40px;
+  border-radius: 8px;
+  border: 1px solid rgb(220, 220, 220);
+  background: rgb(248, 248, 248);
+  font-family: 'Lexend', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  color: #444;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.delete-modal-cancel:hover {
+  background: rgb(238, 238, 238);
+}
+
+.delete-modal-confirm {
+  flex: 1;
+  height: 40px;
+  border-radius: 8px;
+  border: none;
+  background: rgb(210, 60, 60);
+  font-family: 'Lexend', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.delete-modal-confirm:hover {
+  opacity: 0.88;
+}
+
+.resume-modal-confirm {
+  background: var(--mb-orange);
+}
+
+/* ── Fond de la barre latérale en tiroir ── */
+.sidebar-backdrop {
+  display: none;
+}
+
+/* Tablette, fenêtre étroite : la barre ouverte passe par-dessus la page
+   (Sidebar.svelte) — un voile léger dit qu'un clic à côté la referme. Le
+   téléphone a le sien, plus sombre (bloc ≤ 768 px ci-dessous). Après la règle
+   de base : à spécificité égale, c'est l'ordre qui décide. */
+@media (min-width: 769px) and (max-width: 1100px) {
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.16);
+    z-index: 8600;
+    animation: backdrop-fade 0.2s ease-out;
+  }
+}
+
+/* ══════════════════════════════════════════════
+   MOBILE RESPONSIVE  ≤ 768px
+══════════════════════════════════════════════ */
+@media (max-width: 768px) {
+  /* Sidebar backdrop */
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    /* Échelle mobile : au-dessus de la barre d'app (8500), sous le drawer. */
+    z-index: 8600;
+    animation: backdrop-fade 0.2s ease-out;
+  }
+
+  /* Welcome screen */
+  .welcome-screen {
+    padding: calc(64px + var(--safe-top)) 20px 120px;
+  }
+  .welcome-title {
+    font-size: clamp(28px, 9vw, 44px) !important;
+  }
+  .welcome-sub {
+    font-size: 14px;
+  }
+
+  /* Recording screen */
+  .rec-topbar {
+    padding: 12px 14px;
+    gap: 10px;
+  }
+  .rec-mic-ring {
+    width: 30px;
+    height: 30px;
+  }
+  .rec-label {
+    font-size: 13px;
+  }
+  .rec-live-transcript {
+    padding: 14px 12px 14px 0;
+  }
+
+  /* Active screen — stack columns: hide actions panel, full-width main */
+  .content-layout {
+    /* 64px = barre d'app mobile (52px) + 12px d'air, décalé de la safe-area */
+    padding: calc(64px + var(--safe-top)) 10px 120px 10px;
+    flex-direction: column;
+    gap: 12px;
+  }
+  /* La colonne Actions+Notes entière : le FAB prend le relais des actions. */
+  .side-col,
+  .actions-panel-new {
+    display: none;
+  }
+  .main-panel {
+    border-radius: 10px;
+  }
+  .tab-resume-wrap,
+  .tab-transcript-wrap {
+    padding: 14px 14px;
+  }
+
+  /* Dock — fit narrow screen */
+  .dock-wrapper {
+    bottom: 18px;
+    width: calc(100vw - 24px);
+    max-width: 100%;
+  }
+  .dock-recording {
+    bottom: 22px;
+  }
+
+  /* Delete modal */
+  .delete-modal {
+    width: calc(100vw - 32px);
+    max-width: 340px;
+  }
+}
+
+/* ══════════════════════════════════════════════
+   END NEW DESIGN — legacy classes below
+══════════════════════════════════════════════ */
+
+/* Header */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 15px 20px;
+  background: white;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  position: relative;
+  max-height: 80px;
+}
+
+.logo {
+  height: 50px;
+  background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 18px;
+}
+
+.logo img {
+  max-height: 80px;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+@keyframes resume-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.control-btn {
+  padding: 10px 20px;
+  background: var(--bg-dark);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.3s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+}
+
+.control-btn:hover {
+  background: var(--primary-color);
+  transform: translateY(-2px);
+  box-shadow: 0 5px 20px rgba(189, 189, 189, 0.4);
+}
+
+.control-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+  transform: none;
+}
+
+.control-btn:disabled:hover {
+  background: var(--bg-dark);
+}
+
+/* Bouton Enregistrer - vert et bien visible */
+#recordBtn {
+  background: #10b981;
+  border-color: #10b981;
+  color: white;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+}
+
+#recordBtn:hover {
+  background: #059669;
+  border-color: #059669;
+  color: white;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+}
+
+#recordBtn.recording {
+  background: var(--error);
+  border-color: var(--error);
+  animation: pulse 2s infinite;
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
+}
+
+#recordBtn.recording:hover {
+  background: #dc2626;
+  border-color: #dc2626;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+}
+
+.section {
+  background: var(--bg-light);
+  margin: 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+#transcriptDiv {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--primary-color) var(--mb-scrollbar-track);
+}
+
+#transcriptDiv::-webkit-scrollbar {
+  width: 10px;
+}
+
+#transcriptDiv::-webkit-scrollbar-track {
+  background: var(--mb-scrollbar-track);
+  border-radius: 5px;
+  margin: 2px;
+}
+
+#transcriptDiv::-webkit-scrollbar-thumb {
+  background-color: var(--primary-color);
+  border-radius: 5px;
+  border: 2px solid var(--mb-scrollbar-track);
+  min-height: 30px;
+}
+
+#transcriptDiv::-webkit-scrollbar-thumb:hover {
+  background-color: var(--secondary-color);
+}
+
+.transcript-item {
+  display: flex;
+  gap: 10px;
+  padding: 7px 10px;
+  margin-bottom: 5px;
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 5px;
+  border-left: 2px solid transparent;
+  animation: slideIn 0.3s ease;
+  transition: all 0.2s ease;
+}
+
+.transcript-item:hover {
+  background: rgba(99, 102, 241, 0.06);
+  border-left-color: var(--primary-color);
+  transform: translateX(2px);
+}
+
+.transcript-time-container {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  flex-shrink: 0;
+  min-width: 50px;
+  gap: 2px;
+}
+
+.transcript-time {
+  color: var(--secondary-color);
+  font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.8;
+  letter-spacing: 0.3px;
+}
+
+.transcript-timestamp {
+  color: var(--text-secondary);
+  font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+  font-size: 9px;
+  font-weight: 400;
+  opacity: 0.5;
+  letter-spacing: 0.2px;
+}
+
+.transcript-text {
+  flex: 1;
+  color: var(--text-primary);
+  line-height: 1.4;
+  font-size: 14px;
+  word-wrap: break-word;
+}
+
+/* ── Relecture par les notes : surlignage furtif des mots corrigés ──────────
+   Posé par flashRefinedWords (utils/transcriptRefine.js) via le marqueur
+   transitoire `refineFlash` : chaque mot corrigé s'allume aux couleurs de la
+   marque puis fond vers le texte normal — on VOIT la correction s'effectuer.
+   Teinte par jetons --brand* uniquement (le branding est configurable). */
+.word-refined {
+  border-radius: 4px;
+}
+
+.word-refined-changed {
+  animation: word-refined-fade 2.2s ease-out both;
+}
+
+@keyframes word-refined-fade {
+  0% {
+    color: var(--brand-text);
+    background: rgb(var(--brand-rgb) / 0.3);
+    box-shadow: 0 0 0 3px rgb(var(--brand-rgb) / 0.3);
+  }
+  45% {
+    color: var(--brand-text);
+    background: rgb(var(--brand-rgb) / 0.18);
+    box-shadow: 0 0 0 3px rgb(var(--brand-rgb) / 0.18);
+  }
+  100% {
+    color: inherit;
+    background: transparent;
+    box-shadow: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .word-refined-changed {
+    animation: none;
+  }
+}
+
+/* Transcriptions partielles (delta) - affichage en temps réel */
+.transcript-delta {
+  opacity: 0.8;
+  font-style: italic;
+  border-left-color: var(--secondary-color);
+}
+
+.transcript-delta-indicator {
+  color: var(--secondary-color);
+  margin-left: 4px;
+  font-weight: bold;
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Modal mobile - masquée sur desktop */
+.mobile-actions-modal-overlay {
+  display: none;
+}
+
+@media (max-width: 1070px) {
+  /* Supprimer le padding du body sur mobile */
+  body {
+    padding: 0;
+  }
+
+  /* Ajuster le header pour mobile */
+  .header {
+    padding: 0px 15px 10px 0;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .logo {
+    height: 100%;
+    padding: 0;
+    margin-left: 0;
+    border-radius: 0;
+  }
+
+  .logo img {
+    height: 100%;
+    max-height: 80px;
+    object-fit: contain;
+  }
+
+  /* Masquer le texte du status */
+  #statusText {
+    display: none;
+  }
+
+  /* Modal pour afficher toutes les actions */
+  .mobile-actions-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    animation: fadeIn 0.3s ease;
+  }
+
+  .mobile-actions-modal-backdrop {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(15, 23, 42, 0.95);
+    backdrop-filter: blur(10px);
+    border: none;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+    z-index: 1;
+    pointer-events: auto;
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  .mobile-actions-modal {
+    background: var(--bg-light);
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    width: 100%;
+    max-width: 500px;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: slideUp 0.3s ease;
+    position: relative;
+    z-index: 2;
+    pointer-events: auto;
+  }
+
+  @keyframes slideUp {
+    from {
+      transform: translateY(30px);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+
+  .mobile-actions-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px;
+    border-bottom: 1px solid var(--border-color);
+    background: rgba(99, 102, 241, 0.05);
+    flex-shrink: 0;
+  }
+
+  .mobile-actions-modal-title {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+  }
+
+  .mobile-actions-modal-close {
+    background: rgba(239, 68, 68, 0.12);
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    border-radius: 50%;
+    color: var(--text-primary);
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+  }
+
+  .mobile-actions-modal-close:hover {
+    background: rgba(239, 68, 68, 0.22);
+    border-color: rgba(239, 68, 68, 0.65);
+    transform: scale(1.1);
+  }
+
+  .mobile-actions-modal-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--primary-color) var(--mb-scrollbar-track);
+  }
+
+  .mobile-actions-modal-content::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .mobile-actions-modal-content::-webkit-scrollbar-track {
+    background: var(--mb-scrollbar-track);
+    border-radius: 4px;
+  }
+
+  .mobile-actions-modal-content::-webkit-scrollbar-thumb {
+    background-color: var(--primary-color);
+    border-radius: 4px;
+  }
+
+  .mobile-actions-modal-content::-webkit-scrollbar-thumb:hover {
+    background-color: var(--secondary-color);
+  }
+
+  .mobile-action-item {
+    background: rgba(15, 23, 42, 0.85);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+    border: 1px solid rgba(99, 102, 241, 0.18);
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.2);
+  }
+
+  .mobile-action-item:last-child {
+    margin-bottom: 0;
+  }
+
+  .mobile-action-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 12px;
+    gap: 12px;
+  }
+
+  .mobile-action-title {
+    font-weight: 600;
+    color: #f8fafc;
+    font-size: 16px;
+    flex: 1;
+    line-height: 1.4;
+  }
+
+  .mobile-action-header-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .mobile-action-badge {
+    background: rgba(16, 185, 129, 0.16);
+    color: var(--accent);
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    flex-shrink: 0;
+  }
+
+  .mobile-action-delete-btn {
+    background: rgba(239, 68, 68, 0.12);
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    border-radius: 50%;
+    color: #f8fafc;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    cursor: pointer;
+    transition:
+      background 0.2s ease,
+      border-color 0.2s ease,
+      transform 0.2s ease;
+    flex-shrink: 0;
+  }
+
+  .mobile-action-delete-btn:hover {
+    background: rgba(239, 68, 68, 0.22);
+    border-color: rgba(239, 68, 68, 0.65);
+    transform: translateY(-1px);
+  }
+
+  .mobile-action-delete-btn:focus-visible {
+    outline: 2px solid rgba(239, 68, 68, 0.8);
+    outline-offset: 2px;
+  }
+
+  .mobile-action-delete-btn:active {
+    transform: translateY(0);
+  }
+
+  .mobile-action-details {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .mobile-action-fields-row {
+    display: flex;
+    flex-direction: row;
+    gap: 12px;
+    width: 100%;
+  }
+
+  .mobile-action-fields-row .mobile-action-field {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .mobile-action-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .mobile-action-field-label {
+    color: rgba(148, 163, 184, 0.9);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .mobile-action-field-value {
+    color: #e2e8f0;
+    background: rgba(30, 41, 59, 0.75);
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 14px;
+  }
+
+  .mobile-action-description {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 4px;
+  }
+  .transcript-item {
+    grid-template-columns: 70px 1fr;
+  }
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--mb-scrollbar-track);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--primary-color);
+  border-radius: 4px;
+}
+
+/* Overlay pour l'import audio */
+.audio-import-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(4px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.audio-import-message {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 24px 32px;
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.audio-import-message span {
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.audio-import-spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid rgba(99, 102, 241, 0.2);
+  border-top-color: var(--secondary-color);
+  border-radius: 50%;
+  animation: resume-spin 1s linear infinite;
+}
+
+/* Animation subtile pour empêcher la mise en veille (solution de secours) */
+body.keep-screen-awake {
+  /* Animation très subtile qui force le navigateur à rester actif */
+  animation: keep-awake-pulse 60s infinite;
+}
+
+@keyframes keep-awake-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.9999; /* Changement imperceptible mais qui force le rendu */
+  }
+}
+
+/* Pour iOS Safari spécifiquement */
+@supports (-webkit-touch-callout: none) {
+  body.keep-screen-awake {
+    /* Utiliser une animation différente pour iOS */
+    animation: keep-awake-ios 30s infinite;
+  }
+}
+
+@keyframes keep-awake-ios {
+  0% {
+    transform: translateZ(0);
+  }
+  100% {
+    transform: translateZ(0.0001px); /* Changement minimal pour forcer le rendu */
+  }
+}
+
+/* ========================================
+   Toast Notifications System
+   ======================================== */
+.toast-container {
+  position: fixed;
+  top: 90px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10001;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: none;
+  max-width: 90vw;
+}
+
+.toast {
+  padding: 12px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(10px);
+  animation: toast-slide-in 0.3s ease-out;
+  pointer-events: auto;
+  max-width: 400px;
+  word-wrap: break-word;
+}
+
+.toast.toast-exit {
+  animation: toast-slide-out 0.3s ease-in forwards;
+}
+
+.toast-info {
+  background: rgba(99, 102, 241, 0.95);
+  border: 1px solid rgba(99, 102, 241, 0.6);
+  color: white;
+}
+
+.toast-warning {
+  background: rgba(245, 158, 11, 0.95);
+  border: 1px solid rgba(245, 158, 11, 0.6);
+  color: #1a1a1a;
+}
+
+.toast-error {
+  background: rgba(239, 68, 68, 0.95);
+  border: 1px solid rgba(239, 68, 68, 0.6);
+  color: white;
+}
+
+.toast-success {
+  background: rgba(16, 185, 129, 0.95);
+  border: 1px solid rgba(16, 185, 129, 0.6);
+  color: white;
+}
+
+.toast-close {
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0 4px;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+  margin-left: auto;
+}
+
+.toast-close:hover {
+  opacity: 1;
+}
+
+@keyframes toast-slide-in {
+  from {
+    transform: translateY(-20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes toast-slide-out {
+  from {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(-20px);
+    opacity: 0;
+  }
+}
+
+/* Carte d'erreur IA dans le panneau résumé (crédit épuisé / service / réseau) */
+.ai-error-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 16px 18px;
+  margin: 0 0 16px;
+  border-radius: 10px;
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  border-left: 4px solid var(--error);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.07);
+  animation: ai-notice-in 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.ai-error-notice-credit {
+  border-left-color: var(--error);
+  background: linear-gradient(180deg, rgba(239, 68, 68, 0.045), rgba(239, 68, 68, 0));
+}
+
+.ai-error-notice-service {
+  border-left-color: var(--warning);
+  background: linear-gradient(180deg, rgba(245, 158, 11, 0.05), rgba(245, 158, 11, 0));
+}
+
+.ai-error-notice-network {
+  border-left-color: var(--warning);
+}
+
+.ai-error-notice-icon {
+  font-size: 20px;
+  line-height: 1.3;
+  flex-shrink: 0;
+}
+
+.ai-error-notice-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.ai-error-notice-title {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  color: #0f172a;
+  margin-bottom: 4px;
+  letter-spacing: -0.01em;
+}
+
+.ai-error-notice-body {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #475569;
+}
+
+.ai-error-notice-close {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+  flex-shrink: 0;
+  transition: color 0.2s;
+}
+
+.ai-error-notice-close:hover {
+  color: #475569;
+}
+
+@keyframes ai-notice-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Mobile toast adjustments */
+@media (max-width: 1070px) {
+  .toast-container {
+    /* safe-top : la barre d'app mobile fait 52px + encoche — sans lui, les
+       toasts recouvrent le logo et le menu sur les iPhone à encoche. */
+    top: calc(80px + var(--safe-top, 0px));
+    left: 10px;
+    right: 10px;
+    transform: none;
+    max-width: none;
+  }
+
+  .toast {
+    font-size: 13px;
+    padding: 10px 14px;
+    max-width: none;
+  }
+}
+
+/* Invite « Poursuivre l'enregistrement ? » (3 h puis toutes les heures) —
+   identité MyBrief (fond chaud, orange), alignée sur la modale de reconnexion */
+.continue-prompt-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1400;
+  padding: 1.5rem;
+}
+
+.continue-prompt-modal {
+  position: relative;
+  width: 100%;
+  max-width: 420px;
+  background: var(--mb-bg-surface);
+  border-radius: var(--mb-radius-panel);
+  border: 1px solid var(--mb-border-card);
+  padding: 2rem;
+  text-align: center;
+  box-shadow:
+    0 4px 40px rgb(var(--brand-rgb) / 0.25),
+    0 12px 40px rgba(0, 0, 0, 0.12);
+  color: var(--mb-text-primary);
+  font-family: 'Lexend', sans-serif;
+}
+
+.continue-prompt-icon {
+  font-size: 2.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.continue-prompt-modal h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--mb-text-primary);
+  margin-bottom: 0.5rem;
+}
+
+.continue-prompt-modal p {
+  margin-bottom: 1rem;
+  color: var(--mb-text-secondary);
+  font-weight: 300;
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+/* Spécificité > .continue-prompt-modal p pour surcharger couleur/graisse */
+.continue-prompt-modal p.continue-prompt-countdown {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--mb-orange);
+  margin-bottom: 1.5rem;
+}
+
+.continue-prompt-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.continue-prompt-confirm {
+  background: var(--mb-orange);
+  border: none;
+  border-radius: var(--mb-radius-pill);
+  color: #fff;
+  font-family: inherit;
+  font-weight: 500;
+  font-size: 0.9rem;
+  padding: 0.7rem 1.75rem;
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.continue-prompt-confirm:hover {
+  background: var(--brand-strong);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 22px rgb(var(--brand-rgb) / 0.35);
+}
+
+.continue-prompt-confirm:active {
+  transform: translateY(1px);
+}
+
+.continue-prompt-stop {
+  background: var(--mb-orange-10);
+  border: 1px solid var(--mb-orange-20);
+  border-radius: var(--mb-radius-pill);
+  color: var(--mb-orange);
+  font-family: inherit;
+  font-weight: 400;
+  font-size: 0.9rem;
+  padding: 0.7rem 1.5rem;
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.continue-prompt-stop:hover {
+  background: var(--mb-orange-20);
+}
+
+.continue-prompt-close {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  background: transparent;
+  border: none;
+  color: var(--mb-text-secondary);
+  font-size: 1.2rem;
+  cursor: pointer;
+}
+
+.continue-prompt-close:hover {
+  color: var(--mb-text-primary);
+}
+
+@media (max-width: 640px) {
+  .continue-prompt-modal {
+    padding: 1.5rem;
+  }
+}
+
+/* Modal de reconnexion — identité MyBrief (fond chaud, orange) */
+.disconnected-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1400;
+  padding: 1.5rem;
+}
+
+.disconnected-modal {
+  width: 100%;
+  max-width: 420px;
+  background: var(--mb-bg-surface);
+  border-radius: var(--mb-radius-panel);
+  border: 1px solid var(--mb-border-card);
+  padding: 2rem;
+  text-align: center;
+  box-shadow:
+    0 4px 40px rgb(var(--brand-rgb) / 0.25),
+    0 12px 40px rgba(0, 0, 0, 0.12);
+  color: var(--mb-text-primary);
+  font-family: 'Lexend', sans-serif;
+}
+
+.disconnected-modal-icon {
+  font-size: 2.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.disconnected-modal h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--mb-text-primary);
+  margin-bottom: 0.5rem;
+}
+
+.disconnected-modal p {
+  margin-bottom: 1.5rem;
+  color: var(--mb-text-secondary);
+  font-weight: 300;
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.disconnected-modal-confirm {
+  background: var(--mb-orange);
+  border: none;
+  border-radius: var(--mb-radius-pill);
+  color: #fff;
+  font-family: inherit;
+  font-weight: 500;
+  font-size: 0.9rem;
+  padding: 0.7rem 1.75rem;
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.disconnected-modal-confirm:hover {
+  background: var(--brand-strong);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 22px rgb(var(--brand-rgb) / 0.35);
+}
+
+.disconnected-modal-confirm:active {
+  transform: translateY(1px);
+}
+
+.disconnected-modal-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.disconnected-modal-dismiss {
+  background: var(--mb-orange-10);
+  border: 1px solid var(--mb-orange-20);
+  border-radius: var(--mb-radius-pill);
+  color: var(--mb-orange);
+  font-family: inherit;
+  font-weight: 400;
+  font-size: 0.9rem;
+  padding: 0.7rem 1.5rem;
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.disconnected-modal-dismiss:hover {
+  background: var(--mb-orange-20);
+}
+
+@media (max-width: 640px) {
+  .disconnected-modal {
+    padding: 1.5rem;
+  }
+}
+
+.history-modal-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 1500;
+}
+
+.history-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(10px);
+}
+
+.history-modal {
+  position: relative;
+  z-index: 1;
+  width: min(620px, 100%);
+  max-height: 80vh;
+  background: var(--bg-light);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  box-shadow: 0 20px 60px rgba(15, 23, 42, 0.35);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.history-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.history-modal h2 {
+  margin: 0;
+  font-size: 18px;
+  color: var(--text-primary);
+}
+
+.history-modal-close {
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  border-radius: 50%;
+  color: var(--text-primary);
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.history-modal-close:hover {
+  background: rgba(239, 68, 68, 0.22);
+  border-color: rgba(239, 68, 68, 0.65);
+  transform: scale(1.05);
+}
+
+.history-modal-content {
+  padding: 16px 20px 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.history-loading,
+.history-empty {
+  text-align: center;
+  color: #475569;
+  padding: 16px;
+  background: rgba(148, 163, 184, 0.08);
+  border-radius: 8px;
+}
+
+.history-error {
+  color: var(--error);
+  font-weight: 600;
+}
+
+.history-retry {
+  align-self: flex-start;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--primary-color);
+  background: rgba(99, 102, 241, 0.12);
+  color: var(--primary-color);
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.history-retry:hover {
+  background: rgba(99, 102, 241, 0.18);
+  box-shadow: 0 10px 20px rgba(99, 102, 241, 0.15);
+}
+
+.history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.history-list li {
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  overflow: hidden;
+}
+
+.history-list li.selected {
+  border-color: var(--primary-color);
+  background: rgba(120, 121, 177, 0.05);
+  box-shadow: 0 12px 30px rgba(99, 102, 241, 0.12);
+}
+
+.history-list button {
+  width: 100%;
+  padding: 12px 14px;
+  text-align: left;
+  background: transparent;
+  border: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  cursor: pointer;
+  color: var(--text-primary);
+}
+
+.history-list button:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
+.history-item-title {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.history-item-meta {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.history-selection {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: rgba(15, 23, 42, 0.03);
+  border: 1px dashed var(--border-color);
+  border-radius: 8px;
+}
+
+.history-selection-label {
+  font-weight: 600;
+  color: #475569;
+}
+
+.history-selection-value {
+  color: var(--text-primary);
+}
+
+/* ══════════════════════════════════════════════
+   WELCOME / HELP MODAL — light theme, Lexend
+══════════════════════════════════════════════ */
+.welcome-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  padding: 24px;
+  animation: fadeIn 0.25s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.welcome-modal {
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  border-radius: 12px;
+  max-width: 580px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 30px 80px rgba(15, 23, 42, 0.18);
+  animation: slideUp 0.28s cubic-bezier(0.33, 1, 0.68, 1);
+  position: relative;
+  font-family:
+    'Lexend',
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif;
+  color: #0f172a;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.welcome-modal-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 999px;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #475569;
+  font-size: 16px;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    transform 0.15s;
+  z-index: 10;
+}
+.welcome-modal-close:hover {
+  background: #e5e7eb;
+  color: #0f172a;
+}
+.welcome-modal-close:active {
+  transform: scale(0.95);
+}
+
+.welcome-modal-header {
+  text-align: center;
+  padding: 32px 32px 20px;
+  border-bottom: 1px solid #f1f5f9;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--mb-bg-warm) 65%, transparent) 0%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  border-radius: 12px 12px 0 0;
+}
+
+.welcome-modal-logo {
+  width: 68px;
+  height: 68px;
+  object-fit: contain;
+  margin-bottom: 14px;
+}
+
+.welcome-modal-title {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--purple);
+  margin: 0 0 10px 0;
+  letter-spacing: -0.5px;
+}
+
+.welcome-modal-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  background: linear-gradient(135deg, var(--purple), var(--purple-light));
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+.welcome-modal-content {
+  padding: 24px 32px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* ── Footer ── */
+.welcome-modal-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  align-items: center;
+  padding-top: 4px;
+}
+
+.welcome-modal-creator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: #64748b;
+}
+
+.welcome-modal-creator strong {
+  color: var(--purple);
+  font-weight: 600;
+}
+
+.welcome-modal-cta {
+  width: 100%;
+  padding: 13px 24px;
+  background: linear-gradient(135deg, var(--purple), var(--purple-light));
+  border: none;
+  border-radius: 8px;
+  color: #ffffff;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    transform 0.15s,
+    box-shadow 0.15s;
+  box-shadow: 0 6px 18px rgb(var(--brand-rgb) / 0.28);
+}
+
+.welcome-modal-cta:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 22px rgb(var(--brand-rgb) / 0.35);
+}
+
+.welcome-modal-cta:active {
+  transform: translateY(0);
+}
+
+/* Mobile */
+@media (max-width: 768px) {
+  .welcome-modal-backdrop {
+    padding: 12px;
+  }
+  .welcome-modal {
+    max-width: 100%;
+    border-radius: 12px;
+    max-height: calc(100dvh - 24px);
+  }
+  .welcome-modal-header {
+    padding: 26px 20px 18px;
+  }
+  .welcome-modal-logo {
+    width: 56px;
+    height: 56px;
+  }
+  .welcome-modal-title {
+    font-size: 22px;
+  }
+  .welcome-modal-content {
+    padding: 18px 20px 22px;
+    gap: 18px;
+  }
+}
+
+.browser-warning-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.35);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  padding: 20px;
+  animation: browser-warning-fade 0.18s ease-out;
+}
+
+.browser-warning-modal {
+  position: relative;
+  width: 100%;
+  max-width: 480px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 28px 26px 22px;
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.18);
+  text-align: center;
+  color: #334155;
+  animation: browser-warning-pop 0.22s ease-out;
+}
+
+.browser-warning-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  background: transparent;
+  border: none;
+  font-size: 24px;
+  line-height: 1;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: 6px;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+
+.browser-warning-close:hover {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.browser-warning-icons {
+  display: flex;
+  justify-content: center;
+  font-size: 34px;
+  line-height: 1;
+  margin-bottom: 12px;
+}
+
+.browser-warning-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1f2937;
+  margin: 0 0 12px;
+  letter-spacing: 0.1px;
+}
+
+.browser-warning-lead {
+  font-size: 14.5px;
+  font-weight: 500;
+  color: #374151;
+  margin: 0 0 12px;
+  line-height: 1.55;
+}
+
+.browser-warning-detail {
+  font-size: 13.5px;
+  font-weight: 400;
+  color: #4b5563;
+  margin: 0 0 14px;
+  line-height: 1.55;
+}
+
+.browser-warning-note {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: #64748b;
+  background: #f8fafc;
+  border: 1px solid #eef2f7;
+  padding: 8px 12px;
+  border-radius: 8px;
+  margin: 0 0 20px;
+  line-height: 1.5;
+}
+
+.browser-warning-modal code {
+  background: #f1f5f9;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  color: #475569;
+}
+
+.browser-warning-ack {
+  display: inline-block;
+  background: #1f2937;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 9px 22px;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    transform 0.1s;
+}
+
+.browser-warning-ack:hover {
+  background: #111827;
+}
+
+.browser-warning-ack:active {
+  transform: translateY(1px);
+}
+
+@keyframes browser-warning-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes browser-warning-pop {
+  from {
+    transform: scale(0.94);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@media (max-width: 640px) {
+  .browser-warning-modal {
+    padding: 22px 18px 18px;
+  }
+  .browser-warning-icons {
+    font-size: 28px;
+  }
+  .browser-warning-title {
+    font-size: 17px;
+  }
+  .browser-warning-lead {
+    font-size: 13.5px;
+  }
+  .browser-warning-detail {
+    font-size: 13px;
+  }
+}
+
+/* ════════════════════════════════════════════════
+   Mobile responsive polish — phases 2 → 7
+   Safe-area, tap targets, dock, sidebar, modals,
+   landscape. Layers on top of existing rules.
+════════════════════════════════════════════════ */
+
+/* === Touch-only hover guard === */
+@media (hover: none) {
+  .composer button:hover {
+    transform: none;
+    box-shadow: none;
+    background: inherit;
+  }
+}
+
+/* === Phase 2: Header safe-area + tap 44px (≤768px) === */
+@media (max-width: 768px) {
+  /* Empêcher le zoom iOS sur focus. !important : les styles scopés Svelte
+     (.classe.svelte-hash) sont plus spécifiques et redescendaient tous les
+     champs sous 16px, ce qui redéclenchait le zoom. */
+  input,
+  select,
+  textarea,
+  [contenteditable='true'] {
+    font-size: 16px !important;
+  }
+}
+
+/* === Phase 3: Dock safe-bottom + landscape === */
+@media (max-width: 768px) {
+  /* Dock wrapper: position:fixed on mobile so it stays anchored to the
+       visible viewport even when iOS Safari bottom address bar slides in
+       and out. Add a generous bottom offset on top of the safe-area inset
+       so the Start button never gets clipped by Safari chrome on devices
+       without a software home indicator (env() returns 0 there). */
+  .dock-wrapper {
+    position: fixed;
+    bottom: calc(24px + var(--safe-bottom));
+    left: 50%;
+    padding-left: var(--safe-left);
+    padding-right: var(--safe-right);
+    width: calc(100vw - 24px - var(--safe-left) - var(--safe-right));
+    max-width: calc(100% - var(--safe-left) - var(--safe-right));
+  }
+  .dock-recording {
+    bottom: calc(28px + var(--safe-bottom));
+  }
+  /* Padding bottom du contenu = laisser place au dock + safe-bottom */
+  .content-layout {
+    padding-bottom: calc(140px + var(--safe-bottom));
+  }
+  .welcome-screen {
+    padding-bottom: calc(140px + var(--safe-bottom));
+  }
+  /* Tab content (résumé / transcription) doit aussi laisser de la place
+       au dock pour qu'aucun élément n'aille se cacher dessous au scroll. */
+  .tab-resume-wrap,
+  .tab-transcript-wrap {
+    padding-bottom: calc(140px + var(--safe-bottom));
+  }
+  /* Pas de dock (réunion rangée, résumé généré, choix du template) : la place
+     qu'on lui gardait revient au contenu, et les boutons flottants descendent
+     sous le panneau au lieu de flotter sur son bas. Sans :has(), rien ne
+     change. */
+  .main-area:not(:has(.dock-wrapper)) .content-layout {
+    padding-bottom: calc(76px + var(--safe-bottom));
+  }
+  .main-area:not(:has(.dock-wrapper)) .mobile-fab-row {
+    bottom: calc(20px + var(--safe-bottom));
+  }
+}
+
+/* === Phase 3.bis: Petits téléphones (≤480px) — bouton Start nécessite
+   plus de marge sous lui car les address-bars Safari/Chrome sont plus
+   intrusives sur les petits écrans. === */
+@media (max-width: 480px) {
+  .dock-wrapper {
+    bottom: calc(32px + var(--safe-bottom));
+  }
+  .dock-recording {
+    bottom: calc(36px + var(--safe-bottom));
+  }
+  .tab-resume-wrap,
+  .tab-transcript-wrap,
+  .content-layout,
+  .welcome-screen {
+    padding-bottom: calc(150px + var(--safe-bottom));
+  }
+}
+
+/* === Phase 4: Sidebar — safe-area + tap === */
+@media (max-width: 768px) {
+  /* (safe-area du tiroir géré dans Sidebar.svelte — l'élément est .sb) */
+  .sidebar-backdrop {
+    z-index: 8600;
+  }
+}
+
+/* === Phase 5: Modals polish (≤768px — couvre aussi la bande 481-768px
+   qui restait sans plancher 44px sur les boutons de fermeture) === */
+@media (max-width: 768px) {
+  /* WelcomeModal, recording-warning, disconnected-modal, history-modal, admin-panel-modal */
+  .welcome-modal,
+  .disconnected-modal,
+  .history-modal,
+  .browser-warning-modal,
+  .continue-prompt-modal,
+  .delete-modal {
+    max-height: calc(100dvh - 24px - var(--safe-top) - var(--safe-bottom));
+    margin: max(12px, var(--safe-top)) 12px max(12px, var(--safe-bottom));
+    width: calc(100% - 24px);
+    border-radius: 10px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .welcome-modal-close,
+  .history-modal-close,
+  .mobile-actions-modal-close,
+  .browser-warning-close {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .disconnected-modal-confirm,
+  .delete-modal-confirm,
+  .delete-modal-cancel,
+  .continue-prompt-confirm,
+  .continue-prompt-stop {
+    width: 100%;
+    min-height: 48px;
+  }
+  .continue-prompt-actions {
+    flex-direction: column;
+  }
+}
+
+/* === Phase 6: FABs mobile (notes + actions) === */
+.mobile-fab-row {
+  display: none;
+}
+@media (max-width: 768px) {
+  /* La rangée porte la position : les deux boutons restent alignés quelle
+     que soit la largeur du FAB actions (le compteur s'élargit). */
+  .mobile-fab-row {
+    position: fixed;
+    right: calc(14px + var(--safe-right));
+    bottom: calc(110px + var(--safe-bottom));
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  /* Deux pastilles NOMMÉES — hors réunion seulement (réunion arrêtée ou
+     archive ouverte) : pendant la réunion, la barre du bas (MobileMeetingBar)
+     porte « Notes » et « Actions ». Un téléphone n'a pas d'infobulle : les
+     anciennes icônes seules (📝, ✅) ne disaient pas ce qu'elles ouvraient. */
+  .mobile-actions-fab {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 14px 0 12px;
+    min-height: 44px;
+    border: none;
+    border-radius: 999px;
+    background: linear-gradient(135deg, var(--purple), var(--purple-light));
+    color: #fff;
+    font-family: 'Lexend', sans-serif;
+    font-weight: 600;
+    font-size: 14px;
+    box-shadow: 0 8px 20px rgb(var(--brand-rgb) / 0.32);
+    cursor: pointer;
+    transition:
+      transform 0.15s ease,
+      box-shadow 0.15s ease;
+  }
+  .mobile-actions-fab:active {
+    transform: scale(0.96);
+  }
+  .mobile-fab-label {
+    font-family: 'Lexend', sans-serif;
+    font-weight: 600;
+    font-size: 14px;
+    line-height: 1;
+    white-space: nowrap;
+  }
+  /* Pastille notes — blanche à côté de la pastille actions ; le point orange
+     signale qu'un brouillon de notes existe. */
+  .mobile-notes-fab {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 44px;
+    padding: 0 14px 0 12px;
+    border: 1px solid rgb(var(--brand-rgb) / 0.35);
+    border-radius: 999px;
+    background: #fff;
+    color: var(--purple);
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.16);
+    cursor: pointer;
+    transition: transform 0.15s ease;
+  }
+  .mobile-notes-fab:active {
+    transform: scale(0.96);
+  }
+  .mobile-notes-fab-dot {
+    position: absolute;
+    top: 2px;
+    right: 6px;
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+    background: var(--purple);
+    border: 2px solid #fff;
+  }
+  /* Le panneau d'actions est masqué sur mobile : ce halo est le seul signal
+     qu'une action vient d'être détectée ou affinée. Deux battements. */
+  .mobile-actions-fab-flash {
+    animation: fab-ping 0.9s cubic-bezier(0.4, 0, 0.6, 1) 2;
+  }
+  @keyframes fab-ping {
+    0%,
+    100% {
+      box-shadow: 0 8px 20px rgb(var(--brand-rgb) / 0.32);
+    }
+    50% {
+      box-shadow:
+        0 8px 20px rgb(var(--brand-rgb) / 0.32),
+        0 0 0 8px rgb(var(--brand-rgb) / 0.18);
+    }
+  }
+  .mobile-actions-fab-count {
+    background: rgba(255, 255, 255, 0.22);
+    border-radius: 999px;
+    padding: 1px 8px;
+    min-width: 22px;
+    text-align: center;
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  /* Inputs édition inline modal actions */
+  .mobile-action-input {
+    width: 100%;
+    border: 1px solid #e5e7eb;
+    background: #fff;
+    color: #0f172a;
+    font-family: inherit;
+    font-size: 16px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    min-height: 44px;
+    outline: none;
+    transition: border-color 0.2s ease;
+  }
+  .mobile-action-input:focus {
+    border-color: var(--purple-light);
+    box-shadow: 0 0 0 3px rgb(var(--brand-secondary-rgb) / 0.15);
+  }
+  input.mobile-action-title {
+    font-weight: 600;
+    font-size: 16px;
+    flex: 1;
+    background: transparent;
+    border: 1px solid transparent;
+    padding: 8px 10px;
+  }
+  input.mobile-action-title:focus {
+    background: #fff;
+    border-color: var(--purple-light);
+  }
+  .mobile-action-textarea {
+    min-height: 88px;
+    resize: vertical;
+    line-height: 1.5;
+  }
+  /* Modale notes mobile — relais plein écran de .notes-panel, masqué avec
+     toute la colonne .side-col sur mobile. Le textarea prend la hauteur. */
+  .mobile-notes-modal-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .mobile-notes-modal-content {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .mobile-notes-modal-hint {
+    margin: 0;
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: #64748b;
+  }
+  .mobile-notes-modal-textarea {
+    flex: 1;
+    min-height: 200px;
+    resize: none;
+    line-height: 1.5;
+  }
+  .mobile-add-action-btn {
+    width: 100%;
+    padding: 12px 18px;
+    margin-bottom: 14px;
+    background: linear-gradient(135deg, var(--purple), var(--purple-light));
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    min-height: 48px;
+    transition: transform 0.15s ease;
+  }
+  .mobile-add-action-btn:active {
+    transform: scale(0.98);
+  }
+  .mobile-actions-modal-content {
+    padding: 16px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: calc(24px + var(--safe-bottom));
+  }
+  .mobile-action-item {
+    background: #f9f9fb;
+    border: 1px solid #ececec;
+    border-radius: 10px;
+    padding: 14px;
+    margin-bottom: 12px;
+  }
+  .mobile-action-header {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    margin-bottom: 12px;
+  }
+  .mobile-action-header-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .mobile-action-delete-btn {
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(239, 68, 68, 0.1);
+    color: #b91c1c;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+  .mobile-action-details {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .mobile-action-fields-row {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .mobile-action-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .mobile-action-field-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #64748b;
+  }
+  .mobile-action-description {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .mobile-action-badge {
+    background: rgba(16, 185, 129, 0.16);
+    color: #047857;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 700;
+  }
+
+  /* Modal actions plein écran sur mobile.
+     Les propriétés padding/max-width/border/animation sont restatées :
+     l'ancienne définition (bloc ≤1070px) fuit sinon dans cette plage. */
+  .mobile-actions-modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    display: flex;
+    align-items: stretch;
+    justify-content: stretch;
+    padding: 0;
+  }
+  .mobile-actions-modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.55);
+    backdrop-filter: blur(4px);
+    border: none;
+    padding: 0;
+    cursor: pointer;
+  }
+  .mobile-actions-modal {
+    position: relative;
+    z-index: 1;
+    background: #fff;
+    width: 100%;
+    max-width: none;
+    height: 100dvh;
+    max-height: 100dvh;
+    border: none;
+    border-radius: 0;
+    display: flex;
+    flex-direction: column;
+    animation: mobile-actions-modal-in 0.2s ease;
+  }
+  .mobile-actions-modal-header {
+    background: none;
+  }
+  @keyframes mobile-actions-modal-in {
+    from {
+      transform: translateY(20px);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+  .mobile-actions-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px;
+    padding-top: calc(16px + var(--safe-top));
+    border-bottom: 1px solid #ececec;
+    flex-shrink: 0;
+  }
+  .mobile-actions-modal-title {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 700;
+    color: #0f172a;
+  }
+  .mobile-actions-modal-close {
+    background: #f1f5f9;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    color: #334155;
+    cursor: pointer;
+  }
+}
+
+/* === Phase 6.bis: Cibles tactiles ≥44px ===
+   S'applique à tout écran tactile. min-width/min-height priment sur les
+   width/height des styles scopés Svelte sans guerre de spécificité. */
+@media (pointer: coarse) {
+  /* Boutons icône */
+  .shell-close,
+  .sb-archive-btn,
+  .sb-user-settings,
+  .au-btn,
+  .tgfi-icon-btn,
+  .te-help-btn,
+  .mobile-actions-modal-close,
+  .mobile-action-delete-btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  /* Petits contrôles insérés dans un champ ou une ligne dense */
+  .pf-toggle,
+  .dl-remove,
+  .rl-remove,
+  .tgf-swatch,
+  .tgf-shape-btn,
+  .ut-fmt-btn,
+  .am-seg-btn {
+    min-width: 36px;
+    min-height: 36px;
+  }
+  /* Lignes de menus, onglets et pills */
+  .sb-item,
+  .am-item,
+  .amo-open,
+  .tgp-btn,
+  .tgf-btn,
+  .tgfi-btn,
+  .tp-item {
+    min-height: 44px;
+  }
+  .ts-btn,
+  .sb-week-btn,
+  .tgc-link,
+  .tf-var,
+  .fp-btn,
+  .fp-item,
+  .fp-more {
+    min-height: 36px;
+  }
+}
+
+/* === Phase 7: Landscape phone (≤500px height) === */
+@media (orientation: landscape) and (max-height: 500px) {
+  .welcome-modal,
+  .disconnected-modal,
+  .history-modal,
+  .browser-warning-modal,
+  .delete-modal {
+    max-height: 100dvh;
+  }
+  .dock-wrapper {
+    bottom: calc(10px + var(--safe-bottom));
+  }
+  .welcome-screen {
+    padding: 30px 20px 100px;
+  }
+}
+
+/* === Phase 8: Portrait uniquement sur mobile ===
+   Le manifest PWA verrouille en portrait (app installée) et App.svelte tente
+   screen.orientation.lock(). En navigateur (iOS Safari, Chrome en onglet) le
+   lock est impossible : cet overlay masque l'app en paysage sur téléphone et
+   invite à repivoter. Ciblage : écran tactile + paysage + faible hauteur,
+   pour ne jamais l'afficher sur desktop ni sur tablette large. */
+.rotate-overlay {
+  display: none;
+}
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) {
+  .rotate-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483200; /* au-dessus de tout, y compris .app-version-badge */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 24px calc(24px + var(--safe-right)) calc(24px + var(--safe-bottom))
+      calc(24px + var(--safe-left));
+    background: var(--mb-bg-app, #fffefc);
+    text-align: center;
+    font-family: 'Lexend', sans-serif;
+  }
+  .rotate-overlay-icon {
+    color: var(--mb-orange);
+    animation: rotate-overlay-hint 1.6s ease-in-out infinite alternate;
+  }
+  @keyframes rotate-overlay-hint {
+    from {
+      transform: rotate(-90deg);
+    }
+    60%,
+    to {
+      transform: rotate(0deg);
+    }
+  }
+  .rotate-overlay-title {
+    margin: 6px 0 0;
+    font-size: 18px;
+    font-weight: 700;
+    color: #0f172a;
+  }
+  .rotate-overlay-message {
+    margin: 0;
+    font-size: 14px;
+    color: #64748b;
+  }
+}

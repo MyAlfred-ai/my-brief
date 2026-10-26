@@ -1,0 +1,318 @@
+/**
+ * Design tokens — la palette oklch qui était répétée en littéral dans chaque
+ * panneau (AdminPanel/SettingsPanel/UserTemplatesPanel portaient chacun leur
+ * copie des mêmes valeurs : changer la teinte de marque = find-replace sur
+ * 6 fichiers). Importé AVANT style.css par App.svelte.
+ *
+ * Nommage par rôle, pas par valeur : --brand (orange myBrief), --ink (textes),
+ * --surface (fonds), --line (bordures), --danger/--success (feedback).
+ */
+:root {
+  /* Marque.
+     --brand-rgb porte les canaux R G B de la teinte (≈ #f38400, l'équivalent
+     sRGB de l'oklch historique) : les composants écrivent leurs alphas en
+     `rgb(var(--brand-rgb) / X)`, si bien qu'une couleur primaire personnalisée
+     (administration → Configuration, cf. src/stores/branding.js) se propage en
+     surchargeant ces variables sur <html> — les feuilles gardent l'orange par
+     défaut. */
+  --brand-rgb: 243 132 0;
+  --brand: oklch(71% 0.176 59);
+  --brand-strong: oklch(63% 0.19 45);
+  --brand-text: oklch(55% 0.19 50);
+  --brand-text-strong: oklch(50% 0.18 50);
+  --brand-soft-08: oklch(71% 0.176 59 / 0.08);
+  --brand-soft-12: oklch(71% 0.176 59 / 0.12);
+  --brand-soft-15: oklch(71% 0.176 59 / 0.15);
+  --brand-soft-18: oklch(71% 0.176 59 / 0.18);
+
+  /* Couleur SECONDAIRE — l'orange clair. Ce n'est plus un simple accent : elle
+     porte TOUTES les surfaces claires de l'interface (fonds de cartes, bandeaux
+     d'onglets, badges), leurs bordures, et la teinte des neutres (lignes,
+     encres). Réglable en administration → Configuration.
+
+     Tout dérive d'UNE variable : la teinte par défaut est un hex sRGB (et non
+     un oklch hors gamut sRGB), donc les canaux suffisent à tout reconstruire.
+     Surcharger --brand-secondary-rgb sur <html> propage la couleur choisie
+     partout, y compris dans --mb-amber et les fonds warm (style.css).
+     Corollaire : ne plus jamais écrire cette teinte en littéral. */
+  --brand-secondary-rgb: 255 175 0;
+  --brand-secondary: rgb(var(--brand-secondary-rgb));
+
+  /* Voiles de la secondaire — les fonds de cartes et de sections « orange
+     clair ». Ils étaient tirés de la PRIMAIRE (--brand-soft-*) : à teintes par
+     défaut le rendu est le même (les deux oranges se confondent une fois
+     dilués), mais une installation qui choisit deux couleurs distinctes veut
+     ses cartes dans la secondaire — c'est le rôle qu'on lui donne. `-18` sert
+     de bordure aux fonds `-08/-12/-15` qu'elle accompagne. */
+  --brand-secondary-soft-08: rgb(var(--brand-secondary-rgb) / 0.08);
+  --brand-secondary-soft-12: rgb(var(--brand-secondary-rgb) / 0.12);
+  --brand-secondary-soft-15: rgb(var(--brand-secondary-rgb) / 0.15);
+  --brand-secondary-soft-18: rgb(var(--brand-secondary-rgb) / 0.18);
+
+  /* Encres (textes) et surfaces/bordures — des neutres TEINTÉS par la
+     secondaire, pas des gris purs : c'est ce qui donnait à l'interface son
+     « light chaud » quand la marque était orange. Les valeurs étaient écrites
+     en oklch de teinte 65 (donc orange à jamais) ; elles sont maintenant
+     obtenues en mélangeant la secondaire à un gris neutre, dans des
+     proportions choisies pour retomber à quelques unités près sur les oklch
+     d'origine tant que la secondaire vaut l'orange clair par défaut.
+
+     Le gris de base borne la clarté : une secondaire très claire délave la
+     teinte mais laisse les lignes visibles, là où un simple alpha sur blanc
+     les ferait disparaître. */
+  --ink: color-mix(in srgb, var(--brand-secondary) 18%, #050505);
+  --ink-soft: color-mix(in srgb, var(--brand-secondary) 15%, #3a3a3a);
+  --ink-muted: color-mix(in srgb, var(--brand-secondary) 16%, #6a6a6a);
+  --ink-faint: color-mix(in srgb, var(--brand-secondary) 12%, #7d7d7d);
+
+  /* Surfaces & bordures */
+  --surface: #ffffff;
+  --surface-tint: color-mix(in srgb, var(--brand-secondary) 3.5%, #fcfcfc);
+  --line: color-mix(in srgb, var(--brand-secondary) 7%, #ebebeb);
+  --line-strong: color-mix(in srgb, var(--brand-secondary) 11%, #e1e1e1);
+  --line-faint: color-mix(in srgb, var(--brand-secondary) 13%, #d7d7d7);
+
+  /* Feedback */
+  --danger-text: oklch(40% 0.2 25);
+  --danger-strong: oklch(50% 0.2 25);
+  --danger-bg: oklch(96% 0.04 25);
+  --danger-bg-hover: oklch(92% 0.06 25);
+  --danger-line: oklch(85% 0.1 25);
+  --success-text: oklch(35% 0.15 155);
+  --success-bg: oklch(96% 0.06 155);
+  --success-line: oklch(80% 0.12 155);
+  /* Avertissement — ambre SÉMANTIQUE, volontairement hors marque : un
+     avertissement doit rester un avertissement même si l'installation choisit
+     une marque bleue. Les six nuances d'ambre qui traînaient en littéral dans
+     les panneaux (`.at-warn`, `.ai-note-warn`, `.bt-warn`, `.csb-warn`…) se
+     ramènent à ces trois jetons. */
+  --warn-text: oklch(40% 0.12 65);
+  --warn-bg: oklch(96% 0.05 85);
+  --warn-line: oklch(86% 0.085 85);
+  /* Palette des figures (statistiques d'administration, « Mes statistiques »)
+     — dérivée des jetons de marque, validée avant écriture : daltonisme (protanopie/deutéranopie, ΔE OKLab), bande de clarté, plancher de
+     chroma et contraste sur fond blanc. Les deux séries passent tous les seuils ;
+     la rampe ordonnée passe les contrôles ordinaux (clarté monotone, écart ≥ 0,06,
+     extrémité claire ≥ 2:1). Ne pas y ajouter de teinte « pour faire joli » sans
+     repasser les contrôles.
+
+     L'application n'a pas de thème sombre : une seule déclinaison, volontairement. */
+  --viz-series-1: var(--brand-strong); /* réunions — var(--brand-strong) */
+  --viz-series-2: var(--tag-teal); /* temps enregistré — oklch(60% 0.11 195) */
+  --viz-ramp-1: color-mix(in srgb, var(--brand) 60.7%, #d4d4d4);
+  --viz-ramp-2: color-mix(in srgb, var(--brand) 79.7%, #9a9a9a);
+  --viz-ramp-3: var(--brand-strong);
+  --viz-ramp-4: var(--brand-text);
+  --viz-ramp-5: var(--brand-text-strong);
+  --viz-grid: var(--line);
+  --viz-axis: var(--line-strong);
+  --viz-track: color-mix(in srgb, var(--brand-secondary) 3.5%, #f1f1f1);
+  --viz-ink-muted: var(--ink-faint);
+  /* Crédit de temps (anneau de l'avatar, « Ce mois-ci », « Mes
+     statistiques ») : la couleur suit la part qui RESTE — vert, ambre, orange, rouge (seuils dans
+     config/constants.js, lecture dans utils/creditTone.js). Hors marque comme
+     l'ambre ci-dessus : une jauge presque vide doit rester alarmante sous une
+     marque orange comme sous une bleue. Vert et ambre se confondent pour un
+     œil deutéranope : le chiffre restant est toujours écrit à côté, la
+     couleur n'est jamais seule à le dire. */
+  --credit-high: oklch(60% 0.14 150);
+  --credit-mid: oklch(70% 0.15 78);
+  --credit-low: oklch(64% 0.18 48);
+  --credit-out: oklch(52% 0.2 25);
+  /* Santé de l'adoption (Administration → Statistiques) : régulier, occasionnel,
+     en sommeil, jamais démarré. La même échelle « tout va bien → à traiter »
+     que le crédit, hors marque pour la même raison ; le nombre de comptes est
+     toujours écrit à côté de la couleur. */
+  --adopt-regular: var(--credit-high);
+  --adopt-occasional: var(--credit-mid);
+  --adopt-dormant: var(--credit-low);
+  --adopt-never: var(--credit-out);
+  /* Pastilles de configuration (components/ui/ConfigAlertDot.svelte) : une
+     panne, un réglage inopérant, un conseil. Hors marque pour la même raison
+     que l'ambre ci-dessus — une pastille rouge doit rester rouge sous une
+     marque rouge comme sous une bleue. */
+  --alert-error: oklch(58% 0.21 27);
+  --alert-warning: oklch(77% 0.16 70);
+  --alert-tip: oklch(62% 0.13 250);
+
+  /* Typo utilitaire */
+  --font-mono: 'SF Mono', 'Fira Code', ui-monospace, monospace;
+
+  /* ── Tags de conversation ────────────────────────────────────────────────
+     Palette FERMÉE, en miroir de TAG_COLORS (services/api/routes/tags.js) :
+     l'API valide les slugs, ces jetons décident du rendu. Ajouter une couleur
+     demande donc les deux côtés — c'est voulu, une couleur servie sans jeton
+     s'afficherait transparente. Deux autres familles suivent, sous le même
+     préfixe : la couleur libre (`--tag-hue-*`) et les formes (`--tag-shape-*`).
+
+     Lightness et chroma tenus proches d'une teinte à l'autre pour que les
+     pastilles pèsent le même poids visuel dans la liste — sauf trois, qui se
+     distinguent par là : ardoise et marron, sourdes, et marine, sombre ;
+     `-soft` est la même teinte en fond de chip, sous le texte encre.
+
+     Quatorze teintes unies, choisies pour des pastilles de 8 px (12 px depuis
+     les motifs) : chaque couleur ajoutée est placée à un écart OKLab d'au
+     moins 0,089 de toutes les autres (le plus serré : orange ↔ rouge).
+     Écartés : un indigo entre bleu et violet, à 0,077 — indiscernable en
+     pastille ; un jaune, qui aurait été la pastille la plus pâle (contraste
+     2,1 sur blanc). Le marine tient à 0,164.                                */
+  --tag-slate: oklch(55% 0.03 260);
+  --tag-brown: oklch(50% 0.08 55);
+  --tag-red: oklch(58% 0.19 25);
+  --tag-orange: oklch(64% 0.17 45);
+  --tag-amber: oklch(68% 0.15 75);
+  --tag-lime: oklch(68% 0.16 128);
+  --tag-green: oklch(58% 0.15 150);
+  --tag-teal: oklch(60% 0.11 195);
+  --tag-sky: oklch(66% 0.12 230);
+  --tag-blue: oklch(58% 0.16 255);
+  --tag-navy: oklch(42% 0.13 265);
+  --tag-violet: oklch(55% 0.19 300);
+  --tag-fuchsia: oklch(58% 0.22 325);
+  --tag-pink: oklch(62% 0.19 350);
+
+  --tag-slate-soft: oklch(55% 0.03 260 / 0.14);
+  --tag-brown-soft: oklch(50% 0.08 55 / 0.14);
+  --tag-red-soft: oklch(58% 0.19 25 / 0.14);
+  --tag-orange-soft: oklch(64% 0.17 45 / 0.14);
+  --tag-amber-soft: oklch(68% 0.15 75 / 0.14);
+  --tag-lime-soft: oklch(68% 0.16 128 / 0.14);
+  --tag-green-soft: oklch(58% 0.15 150 / 0.14);
+  --tag-teal-soft: oklch(60% 0.11 195 / 0.14);
+  --tag-sky-soft: oklch(66% 0.12 230 / 0.14);
+  --tag-blue-soft: oklch(58% 0.16 255 / 0.14);
+  --tag-navy-soft: oklch(42% 0.13 265 / 0.14);
+  --tag-violet-soft: oklch(55% 0.19 300 / 0.14);
+  --tag-fuchsia-soft: oklch(58% 0.22 325 / 0.14);
+  --tag-pink-soft: oklch(62% 0.19 350 / 0.14);
+
+  /* ── Pastilles à motif ─────────────────────────────────────────────────
+     Un slug composé porte trois jetons : sa teinte de base — texte, traits,
+     liserés : un motif ne colore ni un texte ni une bordure —, son fond doux,
+     et `-fill`, le motif posé sur la base, que seules les pastilles peignent.
+     Une couleur unie n'a pas de `-fill` : tagColorVars retombe sur la teinte.
+
+     Motifs retenus pour rester lisibles à 12 px sur un écran standard (×1) :
+     rayures, taches, anneau, moitié-moitié. Écartés : les pois (une croix à
+     cette taille) et le dégradé (un aplat). Pour que le motif se voie, les
+     pastilles des listes sont passées de 8 à 12 px (TagChip).               */
+  --pattern-stripes: repeating-linear-gradient(
+    135deg,
+    rgb(255 255 255 / 0.55) 0 1.5px,
+    transparent 1.5px 3.5px
+  );
+  --pattern-spots:
+    radial-gradient(circle at 28% 30%, rgb(0 0 0 / 0.38) 0 17%, transparent 19%),
+    radial-gradient(circle at 72% 42%, rgb(0 0 0 / 0.38) 0 13%, transparent 15%),
+    radial-gradient(circle at 42% 76%, rgb(0 0 0 / 0.38) 0 15%, transparent 17%);
+
+  --tag-blue-stripes: var(--tag-blue);
+  --tag-red-stripes: var(--tag-red);
+  --tag-green-spots: var(--tag-green);
+  --tag-amber-spots: var(--tag-amber);
+  --tag-violet-ring: var(--tag-violet);
+  --tag-teal-ring: var(--tag-teal);
+  --tag-navy-orange: var(--tag-navy);
+
+  --tag-blue-stripes-soft: var(--tag-blue-soft);
+  --tag-red-stripes-soft: var(--tag-red-soft);
+  --tag-green-spots-soft: var(--tag-green-soft);
+  --tag-amber-spots-soft: var(--tag-amber-soft);
+  --tag-violet-ring-soft: var(--tag-violet-soft);
+  --tag-teal-ring-soft: var(--tag-teal-soft);
+  --tag-navy-orange-soft: var(--tag-navy-soft);
+
+  --tag-blue-stripes-fill: var(--pattern-stripes), var(--tag-blue);
+  --tag-red-stripes-fill: var(--pattern-stripes), var(--tag-red);
+  --tag-green-spots-fill: var(--pattern-spots), var(--tag-green);
+  --tag-amber-spots-fill: var(--pattern-spots), var(--tag-amber);
+  /* Anneau : le creux est transparent, il laisse voir le fond de la ligne
+     (survol, sélection, fond doux de la puce) au lieu d'y poser du blanc. */
+  --tag-violet-ring-fill: radial-gradient(circle, transparent 0 34%, var(--tag-violet) 38%);
+  --tag-teal-ring-fill: radial-gradient(circle, transparent 0 34%, var(--tag-teal) 38%);
+  --tag-navy-orange-fill: linear-gradient(135deg, var(--tag-navy) 0 50%, var(--tag-orange) 50%);
+
+  /* ── Couleur libre ─────────────────────────────────────────────────────
+     Un tag peut porter une couleur hors palette : slug `hue-<angle>-<clarté>`,
+     réglée aux deux curseurs de « Mes tags ». Le chroma est FIXÉ ici, et la
+     clarté est BORNÉE par le serveur (TAG_HUE_LIGHTNESS, routes/tags.js :
+     35 à 68 %) : l'utilisateur choisit l'angle et la clarté, jamais un gris
+     ni un pastel délavé — ce qu'un sélecteur hexadécimal libre n'aurait pas
+     garanti. Contraste sur blanc mesuré dans Chromium (pixels d'un canvas,
+     chroma 0,17, pas de 3° sur les 360 angles) : à 60 %, de 3,3 (bleu-vert,
+     ~190°) à 4,3 ; à 68 %, le plafond — la clarté de l'ambre et du vert
+     anis, les plus pâles de la palette (2,9 et 2,8) —, 2,5 au plus faible ;
+     à 35 %, le plancher, 9 au moins. Les angles hors gamut sRGB sont ramenés
+     par le navigateur (chroma réduit), sans sortir de la teinte.
+
+     `--tag-hue-l` est la clarté d'un slug SANS suffixe (`hue-<angle>`) — la
+     même valeur que `default` côté serveur. tagColorVars écrit
+     `oklch(<clarté> var(--tag-hue-c) <angle>)`, et le fond doux avec
+     `/ var(--tag-hue-soft-alpha)` — la même transparence que les `-soft`.     */
+  --tag-hue-l: 60%;
+  --tag-hue-c: 0.17;
+  --tag-hue-soft-alpha: 0.14;
+
+  /* ── Formes de pastille ────────────────────────────────────────────────
+     Liste FERMÉE, en miroir de TAG_SHAPES (services/api/routes/tags.js) :
+     l'API valide les slugs, ces jetons découpent. Un `clip-path` par forme, en
+     pourcentages : la même déclaration découpe la pastille de 12 px de
+     l'historique et le bouton de 26 px du formulaire. Le rond est lui aussi
+     un clip-path — une pastille n'a plus de border-radius, qui
+     s'intersecterait avec les autres formes. Les motifs (`-fill`) se peignent
+     dans la forme, et une ombre portée sur l'élément découpé disparaît avec
+     lui : un halo se fait sur un parent (cf. la carte de « Mes tags »).
+
+     Retenues pour rester reconnaissables à 12 px sur un écran ×2 : rond,
+     carré (arrondi — à angles vifs, un rond à 12 px ×1), losange, triangle,
+     hexagone, étoile (creux à 45 % du rayon : à 38 %, branches trop fines à
+     12 px), cœur (courbe paramétrique, 28 points). Écartés au prototype : le
+     pentagone (un rond) et la croix (un « plus »).                           */
+  --tag-shape-circle: circle(50% at 50% 50%);
+  --tag-shape-square: inset(0 round 22%);
+  --tag-shape-diamond: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+  --tag-shape-triangle: polygon(50% 6%, 100% 94%, 0 94%);
+  --tag-shape-hexagon: polygon(50% 0%, 93.3% 25%, 93.3% 75%, 50% 100%, 6.7% 75%, 6.7% 25%);
+  --tag-shape-star: polygon(
+    50% 0%,
+    63.2% 31.8%,
+    97.6% 34.5%,
+    71.4% 57%,
+    79.4% 90.5%,
+    50% 72.5%,
+    20.6% 90.5%,
+    28.6% 57%,
+    2.4% 34.5%,
+    36.8% 31.8%
+  );
+  --tag-shape-heart: polygon(
+    50% 26.4%,
+    50.6% 23.4%,
+    54.1% 15.9%,
+    62.1% 8.3%,
+    73.9% 4.8%,
+    86.6% 7.9%,
+    96.3% 17%,
+    100% 29.6%,
+    96.3% 42.9%,
+    86.6% 55.3%,
+    73.9% 66.7%,
+    62.1% 77.2%,
+    54.1% 86.3%,
+    50.6% 92.8%,
+    50% 95.2%,
+    49.4% 92.8%,
+    45.9% 86.3%,
+    37.9% 77.2%,
+    26.1% 66.7%,
+    13.4% 55.3%,
+    3.7% 42.9%,
+    0% 29.6%,
+    3.7% 17%,
+    13.4% 7.9%,
+    26.1% 4.8%,
+    37.9% 8.3%,
+    45.9% 15.9%,
+    49.4% 23.4%
+  );
+}
