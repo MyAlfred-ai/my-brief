@@ -38,7 +38,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run lint
-      - run: npm run whats-new:check
+      # Pas de whats-new:check : src/whats-new.json est daté par l'historique
+      # du dépôt privé, qu'un miroir d'un commit par release ne contient pas.
 
   tests:
     name: Tests (${{ matrix.projet }})
