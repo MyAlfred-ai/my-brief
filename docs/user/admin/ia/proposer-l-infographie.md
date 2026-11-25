@@ -1,60 +1,63 @@
 ---
 title: Proposer l'infographie
-description: Proposer ou masquer l'infographie des réunions, décider qui peut s'en servir, choisir le modèle qui dessine l'image et lui donner le style graphique de l'organisation.
+description: Proposer ou masquer l'infographie des réunions, décider qui peut s'en servir, et savoir d'où viennent sa mise en page, son logo et ses couleurs.
 sidebar:
   order: 4
 ---
 
-**Administration → IA**, carte **Infographie de compte rendu**. L'infographie est une image générée à
-partir de la transcription, des actions et des notes d'une réunion.
+**Administration → Modèles IA → Modèles**, tuile **Infographie** : un clic déplie
+l'**Infographie de compte rendu**. L'infographie est une page visuelle de la réunion : l'IA en écrit le
+contenu à partir de la transcription, des actions et des notes, puis il est mis en page avec le logo et
+les couleurs de l'organisation.
 
 ## Étapes
 
 1. **Proposer l'infographie** : **Proposée** ou **Masquée**. Elle est proposée par défaut.
-2. **Modèle qui dessine l'image** : **gpt-image-2.5-flare** par défaut.
-3. Facultatif : le **Style graphique** — les couleurs à respecter, le ton des schémas, les mentions à
-   faire figurer. 1 000 caractères au plus.
-4. Cliquez **Enregistrer**, en bas de l'onglet.
+2. Cliquez **Enregistrer**, en bas de la page.
 
 ## Résultat
 
-- **Proposée** : la case **Générer une infographie** apparaît dans la carte de génération, et
+- **Proposée** : la tuile **Infographie** apparaît dans la carte de génération, et
   l'invitation **Créer une infographie** sur les réunions résumées, pour chaque compte dont un groupe
   donne le droit. Au départ, le groupe « Défaut » le donne : tout le monde en profite.
-- **Masquée** : la case et l'invitation disparaissent pour tous, quels que soient les groupes, et toute
-  nouvelle génération est refusée. Les images déjà créées restent visibles et supprimables.
+- **Masquée** : la tuile et l'invitation disparaissent pour tous, quels que soient les groupes, et toute
+  nouvelle génération est refusée. Les infographies déjà créées restent visibles et supprimables.
 
 ## Qui peut s'en servir
 
-L'infographie proposée, ce sont les groupes qui décident qui la génère : **Administration → Groupes**,
-interrupteur **Générer des infographies** de chaque groupe. Les droits s'additionnent : un seul groupe
-qui l'accorde suffit. Voir [Gérer les groupes](../utilisateurs/gerer-les-groupes.md).
+L'infographie proposée, ce sont les groupes qui décident qui la génère : **Administration → Personnes →
+Groupes**, interrupteur **Générer des infographies** de chaque groupe : chacun a le droit de son
+groupe. Voir [Gérer les groupes](../utilisateurs/gerer-les-groupes.md).
 
-## Le modèle qui dessine
+## Six mises en page
 
-| Modèle | Ce qu'il change |
-|---|---|
-| **gpt-image-2.5-flare** | Recommandé. Des images plus nettes que la génération précédente, et environ deux fois plus rapides. |
-| **gpt-image-2** | La génération précédente. Plus lente, éprouvée sur les infographies de réunion. |
+L'IA choisit, pour chaque réunion, la mise en page qui montre le mieux ce qui en ressort : **Synthèse**,
+**Décision**, **Feuille de route**, **Tableau de bord**, **Atelier** ou **Bilan**. Le template du compte
+rendu l'oriente — une **Rétrospective** penche vers le **Bilan**, un **Brainstorming** vers l'**Atelier**
+—, sans l'imposer. Une mise en page qui manquerait de matière — une feuille de route sans dates, un
+tableau de bord sans chiffres — laisse la place à la **Synthèse**.
 
-Le choix ne change ni le format de l'image — toujours une page portrait — ni ce qu'elle raconte : les
-mêmes matériaux de réunion partent au modèle. Il change la vitesse, la finesse du dessin et le coût
-de chaque image.
+Toutes tiennent sur une page A4 et partagent le même cadre : le logo en haut à gauche, le titre, l'essentiel en grand sur la couleur
+primaire, puis le corps de la mise en page, les actions et un pied de page avec les participants et la
+prochaine étape.
 
-Un modèle changé s'applique à l'infographie suivante. Les images déjà créées ne changent pas : pour
-comparer deux modèles, régénérez une infographie sur une réunion que vous connaissez.
+## Son allure
 
-## Le style graphique
+Les logos et les deux couleurs viennent de **Organisation → Marque & apparence** : voir
+[Personnaliser l'apparence](../configuration/personnaliser-l-apparence.md). Rien à régler ici. Le
+**logo de l'entreprise** ouvre chaque infographie, en haut à gauche ; le **logo de l'application**
+la signe en pied de page, avec « myBrief ». Tant que le premier manque, le second prend sa place en
+tête, et une pastille le signale sur **Marque & apparence**. Un changement de logo ou de couleur
+s'applique aussi aux infographies déjà créées, à l'écran comme au téléchargement.
 
-Exemple : « Les couleurs à respecter sont le violet, l'orange et le rose. Les schémas sont clairs et
-professionnels. Le nom de notre société en haut à gauche. »
-
-Laissé vide, le modèle choisit lui-même sa palette et sa mise en page. Rempli, votre consigne passe
-devant ses propres choix, pour chaque image.
+Le **Style graphique** et le **Modèle qui dessine l'image** ont disparu de cette rubrique : l'infographie
+n'est plus dessinée par un modèle d'image. Un style enregistré autrefois reste en mémoire mais ne
+s'applique plus.
 
 ## Ce qu'il faut savoir
 
-- **Chaque image est facturée** sur la clé OpenAI de l'organisation : un modèle plus rapide coûte
-  aussi moins cher.
-- **Votre organisation doit être vérifiée chez OpenAI** pour que le modèle d'image réponde.
-- Une image demande en général une à trois minutes.
+- **Chaque infographie est un appel au modèle de texte**, facturé sur la clé OpenAI de l'organisation.
+  Plus d'image à dessiner : elle coûte moins qu'avant, et arrive plus vite.
+- **Les infographies créées avant les mises en page** restent des images : elles s'affichent et se
+  téléchargent comme avant. Les régénérer les fait passer à la nouvelle présentation.
+- Les textes de l'infographie sont dans la langue de l'interface de la personne qui la demande.

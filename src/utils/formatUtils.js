@@ -45,6 +45,22 @@ export function formatDurationHHMMSS(seconds) {
 }
 
 /**
+ * Secondes de réunion écoulées, pauses exclues : ce qui a été cumulé aux pauses
+ * précédentes, plus le tronçon en cours s'il y en a un.
+ *
+ * @param {number} cumulative - secondes cumulées avant le tronçon en cours
+ * @param {number|null} startedAt - `Date.now()` du début du tronçon ; nul en pause ou à l'arrêt
+ * @param {number} [fallback] - durée connue par ailleurs, quand le chronomètre
+ *   est à zéro (régénération d'un compte rendu, réunion importée)
+ * @param {number} [now]
+ * @returns {number}
+ */
+export function meetingElapsed(cumulative, startedAt, fallback = 0, now = Date.now()) {
+  const total = (cumulative || 0) + (startedAt ? Math.floor((now - startedAt) / 1000) : 0);
+  return total > 0 ? total : fallback;
+}
+
+/**
  * Horodatage d'une ligne de transcription : durée écoulée depuis le début de
  * l'enregistrement, et heure murale du poste.
  * @param {number} elapsedSeconds

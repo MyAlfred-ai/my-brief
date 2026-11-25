@@ -5,8 +5,8 @@ sidebar:
   order: 7
 ---
 
-L'onglet **Administration → MyBrain** relie myBrief au myBrain de votre organisation — son adresse et une
-clé d'API — et décide qui lui envoie ses réunions.
+La page **Administration → Capacités → MyBrain** relie myBrief au myBrain de votre organisation — son
+adresse et une clé d'API — et décide qui lui envoie ses réunions.
 
 ## À quoi ça sert
 
@@ -26,9 +26,9 @@ L'adresse et la clé sont **vérifiées auprès de myBrain avant d'être enregis
 
 | Envoi des réunions | Ce que ça donne |
 |---|---|
-| **Désactivé** | Aucune réunion ne part. La section **MyBrain** n'apparaît pas aux utilisateurs |
-| **Au choix de chaque utilisateur** | Chacun active l'envoi dans **Ma configuration → MyBrain**. Rien ne part tant qu'il ne l'a pas activé |
-| **Imposé à tous** | Les réunions de tous les comptes partent. Chacun le voit dans **Ma configuration → MyBrain**, sans pouvoir le désactiver |
+| **Désactivé** | Aucune réunion ne part. L'onglet **MyBrain** n'apparaît pas aux utilisateurs |
+| **Au choix de chaque utilisateur** | Chacun active l'envoi dans **Réglages → Après la réunion → MyBrain**. Rien ne part tant qu'il ne l'a pas activé |
+| **Imposé à tous** | Les réunions de tous les comptes partent. Chacun le voit dans **Réglages → Après la réunion → MyBrain**, sans pouvoir le désactiver |
 
 **Une réunion part quand elle se termine** — **Générer le résumé** ou **Enregistrer** —, une seule
 fois : un résumé régénéré ne la renvoie pas. Elle part avec son titre, sa date et son heure, sa durée,
@@ -70,8 +70,8 @@ enregistrée pour la reprise.
 
 1. **Tester la connexion** : « Connexion opérationnelle », et « Connecté en tant que « myBrief » ».
 2. Avec un compte de test : activez **Envoyer mes réunions à MyBrain**, faites une courte réunion,
-   terminez-la par **Enregistrer**. **Ma configuration → MyBrain** l'affiche « Envoyée », et elle attend
-   dans la revue de myBrain.
+   terminez-la par **Enregistrer**. **Réglages → Après la réunion → MyBrain** l'affiche « Envoyée », et elle
+   attend dans la revue de myBrain.
 
 ## Voir aussi
 

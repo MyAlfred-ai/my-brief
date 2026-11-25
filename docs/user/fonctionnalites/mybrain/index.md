@@ -64,8 +64,8 @@ pas.
 
 ## Ce que vous pouvez régler
 
-Dans **Ma configuration**, groupe **Actions**, **MyBrain** : **Envoyer mes réunions à MyBrain**, quand
-votre administrateur vous laisse le choix. Imposé, l'interrupteur est allumé et verrouillé. La section
+Dans **Réglages → Après la réunion**, onglet **MyBrain** : **Envoyer mes réunions à MyBrain**, quand votre
+administrateur vous laisse le choix. Imposé, l'interrupteur est allumé et verrouillé. L'onglet
 n'existe pas si myBrain n'est pas relié à votre instance, ou si l'envoi y est désactivé.
 
 ## Exemples

@@ -1,6 +1,6 @@
 <script>
   /**
-   * Section « Extension Chrome » de « Ma configuration ».
+   * Section « Extension Chrome » de « Réglages ».
    *
    * Une page qui explique, installe et lie — dans cet ordre, parce que c'est
    * l'ordre des gestes. Elle n'a aucun réglage : tout ce qu'elle sait de
@@ -12,6 +12,11 @@
    * Deux chemins d'installation, jamais les deux à la fois : la fiche du
    * Chrome Web Store dès qu'elle existe (EXTENSION_STORE_URL), sinon le .zip
    * servi par l'installation avec les étapes du chargement manuel.
+   *
+   * Installée depuis le .zip, l'extension ne se met jamais à jour seule : plus
+   * ancienne que celle du .zip servi (utils/extensionVersion.js), la ligne
+   * d'état le dit et propose la nouvelle version, avec la façon de la
+   * remplacer sans créer une seconde extension.
    */
   import { onMount } from 'svelte';
   import IconExtension from '~icons/solar/widget-add-linear';
@@ -25,6 +30,8 @@
   import ExtensionFigure from '../help/ExtensionFigure.svelte';
   import { EXTENSION_STORE_URL, EXTENSION_ZIP_PATH } from '../../config/constants.js';
   import { extensionInfo, pingExtension } from '../../stores/extensionBridge.js';
+  import { EXTENSION_VERSION, isOlderVersion } from '../../utils/extensionVersion.js';
+  import { fill } from '../../utils/i18nFormat.js';
 
   export let texts;
 
@@ -34,9 +41,19 @@
     typeof navigator !== 'undefined' && /Chrome\/|Chromium\//.test(navigator.userAgent);
 
   $: installed = $extensionInfo.installed;
-  $: stateText = installed
-    ? texts.extStateVersion.replace('{version}', $extensionInfo.version)
-    : texts.extStateMissingHint;
+  $: outdated =
+    installed && !EXTENSION_STORE_URL && isOlderVersion($extensionInfo.version, EXTENSION_VERSION);
+  $: stateTitle = !installed
+    ? texts.extStateMissing
+    : outdated
+      ? texts.extStateOutdated
+      : texts.extStateInstalled;
+  $: stateText = !installed
+    ? texts.extStateMissingHint
+    : fill(outdated ? texts.extStateOutdatedHint : texts.extStateVersion, {
+        version: $extensionInfo.version,
+        latest: EXTENSION_VERSION,
+      });
 
   // L'extension s'est signalée au chargement de la page, peut-être bien
   // avant que cette section n'existe : on lui redemande à l'ouverture.
@@ -55,17 +72,27 @@
     <p class="es-note es-note-warn">{texts.extBrowserNote}</p>
   {/if}
 
-  <div class="es-state" class:es-state-on={installed} role="status">
-    {#if installed}
+  <div class="es-state" class:es-state-on={installed && !outdated} role="status">
+    {#if installed && !outdated}
       <IconCheck width="20" height="20" aria-hidden="true" />
     {:else}
       <IconWarn width="20" height="20" aria-hidden="true" />
     {/if}
     <div>
-      <strong>{installed ? texts.extStateInstalled : texts.extStateMissing}</strong>
+      <strong>{stateTitle}</strong>
       <span>{stateText}</span>
     </div>
   </div>
+
+  {#if outdated}
+    <div class="es-card-body es-update">
+      <a class="es-cta" href={EXTENSION_ZIP_PATH} download>
+        <IconDownload width="17" height="17" aria-hidden="true" />
+        {texts.extUpdateZip}
+      </a>
+      <p class="es-hint">{texts.extUpdateHint}</p>
+    </div>
+  {/if}
 
   <div class="es-figure">
     <ExtensionFigure labels={texts.extFigure} />
@@ -183,6 +210,9 @@
   }
   .es-figure {
     padding: 8px 0 4px;
+  }
+  .es-update {
+    padding: 0;
   }
   .es-card-body {
     display: flex;

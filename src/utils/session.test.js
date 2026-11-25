@@ -10,9 +10,10 @@
  * le serveur prenait pour une réunion NEUVE : conversations en double dans
  * l'historique (mesuré le 2026-08-28).
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   saveSessionData,
+  coalesceSaves,
   saveMeetingNotesDraft,
   restoreSessionData,
   clearSessionData,
@@ -159,5 +160,106 @@ describe('restoreSessionData — parité avec la restauration historique', () =>
       }),
     );
     expect(restore().detectedActions[0]).toMatchObject({ id: 1, title: '', owner: '' });
+  });
+});
+
+describe('coalesceSaves — sauvegardes du direct regroupées', () => {
+  /** Fenêtre et document factices : on déclenche leurs événements à la main. */
+  function env(visibilityState = 'visible') {
+    const target = new EventTarget();
+    const doc = Object.assign(new EventTarget(), { visibilityState });
+    return { target, doc };
+  }
+
+  it('une rafale de phrases = une seule écriture, au plus tard après le délai', () => {
+    vi.useFakeTimers();
+    try {
+      const save = vi.fn();
+      const saver = coalesceSaves(save, 2000, env());
+      saver.schedule();
+      vi.advanceTimersByTime(1500);
+      saver.schedule();
+      saver.schedule();
+      expect(save).not.toHaveBeenCalled();
+      // Au plus tard 2 s après la PREMIÈRE phrase, même si d'autres suivent.
+      vi.advanceTimersByTime(500);
+      expect(save).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(5000);
+      expect(save).toHaveBeenCalledTimes(1);
+      saver.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('page fermée ou mise en arrière-plan : l’écriture en attente part aussitôt', () => {
+    vi.useFakeTimers();
+    try {
+      const save = vi.fn();
+      const e = env();
+      const saver = coalesceSaves(save, 2000, e);
+      saver.schedule();
+      e.doc.visibilityState = 'hidden';
+      e.doc.dispatchEvent(new Event('visibilitychange'));
+      expect(save).toHaveBeenCalledTimes(1);
+      saver.schedule();
+      e.target.dispatchEvent(new Event('pagehide'));
+      expect(save).toHaveBeenCalledTimes(2);
+      // Rien en attente : ni l'événement ni le minuteur n'écrivent en double.
+      e.target.dispatchEvent(new Event('pagehide'));
+      vi.advanceTimersByTime(5000);
+      expect(save).toHaveBeenCalledTimes(2);
+      saver.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('retour au premier plan : rien à écrire, rien n’est écrit', () => {
+    const save = vi.fn();
+    const e = env('visible');
+    const saver = coalesceSaves(save, 2000, e);
+    saver.schedule();
+    e.doc.dispatchEvent(new Event('visibilitychange'));
+    expect(save).not.toHaveBeenCalled();
+    saver.dispose();
+  });
+
+  it('flush() écrit l’attente tout de suite ; dispose() l’abandonne et se débranche', () => {
+    vi.useFakeTimers();
+    try {
+      const save = vi.fn();
+      const e = env();
+      const saver = coalesceSaves(save, 2000, e);
+      saver.flush();
+      expect(save).not.toHaveBeenCalled();
+      saver.schedule();
+      saver.flush();
+      expect(save).toHaveBeenCalledTimes(1);
+      saver.schedule();
+      saver.dispose();
+      vi.advanceTimersByTime(5000);
+      e.target.dispatchEvent(new Event('pagehide'));
+      expect(save).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('saveSessionData — marqueurs d’animation', () => {
+  it('écrit les lignes sans `refineFlash`, et seulement elles', () => {
+    saveSessionData(
+      snapshot({
+        transcriptionHistory: [
+          { text: 'Bonjour', isDelta: false },
+          { text: 'Budget revu', isDelta: false, refineFlash: { tokens: [] } },
+        ],
+      }),
+    );
+    expect(JSON.parse(localStorage.getItem('mybrief_transcription_history'))).toEqual([
+      { text: 'Bonjour', isDelta: false },
+      { text: 'Budget revu', isDelta: false },
+    ]);
   });
 });

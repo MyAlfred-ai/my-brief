@@ -1,6 +1,6 @@
 <script>
   /**
-   * Section « Mes templates » de « Ma configuration ».
+   * Section « Mes templates » de « Réglages ».
    *
    * C'était un panneau plein écran à part (avec sa propre coquille et son
    * propre hash) ; tous les réglages de l'utilisateur tiennent désormais dans
@@ -48,7 +48,7 @@
 
 <style>
   /* Ligne de titre de la section : le nom de l'écran et son plafond. Le header
-     du panneau, lui, porte « Ma configuration » — il ne peut plus nommer la
+     du panneau, lui, porte « Réglages » — il ne peut plus nommer la
      section, il y en a huit. */
   .ts-head {
     display: flex;

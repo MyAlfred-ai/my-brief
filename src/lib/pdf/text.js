@@ -209,3 +209,79 @@ export function parseRgb(value) {
 /** Couleur translucide posée sur le blanc de la page → couleur opaque. */
 export const onWhite = ([r, g, b, a = 1]) =>
   [r, g, b].map((c) => Math.round(c * a + 255 * (1 - a)));
+
+/** Arguments de premier niveau d'une fonction CSS : les virgules hors parenthèses. */
+function splitArgs(body) {
+  const out = [''];
+  let depth = 0;
+  for (const ch of body) {
+    if (ch === '(') depth += 1;
+    if (ch === ')') depth -= 1;
+    if (depth < 0) return null;
+    if (ch === ',' && depth === 0) out.push('');
+    else out[out.length - 1] += ch;
+  }
+  return depth === 0 ? out.map((s) => s.trim()) : null;
+}
+
+const GRADIENT_AXES = { 'to right': 'x', '90deg': 'x', 'to bottom': 'y', '180deg': 'y' };
+
+/**
+ * `background-image` calculé → dégradé linéaire horizontal ou vertical, ou
+ * null. Le PDF le peint en bandes fines (cf. draw.js) : seuls les deux axes
+ * qu'emploie la feuille du PDF sont lus, et des arrêts `rgb()`/`rgba()` —
+ * la forme que rend `getComputedStyle`. Tout le reste (angle oblique, image,
+ * plusieurs couches) est ignoré : la décoration manque, le texte reste.
+ *
+ * @param {string} value
+ * @returns {{axis: 'x'|'y', stops: Array<{at: number, color: number[]}>}|null}
+ */
+export function parseLinearGradient(value) {
+  const m = /^linear-gradient\((.*)\)$/i.exec(String(value || '').trim());
+  const args = m && splitArgs(m[1]);
+  if (!args) return null;
+  let axis = 'y';
+  if (!/^rgba?\(/i.test(args[0])) {
+    axis = GRADIENT_AXES[args.shift().toLowerCase().replace(/\s+/g, ' ')];
+    if (!axis) return null;
+  }
+  const stops = [];
+  for (const arg of args) {
+    const stop = /^(rgba?\([^)]*\))(?:\s+(-?[\d.]+)%)?$/i.exec(arg);
+    const color = stop && parseRgb(stop[1]);
+    if (!color) return null;
+    stops.push({ at: stop[2] === undefined ? null : Number(stop[2]) / 100, color: onWhite(color) });
+  }
+  if (stops.length < 2) return null;
+  // Positions absentes : réparties entre leurs voisines connues, comme en CSS.
+  stops[0].at ??= 0;
+  stops[stops.length - 1].at ??= 1;
+  for (let i = 1; i < stops.length - 1; i++) {
+    if (stops[i].at !== null) continue;
+    let j = i;
+    while (stops[j].at === null) j++;
+    const from = stops[i - 1].at;
+    stops[i].at = from + (stops[j].at - from) / (j - i + 1);
+  }
+  return { axis, stops };
+}
+
+/**
+ * Couleur du dégradé à la position `t` (0 → premier arrêt, 1 → dernier).
+ *
+ * @param {Array<{at: number, color: number[]}>} stops
+ * @param {number} t
+ * @returns {number[]} [r, g, b]
+ */
+export function colorAt(stops, t) {
+  if (t <= stops[0].at) return stops[0].color;
+  for (let i = 1; i < stops.length; i++) {
+    const a = stops[i - 1];
+    const b = stops[i];
+    if (t <= b.at) {
+      const k = b.at > a.at ? (t - a.at) / (b.at - a.at) : 1;
+      return a.color.map((c, n) => Math.round(c + (b.color[n] - c) * k));
+    }
+  }
+  return stops[stops.length - 1].color;
+}

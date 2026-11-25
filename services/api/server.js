@@ -41,6 +41,15 @@ if (!config.mongoUrl) {
   process.exit(1);
 }
 
+// Un `.env` resté sur un modèle qu'OpenAI retire : la valeur est déjà ignorée
+// (lib/retiredModels.js), l'usage tourne sur son défaut. À retirer du `.env`.
+for (const { variable, model, shutdown } of config.openai.ignoredModelVariables) {
+  console.warn(
+    `[api] ${variable}=${model} ignorée : modèle retiré par OpenAI le ${shutdown}. ` +
+      `L'usage prend son modèle par défaut — retirer la variable du .env.`,
+  );
+}
+
 const mongo = new MongoClient(config.mongoUrl);
 await mongo.connect();
 const db = mongo.db(config.mongoDb);

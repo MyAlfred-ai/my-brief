@@ -6,6 +6,7 @@ import { normalizeEmail, SERVED_ACCOUNT } from '../lib/repositories/users.js';
 import { DEFAULT_GROUP_ID } from '../lib/repositories/groups.js';
 import { clearSessionCookie } from '../lib/auth/cookies.js';
 import { authModeOf, authProviderOf } from '../lib/auth/resolve.js';
+import { LOGOUT_BODY_LIMIT } from '../lib/authPlugin.js';
 
 export default function coreRoutes(app) {
   /**
@@ -83,7 +84,7 @@ export default function coreRoutes(app) {
       // d'administration pour traduire des identifiants.
       groups: await app.groups.forUser(doc),
       // Droits tenus des groupes (cf. `rightsOf`) : la case « Générer une
-      // infographie » en dépend, avec l'interrupteur général de l'onglet IA
+      // infographie » en dépend, avec l'interrupteur général de la rubrique Modèles IA
       // que l'écran lit dans les capacités de l'installation.
       rights: await app.groups.rightsForUser(doc),
       // Minutes de réunion restantes ce mois-ci (cf. lib/quota.js) : l'écran
@@ -100,12 +101,27 @@ export default function coreRoutes(app) {
   app.get('/ping', async () => ({ ok: true }));
 
   /**
+   * Logo de l'ENTREPRISE, pour l'en-tête des infographies — à tout compte
+   * connecté, et à lui seul : la sonde publique /api/auth/config porte déjà
+   * le logo de l'application à chaque démarrage, et la page de connexion n'a
+   * pas l'usage de celui-ci. Lu à la demande, quand une infographie
+   * s'affiche (src/stores/companyLogo.js). Vide = non renseigné : le
+   * frontend pose alors le logo de l'application à sa place.
+   */
+  app.get('/branding/company-logo', async (req, reply) => {
+    const email = requireEmail(req, reply);
+    if (!email) return;
+    const branding = await app.settings.getBranding();
+    return { companyLogo: branding.companyLogo || '' };
+  });
+
+  /**
    * Déconnexion. Historiquement un no-op : la session était le cookie OIDC géré
    * par Traefik (web) ou le JWT local (mobile), il n'y avait rien à fermer ici.
    * Elle détruit désormais la session native si la requête en porte une —
    * l'appel best-effort du frontend (App.svelte) n'a pas eu à changer.
    */
-  app.post('/logout', async (req, reply) => {
+  app.post('/logout', { bodyLimit: LOGOUT_BODY_LIMIT }, async (req, reply) => {
     if (req.user?.sessionToken) {
       await app.sessions.destroy(req.user.sessionToken);
       clearSessionCookie(reply, { secure: app.config.cookieSecure });

@@ -11,7 +11,7 @@ comptes**.
 
 ## Étapes
 
-1. **Administration → Templates**, cliquez un template portant le badge **défaut**.
+1. **Administration → Capacités → Templates**, cliquez un template portant le badge **défaut**.
 2. Lisez la note : sauvegarder remplace la version d'origine pour tous les comptes.
 3. Modifiez les **Directives à l'IA** et la **Mise en forme du résumé**. Ce que l'éditeur affiche est
    la version utilisée aujourd'hui.

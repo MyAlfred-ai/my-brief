@@ -33,3 +33,10 @@ setup() {
     grep -qF '. "$KIT_DIR/lib/kit.sh"' "$I/$s"
   done
 }
+
+@test "produit : install.sh --help fonctionne lancé hors du dossier du kit" {
+  cd "$I/.."
+  run bash "$(basename "$(cd "$I" && pwd)")/install.sh" --help
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"bash install.sh install"* ]]
+}

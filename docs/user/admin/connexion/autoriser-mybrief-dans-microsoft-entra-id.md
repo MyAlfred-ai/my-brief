@@ -77,10 +77,10 @@ la liaison **entière** si une seule autorisation manque — OneDrive compris, m
 que lui.
 
 **Si votre annuaire refuse `Sites.ReadWrite.All`**, ne la retirez pas de l'inscription : désactivez
-**Proposer les bibliothèques SharePoint** dans **Administration → Actions**, carte **Compte relié**.
-myBrief cesse alors de la demander, et vos utilisateurs relient leur compte pour Outlook et OneDrive —
-voir [Choisir le compte relié](../actions/choisir-le-compte-relie.md). C'est la seule des trois qui
-s'écarte ainsi.
+**Proposer les bibliothèques SharePoint** dans **Administration → Capacités → Actions**, tuile **Compte
+relié**. myBrief cesse alors de la demander, et vos utilisateurs relient leur compte pour Outlook et
+OneDrive — voir [Choisir le compte relié](../actions/choisir-le-compte-relie.md). C'est la seule des
+trois qui s'écarte ainsi.
 
 Les comptes reliés **avant** l'ajout de `Sites.ReadWrite.All` n'en disposent pas non plus : ils
 déposent dans OneDrive, pas dans SharePoint, jusqu'à ce qu'ils relient leur compte de nouveau.
@@ -98,14 +98,14 @@ chacun si votre annuaire l'autorise.
 | **Bibliothèques SharePoint** | myBrief ne propose que celles des sites que la personne **suit** dans SharePoint. |
 | **Invités de votre annuaire** | Ils se connectent, mais n'envoient ni ne déposent par un compte relié : leur boîte et leur OneDrive dépendent de leur propre organisation. |
 | **Comptes Microsoft personnels** | Refusés : l'inscription n'accepte que votre annuaire. |
-| **Le secret expire** | À l'échéance, la connexion et les envois s'arrêtent : créez un secret, collez sa valeur dans **Administration → Authentification**, carte **Connexion avec Microsoft Entra ID**, puis supprimez l'ancien. |
+| **Le secret expire** | À l'échéance, la connexion et les envois s'arrêtent : créez un secret, collez sa valeur dans **Administration → Organisation → Authentification**, pastille **Microsoft** de la carte **Page de connexion**, puis supprimez l'ancien. |
 | **Couper l'accès de myBrief** | Pour tout l'annuaire : **Applications d'entreprise → myBrief → Propriétés → Activé pour que les utilisateurs se connectent ? : Non**. **Déconnecter**, dans myBrief, oublie le compte relié sans retirer l'accord chez Microsoft : chacun le retire depuis son compte Microsoft. |
 
 ## Vérifier
 
-1. **Administration → Authentification**, carte **Page de connexion** : **Tester** sur **Continuer avec
-   Microsoft**.
-2. Avec un compte **sans rôle d'administrateur** : **Ma configuration → Connexion → Connecter mon
+1. **Administration → Organisation → Authentification**, carte **Page de connexion** : dépliez la
+   pastille **Microsoft**, puis **Tester**.
+2. Avec un compte **sans rôle d'administrateur** : **Réglages → Comptes connectés → Connecter mon
    compte Microsoft**, puis **Tester l'envoi** et **Tester le dépôt**.
 3. Dans **Entreposer**, la fenêtre de choix du dossier propose les bibliothèques des sites suivis.
 

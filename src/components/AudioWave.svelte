@@ -31,8 +31,15 @@
    * 22 px dans la barre du téléphone) ; l'amplitude est un scaleY par barre.
    * Sans analyser (micro pas encore ouvert, test) : des barres CSS ondulent
    * à hauteurs fixes.
+   *
+   * Ne tourne que VISIBLE à l'écran : le dock et la barre du téléphone portent
+   * chacun une onde, montées ensemble pendant la réunion, l'une masquée par une
+   * media query. Les deux boucles tournaient, et comme elles nourrissent la
+   * même trace (module), l'onde visible recevait deux barres par pas et
+   * défilait deux fois trop vite. L'IntersectionObserver voit le
+   * `display: none` (et l'onde sortie de l'écran) : la boucle s'arrête.
    */
-  import { onDestroy } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
 
   export let analyser = null;
   /** Tourne seulement quand c'est vrai (pas pendant la pause). */
@@ -54,6 +61,18 @@
   let hold = 0; // pic du pas en cours
   let lastPush = 0;
   let rafId = null;
+  let el;
+  // Sans IntersectionObserver (jsdom, très vieux navigateur) : visible.
+  let onScreen = typeof IntersectionObserver !== 'function';
+
+  onMount(() => {
+    if (onScreen) return;
+    const observer = new IntersectionObserver((entries) => {
+      onScreen = entries[entries.length - 1].isIntersecting;
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  });
 
   function frame(now) {
     rafId = null;
@@ -78,6 +97,9 @@
       sharedAnalyser = analyser;
       bars = history.reset();
       tracker = createLevelTracker();
+    } else {
+      // Reprise (pause, ou l'autre onde vient de tourner) : la trace commune.
+      bars = history.items;
     }
     lastPush = 0;
     hold = 0;
@@ -91,11 +113,11 @@
   }
   onDestroy(stop);
 
-  $: if (active && analyser) start();
+  $: if (active && analyser && onScreen) start();
   else stop();
 </script>
 
-<div class="wave" role="img" aria-label={label}>
+<div class="wave" role="img" aria-label={label} bind:this={el}>
   {#if analyser}
     <div class="wave-track" style="transform:translateX({shift.toFixed(2)}px)">
       {#each bars as b (b.id)}

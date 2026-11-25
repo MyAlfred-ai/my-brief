@@ -9,6 +9,7 @@
  */
 import { lineGroups, pageIndexOf, paginate, slicesOf } from './paginate.js';
 import { pdfFontName } from './fonts.js';
+import { colorAt } from './text.js';
 
 export const PAGE = { width: 210, height: 297, margin: 15, footer: 15 };
 
@@ -46,10 +47,11 @@ export const usedFontStyles = (layout) =>
  *
  * @param {import('jspdf').jsPDF} pdf - document vide, en mm, polices déclarées
  * @param {{width: number, items: object[]}} layout
- * @param {{footerText: string, metrics: {width: Function}}} options
+ * @param {{footerText: string, metrics: {width: Function}, chrome?: PageChrome|null}} options
+ *   - `chrome` : habillage à la marque (cf. drawPageFrame), absent = pied d'origine
  * @returns {number} nombre de pages
  */
-export function drawLayout(pdf, layout, { footerText, metrics }) {
+export function drawLayout(pdf, layout, { footerText, metrics, chrome = null }) {
   const mmPerPx = (PAGE.width - 2 * PAGE.margin) / layout.width;
   const pageHeight = contentHeightMm() / mmPerPx;
   const pages = paginate(lineGroups(layout.items.filter(isAtom)), pageHeight);
@@ -91,7 +93,7 @@ export function drawLayout(pdf, layout, { footerText, metrics }) {
       }
     }
     for (const run of textRuns(layer.texts, metrics)) drawText(pdf, run, x, y, mmPerPx);
-    drawFooter(pdf, index + 1, pages.length, footerText);
+    drawPageFrame(pdf, index + 1, pages.length, footerText, chrome);
   });
 
   return pages.length;
@@ -134,9 +136,94 @@ export function textRuns(texts, metrics) {
 }
 
 function drawRect(pdf, item, x, y, mm) {
+  if (item.gradient) {
+    drawGradientRect(pdf, {
+      x: x(item.x),
+      y: y(item.top, item.offset),
+      width: mm(item.width),
+      height: mm(item.bottom - item.top),
+      // La boîte entière, sur la même page virtuelle que le morceau.
+      ref: {
+        x: x(item.span.x),
+        y: y(item.span.top, item.offset),
+        width: mm(item.span.width),
+        height: mm(item.span.height),
+      },
+      ...item.gradient,
+    });
+    return;
+  }
   if (!item.color) return; // couleur transparente
   pdf.setFillColor(...item.color);
   pdf.rect(x(item.x), y(item.top, item.offset), mm(item.width), mm(item.bottom - item.top), 'F');
+}
+
+/** Largeur visée d'une bande de dégradé, en mm : sous le pouvoir séparateur de l'œil à l'impression. */
+const BAND_MM = 0.5;
+/** Plafond de bandes par dégradé : au-delà, le fichier grossit sans que l'œil y gagne. */
+const MAX_BANDS = 240;
+/**
+ * Chevauchement de deux bandes voisines : bord à bord, l'anticrénelage de
+ * certains lecteurs (pdf.js, Aperçu) laisse passer un fil de fond entre elles.
+ */
+const BAND_OVERLAP_MM = 0.12;
+
+/**
+ * Bandes d'un dégradé le long d'un axe, en mm.
+ *
+ * Le dégradé est PEINT en aplats étroits plutôt que décrit par un motif de
+ * dégradé du PDF : les aplats se lisent pareil partout (Acrobat, Aperçu,
+ * pdf.js, poppler, impression), le motif de jsPDF passe par son API avancée,
+ * en repère inversé, sans garantie dans le rendu de secours. Deux bandes
+ * voisines de même couleur fusionnent : une marque à deux teintes proches ne
+ * coûte que quelques aplats.
+ *
+ * @param {{start: number, length: number, refStart: number, refLength: number,
+ *          stops: Array<{at: number, color: number[]}>}} span
+ *   - le morceau à peindre, et la boîte entière à laquelle les couleurs se rapportent
+ * @returns {Array<{from: number, size: number, color: number[]}>}
+ */
+export function gradientBands({ start, length, refStart, refLength, stops }) {
+  if (!(length > 0)) return [];
+  const count = Math.max(1, Math.min(MAX_BANDS, Math.ceil(length / BAND_MM)));
+  const size = length / count;
+  const bands = [];
+  for (let i = 0; i < count; i++) {
+    const mid = start + (i + 0.5) * size;
+    const t = refLength > 0 ? Math.min(1, Math.max(0, (mid - refStart) / refLength)) : 0;
+    const color = colorAt(stops, t);
+    const last = bands[bands.length - 1];
+    if (last && String(last.color) === String(color)) last.size += size;
+    else bands.push({ from: start + i * size, size, color });
+  }
+  return bands;
+}
+
+/**
+ * Rectangle en dégradé (mm), le long de `axis` : 'x' de gauche à droite,
+ * 'y' de haut en bas.
+ *
+ * @param {import('jspdf').jsPDF} pdf
+ * @param {{x: number, y: number, width: number, height: number, axis: 'x'|'y',
+ *          stops: Array<{at: number, color: number[]}>,
+ *          ref?: {x: number, y: number, width: number, height: number}}} rect
+ */
+export function drawGradientRect(pdf, { x, y, width, height, axis, stops, ref }) {
+  const box = ref || { x, y, width, height };
+  const horizontal = axis === 'x';
+  const bands = gradientBands(
+    horizontal
+      ? { start: x, length: width, refStart: box.x, refLength: box.width, stops }
+      : { start: y, length: height, refStart: box.y, refLength: box.height, stops },
+  );
+  const end = horizontal ? x + width : y + height;
+  for (const band of bands) {
+    // Le chevauchement déborde sur la bande suivante, jamais hors du rectangle.
+    const size = Math.min(band.size + BAND_OVERLAP_MM, end - band.from);
+    pdf.setFillColor(...band.color);
+    if (horizontal) pdf.rect(band.from, y, size, height, 'F');
+    else pdf.rect(x, band.from, width, size, 'F');
+  }
 }
 
 function drawText(pdf, run, x, y, mmPerPx) {
@@ -167,8 +254,91 @@ function drawImage(pdf, item, x, y, mm) {
 }
 
 /**
- * Pied de page : filet, mention de MyBrief, numéro. Identique à la version
- * image — partagé avec elle (cf. utils/pdf.js).
+ * @typedef {object} PageChrome - habillage à la marque d'une page
+ * @property {number[]} from - [r, g, b] du début du dégradé (couleur primaire)
+ * @property {number[]} to - [r, g, b] de sa fin (couleur secondaire)
+ * @property {{data: string, width: number, height: number}|null} [logo]
+ *   - logo de MyBrief en PNG (cf. logo.js) ; ses dimensions ne servent qu'au rapport
+ */
+
+/** Bande en dégradé en tête de chaque page, à fond perdu (mm). */
+const BAND_HEIGHT = 2.4;
+/** Hauteur du logo de MyBrief au pied (mm) : présent, sans rivaliser avec le contenu. */
+const FOOT_LOGO = 6.5;
+/** Gris du pied : lisible, en retrait du texte (slate-500). */
+const FOOT_INK = [100, 116, 139];
+
+/**
+ * Cadre de chaque page. Avec un habillage : bande en dégradé de la marque en
+ * tête, et au pied un filet du même dégradé, le logo de MyBrief, la mention et
+ * le numéro de page. Le tout se loge dans les marges et la réserve du pied
+ * (PAGE) : la zone de texte, que le Pagimètre rejoue, ne bouge pas d'un
+ * millimètre. Sans habillage (rapport des statistiques), le pied d'origine.
+ *
+ * Partagé avec le rendu image de secours (cf. utils/pdf.js).
+ *
+ * @param {import('jspdf').jsPDF} pdf
+ * @param {number} pageNum
+ * @param {number} totalPages
+ * @param {string} footerText
+ * @param {PageChrome|null} [chrome]
+ */
+export function drawPageFrame(pdf, pageNum, totalPages, footerText, chrome = null) {
+  if (!chrome) {
+    drawFooter(pdf, pageNum, totalPages, footerText);
+    return;
+  }
+  const { width, height, margin, footer } = PAGE;
+  const stops = [
+    { at: 0, color: chrome.from },
+    { at: 1, color: chrome.to },
+  ];
+  drawGradientRect(pdf, { x: 0, y: 0, width, height: BAND_HEIGHT, axis: 'x', stops });
+
+  const ruleY = height - footer;
+  drawGradientRect(pdf, {
+    x: margin,
+    y: ruleY,
+    width: width - 2 * margin,
+    height: 0.45,
+    axis: 'x',
+    stops,
+  });
+
+  const logoTop = ruleY + 3;
+  const middle = logoTop + FOOT_LOGO / 2;
+  let textX = margin;
+  if (chrome.logo?.data) {
+    const ratio =
+      chrome.logo.width > 0 && chrome.logo.height > 0 ? chrome.logo.width / chrome.logo.height : 1;
+    const logoWidth = FOOT_LOGO * ratio;
+    // Alias fixe : jsPDF n'embarque l'image qu'une fois pour toutes les pages.
+    pdf.addImage(
+      chrome.logo.data,
+      'PNG',
+      margin,
+      logoTop,
+      logoWidth,
+      FOOT_LOGO,
+      'mybrief-logo',
+      'SLOW',
+    );
+    textX += logoWidth + 2.5;
+  }
+
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(7.5);
+  pdf.setTextColor(...FOOT_INK);
+  // Ligne de base : la hauteur de capitale d'Helvetica (0,718 em) centrée sur le logo.
+  const baseline = middle + (0.718 * 7.5) / PT_PER_MM / 2;
+  pdf.text(footerText, textX, baseline);
+  const pageLabel = `${pageNum} / ${totalPages}`;
+  pdf.text(pageLabel, width - margin - pdf.getTextWidth(pageLabel), baseline);
+}
+
+/**
+ * Pied de page d'origine : filet, mention de MyBrief, numéro. Identique à la
+ * version image — partagé avec elle (cf. utils/pdf.js).
  */
 export function drawFooter(pdf, pageNum, totalPages, footerText) {
   const { width, height, margin, footer } = PAGE;

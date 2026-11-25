@@ -117,3 +117,27 @@ export function afterFailedGeneration(versions, activeVersionId, pendingId, mess
     summaryText: active ? normalizeSummaryHtml(active.html) : message,
   };
 }
+
+/**
+ * Heure de début envoyée à /resume, en ISO : celle de l'enregistrement en
+ * cours, sinon estimée (maintenant moins la durée) quand la réunion a une
+ * transcription et une durée — sinon null. Sortie d'App.svelte (plafonné).
+ *
+ * @param {number|null} recordingStartTime - horodatage ms du début d'enregistrement
+ * @param {boolean} hasTranscript
+ * @param {number} durationSeconds - durée totale de la réunion
+ * @param {number} [now]
+ * @returns {string|null}
+ */
+export function meetingStartIso(
+  recordingStartTime,
+  hasTranscript,
+  durationSeconds,
+  now = Date.now(),
+) {
+  if (recordingStartTime) return new Date(recordingStartTime).toISOString();
+  if (hasTranscript && durationSeconds > 0) {
+    return new Date(now - durationSeconds * 1000).toISOString();
+  }
+  return null;
+}

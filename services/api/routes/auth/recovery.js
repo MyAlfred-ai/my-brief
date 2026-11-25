@@ -10,6 +10,11 @@ import { isSameOrigin } from '../../lib/auth/originCheck.js';
 import { normalizeEmail } from '../../lib/repositories/users.js';
 import { fail } from '../../lib/errors.js';
 import { forgotBody, resetBody } from './schemas.js';
+import { AUTH_BODY_LIMIT } from '../../lib/authPlugin.js';
+
+// Routes publiques : corps de quelques Ko (lib/authPlugin.js).
+const FORGOT_ROUTE = { schema: { body: forgotBody }, bodyLimit: AUTH_BODY_LIMIT };
+const RESET_ROUTE = { schema: { body: resetBody }, bodyLimit: AUTH_BODY_LIMIT };
 
 export default function recoveryRoutes(app) {
   const forgotByEmail = createRateLimiter(app.config.rateLimits.forgotByEmail);
@@ -26,7 +31,7 @@ export default function recoveryRoutes(app) {
    * compte désactivé, envoi en échec) : toute réponse différenciée dirait à un
    * inconnu si l'adresse existe.
    */
-  app.post('/forgot-password', { schema: { body: forgotBody } }, async (req, reply) => {
+  app.post('/forgot-password', FORGOT_ROUTE, async (req, reply) => {
     if (!isSameOrigin(req)) return fail(reply, 403, 'forbidden');
     if (!app.mailer?.enabled) return fail(reply, 501, 'password_reset_disabled');
 
@@ -62,7 +67,7 @@ export default function recoveryRoutes(app) {
     return reply.code(202).send({ ok: true });
   });
 
-  app.post('/reset-password', { schema: { body: resetBody } }, async (req, reply) => {
+  app.post('/reset-password', RESET_ROUTE, async (req, reply) => {
     if (!isSameOrigin(req)) return fail(reply, 403, 'forbidden');
 
     const ipCheck = resetByIp.hit(req.ip || 'unknown');

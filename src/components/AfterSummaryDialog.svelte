@@ -36,7 +36,7 @@
    * dans la liste du tag choisi, sinon dans la liste par défaut — et la note
    * sous le champ le dit avant qu'on valide. Une adresse ajoutée dans cette
    * fenêtre peut s'y retirer (faute de frappe) ; les autres se règlent dans
-   * « Mes tags » ou « Ma configuration ».
+   * « Mes tags » ou « Réglages ».
    *
    * Le fond porte `.asd-backdrop` : c'est ce que touche le bouton retour
    * d'Android (utils/backNavigation.js).

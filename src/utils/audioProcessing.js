@@ -1,6 +1,7 @@
 /**
  * Traitement des fichiers audio importés
  */
+import { recordUrl } from './recordUrl.js';
 
 /**
  * Extrait le texte de transcription d'une réponse de /record, dont le format
@@ -103,7 +104,7 @@ export async function processAudio(config) {
       isFile: audioBlob instanceof File,
     });
 
-    const response = await fetch(`${apiBaseUrl}/record`, {
+    const response = await fetch(recordUrl(apiBaseUrl), {
       method: 'POST',
       body: formData,
     });

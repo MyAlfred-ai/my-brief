@@ -9,6 +9,7 @@ import adminGroupsRoutes from './groups.js';
 import adminSettingsRoutes from './settings.js';
 import adminStatsRoutes from './stats.js';
 import adminMyBrainRoutes from './myBrain.js';
+import adminAiHelpRoutes from './aiHelp.js';
 import adminConfigChecksRoutes from './configChecks.js';
 
 export default function adminRoutes(app) {
@@ -20,6 +21,7 @@ export default function adminRoutes(app) {
       adminSettingsRoutes(admin);
       adminStatsRoutes(admin);
       adminMyBrainRoutes(admin);
+      adminAiHelpRoutes(admin);
       adminConfigChecksRoutes(admin);
     },
     { prefix: '/admin' },

@@ -16,7 +16,11 @@ import { EMAIL_PATTERN } from '../../lib/auth/emailPattern.js';
 import { MAX_RECIPIENTS_CEILING } from '../../lib/actions/recipients.js';
 import { TEMPLATE_MAX } from '../../lib/actions/templating.js';
 import { TAG_FOLDERS_MAX, TAG_RECIPIENTS_MAX } from '../../lib/repositories/userActions.js';
-import { TRANSCRIPTION_MODELS } from '../../lib/transcriptionModels.js';
+import {
+  TRANSCRIPTION_MODELS,
+  KEYED_PROVIDERS,
+  providerKeyField,
+} from '../../lib/transcriptionModels.js';
 import { SUMMARY_MODELS } from '../../lib/summaryModels.js';
 import { INFOGRAPHIC_IMAGE_MODELS } from '../../lib/infographicModels.js';
 import {
@@ -31,8 +35,9 @@ import {
   VARIANTS_MAX,
   TERM_MAX,
   REPLACEMENT_MAX,
+  USER_CORRECTIONS_MAX,
 } from '../../lib/transcriptCorrections.js';
-import { GROUPS_MAX, QUOTA_MINUTES_MAX } from '../../lib/repositories/groups.js';
+import { QUOTA_MINUTES_MAX } from '../../lib/repositories/groups.js';
 import {
   DETECTION_SENSITIVITIES,
   DETECTION_WINDOW_MIN,
@@ -77,13 +82,14 @@ export const changePasswordBody = {
 };
 
 /**
- * Groupes d'un compte. Une liste VIDE est acceptée : le serveur la lit comme
- * « le groupe par défaut » (cf. lib/repositories/groups.js) — c'est ce que le
- * formulaire envoie quand l'administrateur décoche tout.
+ * Groupe d'un compte : un tableau d'UN identifiant (cf.
+ * lib/repositories/groups.js — un seul groupe par compte, et pourquoi un
+ * tableau). Une liste VIDE est acceptée : le serveur la lit comme « le groupe
+ * par défaut ».
  */
 const groupIds = {
   type: 'array',
-  maxItems: GROUPS_MAX,
+  maxItems: 1,
   items: { type: 'string', maxLength: 64 },
 };
 
@@ -134,6 +140,12 @@ const meetingMinutesPerMonth = {
 
 /** Droit de générer des infographies (cf. `rightsOf`, lib/repositories/groups.js). */
 const infographicAllowed = { type: 'boolean' };
+/**
+ * Droits de l'Aide IA d'une réunion, et de la laisser lire myBrain (cf.
+ * `rightsOf`). Le second ne vaut que si le premier est accordé.
+ */
+const aiHelpAllowed = { type: 'boolean' };
+const aiHelpMyBrainAllowed = { type: 'boolean' };
 
 export const adminGroupCreateBody = {
   type: 'object',
@@ -145,6 +157,8 @@ export const adminGroupCreateBody = {
     color: { type: 'string', maxLength: 32 },
     meetingMinutesPerMonth,
     infographicAllowed,
+    aiHelpAllowed,
+    aiHelpMyBrainAllowed,
   },
 };
 
@@ -159,6 +173,8 @@ export const adminGroupUpdateBody = {
     color: { type: 'string', maxLength: 32 },
     meetingMinutesPerMonth,
     infographicAllowed,
+    aiHelpAllowed,
+    aiHelpMyBrainAllowed,
   },
 };
 
@@ -269,6 +285,13 @@ export const adminAiSettingsBody = {
   additionalProperties: false,
   properties: {
     apiKey: { type: 'string', maxLength: 600 },
+    // Clés des fournisseurs de transcription tiers (`mistralApiKey`…). Vide = retirée.
+    ...Object.fromEntries(
+      KEYED_PROVIDERS.map((provider) => [
+        providerKeyField(provider),
+        { type: 'string', maxLength: 600 },
+      ]),
+    ),
     transcriptionModel: { type: 'string', enum: ['', ...TRANSCRIPTION_MODELS] },
     // Modèle qui rédige le compte rendu. Liste FERMÉE alors que
     // /chat/completions accepterait n'importe quoi : une coquille ne
@@ -305,6 +328,12 @@ export const adminBrandingSettingsBody = {
       maxLength: BRANDING_LOGO_MAX,
       pattern: '^$|^data:image/(png|jpeg|jpg|webp|gif|svg\\+xml);base64,',
     },
+    // Logo de l'ENTREPRISE (en tête des infographies) : même contrat que `logo`.
+    companyLogo: {
+      type: 'string',
+      maxLength: BRANDING_LOGO_MAX,
+      pattern: '^$|^data:image/(png|jpeg|jpg|webp|gif|svg\\+xml);base64,',
+    },
     tagline: { type: 'string', maxLength: BRANDING_TAGLINE_MAX },
     taglineEn: { type: 'string', maxLength: BRANDING_TAGLINE_MAX },
     primaryColor: { type: 'string', pattern: '^$|^#[0-9a-fA-F]{6}$' },
@@ -313,7 +342,7 @@ export const adminBrandingSettingsBody = {
 };
 
 /**
- * Vocabulaire et contexte de l'organisation (onglet Configuration).
+ * Vocabulaire et contexte de l'organisation (rubrique Organisation).
  *
  * Un seul champ, même contrat que les autres réglages : absent = inchangé,
  * vide = plus aucun contexte joint aux résumés.
@@ -326,8 +355,23 @@ export const adminOrgContextSettingsBody = {
   },
 };
 
+/** Une ligne de corrections : ses écritures fautives, et le mot juste. */
+const correctionRule = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['from', 'to'],
+  properties: {
+    from: {
+      type: 'array',
+      maxItems: VARIANTS_MAX,
+      items: { type: 'string', maxLength: TERM_MAX },
+    },
+    to: { type: 'string', maxLength: REPLACEMENT_MAX },
+  },
+};
+
 /**
- * Corrections automatiques de la transcription (onglet Configuration).
+ * Corrections automatiques de la transcription (rubrique Organisation).
  *
  * La liste ENTIÈRE à chaque enregistrement ; absente = inchangée, vide = plus
  * aucune correction. Les plafonds sont refusés ici (400) plutôt que tronqués
@@ -340,20 +384,46 @@ export const adminTranscriptCorrectionsBody = {
   type: 'object',
   additionalProperties: false,
   properties: {
-    rules: {
+    rules: { type: 'array', maxItems: CORRECTIONS_MAX, items: correctionRule },
+  },
+};
+
+/**
+ * « Mots remplacés » d'un compte (Réglages → Pendant la réunion). Même contrat que
+ * la liste de l'organisation : la liste ENTIÈRE, absente = inchangée, et un
+ * dépassement refusé plutôt que tronqué. `learn` : la laisser se remplir
+ * depuis les notes.
+ */
+export const userTranscriptCorrectionsBody = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    rules: { type: 'array', maxItems: USER_CORRECTIONS_MAX, items: correctionRule },
+    learn: { type: 'boolean' },
+  },
+};
+
+/**
+ * Remplacements écrits dans les notes d'une réunion, à verser dans la liste du
+ * compte : une écriture fautive par entrée. Le plafond borne la requête — une
+ * note ne porte pas plus de consignes que la liste n'a de place.
+ */
+export const userTranscriptCorrectionsLearnBody = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['replacements'],
+  properties: {
+    replacements: {
       type: 'array',
-      maxItems: CORRECTIONS_MAX,
+      minItems: 1,
+      maxItems: USER_CORRECTIONS_MAX,
       items: {
         type: 'object',
         additionalProperties: false,
         required: ['from', 'to'],
         properties: {
-          from: {
-            type: 'array',
-            maxItems: VARIANTS_MAX,
-            items: { type: 'string', maxLength: TERM_MAX },
-          },
-          to: { type: 'string', maxLength: REPLACEMENT_MAX },
+          from: { type: 'string', minLength: 1, maxLength: TERM_MAX },
+          to: { type: 'string', minLength: 1, maxLength: REPLACEMENT_MAX },
         },
       },
     },
@@ -427,7 +497,12 @@ export const userActionDetectionTestBody = {
 export const adminTranscriptionTestBody = {
   type: ['object', 'null'],
   additionalProperties: false,
-  properties: { model: { type: 'string', enum: TRANSCRIPTION_MODELS } },
+  properties: {
+    model: { type: 'string', enum: TRANSCRIPTION_MODELS },
+    // Clé tierce collée mais pas encore enregistrée, celle du fournisseur du
+    // modèle testé : le test l'éprouve avec lui, sans jamais la stocker.
+    providerKey: { type: 'string', maxLength: 600 },
+  },
 };
 
 /**
@@ -439,7 +514,12 @@ export const adminSummaryModelTestBody = {
   // client quand il n'a rien à passer (cf. apiClient).
   type: ['object', 'null'],
   additionalProperties: false,
-  properties: { model: { type: 'string', enum: SUMMARY_MODELS } },
+  properties: {
+    model: { type: 'string', enum: SUMMARY_MODELS },
+    // Clé Mistral collée mais pas encore enregistrée, pour un modèle Mistral :
+    // éprouvée avec lui, jamais stockée (même contrat que la transcription).
+    providerKey: { type: 'string', maxLength: 600 },
+  },
 };
 
 /** Visibilité des trois actions d'un contexte (après réunion / après résumé). */
@@ -652,7 +732,7 @@ export const adminStatsQuery = {
 };
 
 /**
- * Période de « Mes statistiques » : le mois du crédit, trois mois, douze mois,
+ * Période de « Usage & crédits » : le mois du crédit, trois mois, douze mois,
  * depuis toujours — les quatre boutons de l'écran (cf. lib/personalStats.js).
  */
 const personalRange = { type: 'string', enum: PERSONAL_RANGES };

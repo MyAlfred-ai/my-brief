@@ -1,6 +1,6 @@
 <script>
   /**
-   * Cadran du crédit de temps — « Mes statistiques ».
+   * Cadran du crédit de temps — « Usage & crédits ».
    *
    * Un RÉSERVOIR : plein le 1er du mois, vide quand le crédit est épuisé, comme
    * l'anneau de l'avatar (ui/CreditAvatar.svelte). L'arc se remplit de ce qui RESTE ; sa

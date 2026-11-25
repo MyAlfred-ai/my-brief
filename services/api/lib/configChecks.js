@@ -2,7 +2,7 @@
  * Diagnostic de configuration — ce qui reste à régler, et OÙ le régler.
  *
  * Alimente les pastilles de l'interface : sur chaque section de
- * l'administration et de « Ma configuration », et sur les boutons qui ouvrent
+ * l'administration et de « Réglages », et sur les boutons qui ouvrent
  * ces panneaux. Chaque constat nomme la SECTION où il se corrige, un code
  * stable que l'écran traduit (src/config/uiText.js → `configChecks`), un niveau
  * et ses variables. Aucune phrase ne sort d'ici, même règle que lib/errors.js.
@@ -46,6 +46,13 @@ import {
 } from './connections/providers.js';
 import { effectivePricing, pricingProvenance } from './costs/pricing.js';
 import { activeModels } from './costs/estimate.js';
+import {
+  KEYED_PROVIDERS,
+  PROVIDER_LABELS,
+  providerKeyField,
+  transcriptionProvider,
+} from './transcriptionModels.js';
+import { summaryProvider } from './summaryModels.js';
 import { ownerFilter } from './ownerScope.js';
 import { hasDestination } from './actions/resolve.js';
 import { TAGS_COLLECTION } from '../routes/tags.js';
@@ -163,6 +170,19 @@ async function probeOpenAiKey(app, key) {
   }
 }
 
+/** Même règle pour la clé d'un fournisseur tiers : seul un 401 la condamne. */
+async function probeProviderKey(app, provider, key) {
+  try {
+    await app.verifyProviderKey(provider, key);
+    return { failed: false };
+  } catch (err) {
+    if (err instanceof UpstreamError && err.status === 401) {
+      return { failed: true, code: 'ai_provider_key_rejected' };
+    }
+    return { failed: true };
+  }
+}
+
 /** Échecs de myBrain qui disent une configuration à revoir, pas un incident. */
 const MYBRAIN_UNREACHABLE = new Set([
   'mybrain_unreachable',
@@ -257,6 +277,43 @@ export async function organizationChecks(
     );
   }
 
+  // ── Transcription ou rédaction par un tiers : la clé de son fournisseur,
+  // éprouvée comme celle d'OpenAI. Seulement pour un fournisseur en service :
+  // une clé gardée sans usage ne casse rien. Un code PAR USAGE — la même clé
+  // Mistral peut porter les deux, et la bulle doit dire ce qui s'arrête.
+  const running = activeModels(aiDoc, env.models || {});
+  const usages = [
+    {
+      provider: transcriptionProvider(running.transcription),
+      missing: 'ai_provider_key_missing',
+      rejected: 'ai_provider_key_rejected',
+    },
+    {
+      provider: summaryProvider(running.summary),
+      missing: 'ai_summary_provider_key_missing',
+      rejected: 'ai_summary_provider_key_rejected',
+    },
+  ];
+  for (const { provider, missing, rejected } of usages) {
+    if (!KEYED_PROVIDERS.includes(provider)) continue;
+    const providerKey = aiDoc[providerKeyField(provider)] || '';
+    const vars = { provider: PROVIDER_LABELS[provider] };
+    if (!providerKey) {
+      add('ai', missing, 'error', vars);
+      continue;
+    }
+    live.push(
+      withinBudget(
+        cache.remember(`${provider}:${fingerprint(providerKey)}`, () =>
+          probeProviderKey(app, provider, providerKey),
+        ),
+        budgetMs,
+      ).then((verdict) => {
+        if (verdict?.code) add('ai', rejected, 'error', vars);
+      }),
+    );
+  }
+
   // ── Actions : un bouton coché qui n'apparaîtra chez personne. ──
   const providerId = actions.connections.provider;
   const toggles = [actions.transcription, actions.summary];
@@ -305,11 +362,25 @@ export async function organizationChecks(
   }
 
   // ── Configuration : une identité jamais réglée. Un conseil, pas une panne. ──
-  const brandingSet = ['logo', 'tagline', 'taglineEn', 'primaryColor', 'secondaryColor'];
+  const brandingSet = [
+    'logo',
+    'companyLogo',
+    'tagline',
+    'taglineEn',
+    'primaryColor',
+    'secondaryColor',
+  ];
   if (!brandingSet.some((field) => branding[field])) {
     add('branding', 'branding_default', 'tip');
   }
-  if (!String(orgContext.context || '').trim()) add('branding', 'org_context_empty', 'tip');
+  // Le logo d'entreprise ouvre chaque infographie : sans lui, c'est celui de
+  // l'application qui s'y pose — visible par tous, d'où un avertissement et
+  // pas un simple conseil.
+  if (!branding.companyLogo) add('branding', 'company_logo_missing', 'warning');
+  // Le vocabulaire a sa page à lui, « Entreprise » (`company`), depuis que
+  // l'identité de l'installation tient en deux pages : la pastille se pose là
+  // où il se saisit, pas sur « Marque & apparence ».
+  if (!String(orgContext.context || '').trim()) add('company', 'org_context_empty', 'tip');
 
   await Promise.all(live);
   return found.sort(byLevel);

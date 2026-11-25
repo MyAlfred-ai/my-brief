@@ -26,21 +26,26 @@ toucher au serveur. Chaque étape renvoie à sa page pour le détail.
    ne se ferme pas avant : **Mot de passe actuel** — le provisoire, celui du résumé —, **Nouveau mot
    de passe**, au moins 10 caractères, sans votre adresse, **Confirmer le nouveau mot de passe**, puis
    **Enregistrer**.
-3. **Enregistrez la clé OpenAI** : votre nom, en bas de la colonne de gauche — votre avatar, en haut
-   à droite, sur téléphone —, puis **Administration** et l'onglet **IA**. Sans elle, ni transcription, ni résumé, ni détection d'actions.
+3. **Enregistrez la clé OpenAI** : le bouton **Admin**, en bas de la colonne de gauche — sur
+   téléphone, votre avatar, en haut à droite, puis **Admin** —, ouvre l'administration, sur son
+   **Tableau de bord** ; la page est **Modèles IA → Clés API**. Tant que la clé manque, le lien
+   « Modèles IA › Clés API » de la carte **Points à régler** y mène aussi. Sans elle, ni transcription,
+   ni résumé, ni détection d'actions.
    → [Enregistrer la clé OpenAI](../ia/enregistrer-la-cle-openai.md)
-4. **Ouvrez la connexion** : l'onglet **Authentification** — mot de passe, Google, Microsoft — et les
-   domaines de l'organisation. Gardez au moins un compte administrateur qui entre par mot de passe.
+4. **Ouvrez la connexion** : la page **Organisation → Authentification** — mot de passe, Google,
+   Microsoft — et les domaines de l'organisation. Gardez au moins un compte administrateur qui entre
+   par mot de passe.
    → [La connexion](../connexion/index.md)
 5. **Créez les premiers comptes**, ou laissez les domaines autorisés les créer à la première connexion,
-   dans l'onglet **Utilisateurs**. Donnez le rôle **Administrateur** à une deuxième personne : avec un
-   seul compte administrateur, sa perte ferme l'administration à tous, et seul le serveur la rouvre.
+   sur la page **Personnes → Comptes**. Donnez le rôle **Administrateur** à une deuxième personne : avec
+   un seul compte administrateur, sa perte ferme l'administration à tous, et seul le serveur la rouvre.
    → [Gérer les comptes](../utilisateurs/gerer-les-comptes.md)
-6. **Renseignez le vocabulaire de l'organisation** — clients, produits, sigles — dans l'onglet
-   **Configuration**. L'IA s'en sert pour les comptes rendus et la détection d'actions.
+6. **Renseignez le vocabulaire de l'organisation** — clients, produits, sigles — sur la page
+   **Organisation → Entreprise**. L'IA s'en sert pour les comptes rendus et la détection d'actions.
    → [Renseigner le vocabulaire de l'organisation](../configuration/renseigner-le-vocabulaire-de-l-organisation.md)
-7. **Donnez à myBrief les couleurs de l'organisation** : logo, phrase d'accueil, couleurs, dans le
-   même onglet. → [Personnaliser l'apparence](../configuration/personnaliser-l-apparence.md)
+7. **Donnez à myBrief les couleurs de l'organisation** : logo, phrase d'accueil, couleurs, sur la
+   page **Organisation → Marque & apparence**.
+   → [Personnaliser l'apparence](../configuration/personnaliser-l-apparence.md)
 8. **Vérifiez avec un compte de test** : une courte réunion, son résumé, un envoi par mail.
 
 ## Résultat
@@ -48,8 +53,10 @@ toucher au serveur. Chaque étape renvoie à sa page pour le détail.
 La page de connexion propose les modes choisis, les comptes existent, et la réunion de test a sa
 transcription et son résumé. L'instance est en service.
 
-Votre nom ne porte plus de pastille rouge ni orange : il ne reste rien de cassé ni de proposé en vain.
-Les pastilles bleues sont des conseils — voir [Administration](../index.md), « Les pastilles ».
+Le bouton **Admin** ne porte plus de pastille rouge ni orange, et le **Tableau de bord** ne liste plus
+ni **Panne** ni **Réglage sans effet** : il ne reste rien de cassé ni de proposé en vain.
+Les pastilles bleues — **Conseil**, au Tableau de bord — sont des conseils : voir
+[Administration](../index.md), « Les pastilles ».
 
 ## Ensuite
 
@@ -65,7 +72,7 @@ Les pastilles bleues sont des conseils — voir [Administration](../index.md), �
 | Ce qui arrive | Quoi faire |
 |---|---|
 | « Adresse email ou mot de passe incorrect. » avec le mot de passe provisoire | Vérifiez-le d'abord dans `.env`, sur le serveur, à la ligne `ADMIN_SEED_PASSWORD`. S'il est juste, le compte d'amorçage n'a pas été créé — la base contenait déjà des comptes —, ou son mot de passe a déjà été changé. Désignez l'administrateur sur le serveur : `ADMIN_EMAILS`, voir [Installer myBrief sur le serveur](installer-mybrief-sur-le-serveur.md), « Les réglages du serveur ». |
-| **Administration** n'apparaît pas dans le menu de compte | Le compte n'a pas le rôle **Administrateur**. Même remède : `ADMIN_EMAILS` sur le serveur. |
+| Le bouton **Admin** n'apparaît pas à côté de **Réglages** | Le compte n'a pas le rôle **Administrateur**. Même remède : `ADMIN_EMAILS` sur le serveur. |
 | « Le mot de passe doit faire au moins 10 caractères. » | Choisissez-en un plus long. Il ne doit pas non plus contenir votre adresse, ni être trop courant. |
 | Transcription et résumé refusés, avec un message qui dit où régler la clé | Aucune clé OpenAI n'est enregistrée : étape 3. |
 | Le lien **Mot de passe oublié ?** est absent de la page de connexion | Aucun serveur d'envoi de mails n'est renseigné : c'est un réglage du serveur. En attendant, un administrateur réinitialise le mot de passe — voir [Réinitialiser un mot de passe](../utilisateurs/reinitialiser-un-mot-de-passe.md). |

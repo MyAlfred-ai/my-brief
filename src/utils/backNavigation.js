@@ -19,13 +19,14 @@
  *   - « Toujours en réunion ? » : toute fermeture y vaut « Arrêter et
  *     sauvegarder » (spec de l'invite) — un appui accidentel couperait la
  *     réunion ;
- *   - « Réunion interrompue » : toucher le fond y vaut « Abandonner ».
+ *   - « Réunion interrompue » : reprendre ou terminer, c'est à l'utilisateur
+ *     de le dire — le fond lui-même n'y décide plus rien.
  * Idem pour le changement de mot de passe imposé, qui n'a pas de sortie.
  *
- * Pourquoi une table plutôt qu'un Échap pour tout : App.svelte referme « Ma
- * configuration » sur N'IMPORTE quel Échap, avant les fenêtres qu'elle
- * contient — un Échap envoyé pour fermer un menu du panneau refermait le
- * panneau entier. Échap n'est donc utilisé que là où rien d'autre n'écoute.
+ * Pourquoi une table plutôt qu'un Échap pour tout : chaque calque a déjà son
+ * geste de fermeture, et tous n'écoutent pas Échap. Les panneaux, eux,
+ * l'écoutent (PanelShell) — mais seulement quand ils sont le calque du
+ * dessus : cf. `shellIsTopLayer`, qui lit cette même table.
  *
  * L'ordre de la table fait foi (le premier calque présent gagne) : du plus
  * haut au plus bas dans l'empilement, pas l'ordre du DOM — un menu du tiroir
@@ -44,7 +45,7 @@
  *   - `escape`   : Échap, pour les bulles qui l'écoutent, hors des panneaux.
  * @typedef {{selector: string, action: BackActionKind|{click: string}}} BackLayer
  *   `{click}` : toucher le DERNIER élément visible correspondant — les panneaux
- *   s'emboîtent (éditeur de template dans « Ma configuration ») et le dernier
+ *   s'emboîtent (éditeur de template dans « Réglages ») et le dernier
  *   dans le DOM est celui du dessus.
  */
 
@@ -69,13 +70,11 @@ export const BACK_LAYERS = [
   { selector: '.au-generated', action: { click: '.au-generated .au-primary' } },
   { selector: '.wn-backdrop', action: 'self' },
   { selector: '.welcome-modal-backdrop', action: 'self' },
-  { selector: '.history-modal-backdrop', action: 'self' },
   // ── Menus et bulles ────────────────────────────────────────────────────
   { selector: '.ts-menu', action: 'outside' },
   { selector: '.pa-menu', action: 'outside' },
   { selector: '.pt-dd-menu', action: 'outside' },
   { selector: '.ctx-menu', action: 'outside' },
-  { selector: '.sb-profile-menu', action: 'outside' },
   { selector: '.sb-tagmenu', action: 'outside' },
   { selector: '.te-help-popover', action: { click: '.te-help-btn[aria-expanded="true"]' } },
   { selector: '.spk-pop', action: 'escape' },
@@ -126,6 +125,24 @@ export function resolveBackAction(root, { isVisible = hasBox, layers = BACK_LAYE
  * @param {ReturnType<typeof resolveBackAction>} decision
  * @param {{minimize: () => void, doc?: Document}} ports
  */
+/**
+ * Ce panneau (« Réglages », Administration) est-il le calque du DESSUS ?
+ *
+ * C'est la question que pose PanelShell avant de se refermer sur Échap.
+ * App.svelte refermait « Réglages » sur n'importe quel Échap : celui qu'on
+ * tapait pour fermer une fenêtre ou un menu DU panneau emportait le panneau
+ * entier, et ce qu'on y avait saisi. La même table répond : tant qu'un calque
+ * est au-dessus — fenêtre, menu, panneau emboîté —, Échap n'est pas pour lui.
+ *
+ * @param {ParentNode} root - le document
+ * @param {Element} closeButton - le bouton « Fermer » de CE panneau
+ * @param {{isVisible?: (el: Element) => boolean, layers?: BackLayer[]}} [opts]
+ */
+export function shellIsTopLayer(root, closeButton, opts) {
+  const decision = resolveBackAction(root, opts);
+  return decision.action === 'click' && decision.target === closeButton;
+}
+
 export function performBackAction(decision, { minimize, doc = document }) {
   if (decision.action === 'click') decision.target.click();
   else if (decision.action === 'outside') doc.body.click();

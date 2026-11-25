@@ -52,16 +52,16 @@ phrase sous le champ dit où :
 - **aucun tag** : elle rejoint votre liste par défaut, et recevra aussi vos prochains comptes rendus sans
   tag.
 
-Une adresse ajoutée dans la fenêtre s'y retire par sa croix. Les autres se règlent dans **Ma
-configuration → Mes tags** ou **Envoi d'email** — voir [Envoyer par mail](envoyer-par-mail.md).
+Une adresse ajoutée dans la fenêtre s'y retire par sa croix. Les autres se règlent dans **Réglages →
+Mes tags** ou **Réglages → Après la réunion → Envoi d'email** — voir [Envoyer par mail](envoyer-par-mail.md).
 
 ## Ne plus voir la fenêtre
 
 **Plus tard**, la croix, Échap ou un clic à côté la ferment sans rien faire. Cochez **Ne plus me
 proposer** avant de la fermer — ou de lancer — pour qu'elle ne s'ouvre plus, sur aucun de vos appareils.
 
-Pour la retrouver : **Ma configuration**, groupe **Actions**, page **Envoi d'email** ou **Entreposer**,
-carte **Après le premier résumé** : activez **Proposer ces actions après le premier résumé**, puis
+Pour la retrouver : **Réglages → Après la réunion**, onglet **Envoi d'email** ou **Entreposer**, carte **Après
+le premier résumé** : activez **Proposer ces actions après le premier résumé**, puis
 **Enregistrer**.
 
 ## Exemple

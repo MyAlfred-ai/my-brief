@@ -27,11 +27,12 @@ l'adresse et le mot de passe que votre administrateur vous a donnés.
 myBrief s'ouvre. La fenêtre de bienvenue s'affiche à la première connexion sur ce navigateur ;
 **C'est parti** la ferme.
 
-En bas de la colonne de gauche, votre nom et votre avatar : votre photo de profil Google, ou vos
-initiales. La petite pastille de l'avatar rappelle comment vous êtes connecté : Google, Microsoft, mot
-de passe ou SSO. Un clic sur votre nom ouvre le menu de compte : votre adresse et **Vos groupes**, les
-groupes d'utilisateurs où votre administrateur vous a placé, puis **Ce mois-ci** et la **Langue**. Sur
-téléphone, l'avatar est en haut à droite : le toucher ouvre ce même menu.
+En bas de la colonne de gauche, la carte du compte : votre nom et votre avatar — votre photo de profil
+Google, ou vos initiales. La petite pastille de l'avatar rappelle comment vous êtes connecté : Google,
+Microsoft, mot de passe ou SSO. Dessous, le bouton **Réglages** ouvre **Mon profil** : votre adresse,
+**Votre groupe** — le groupe d'utilisateurs où votre administrateur vous a placé —, la **Langue** et
+votre mot de passe. Sur téléphone, l'avatar est en haut à droite : le toucher ouvre
+la carte du compte, où se trouve le même bouton.
 
 ## Dans l'application mobile
 
@@ -41,8 +42,9 @@ tient trente jours.
 
 ## Se déconnecter
 
-Cliquez votre nom, en bas de la colonne de gauche — sur téléphone, votre avatar, en haut à droite —,
-puis **Se déconnecter**. La session se ferme sur cet
+Ouvrez **Réglages** — le bouton, en bas de la colonne de gauche ; sur téléphone, votre avatar, en haut
+à droite, puis **Réglages** —, puis cliquez **Se déconnecter**, la dernière ligne de la colonne ; sur
+téléphone, la dernière ligne du menu déroulant, en haut du panneau. La session se ferme sur cet
 appareil, sans confirmation.
 
 ## Ce qu'il faut savoir

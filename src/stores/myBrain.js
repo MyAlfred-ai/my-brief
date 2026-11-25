@@ -1,5 +1,5 @@
 /**
- * MyBrain, côté utilisateur — l'état de « Ma configuration → MyBrain ».
+ * MyBrain, côté utilisateur — l'état de « Réglages → MyBrain ».
  *
  * Deux lecteurs, d'où le store : SettingsPanel, qui n'affiche l'entrée
  * « MyBrain » que si l'installation la propose, et la section elle-même

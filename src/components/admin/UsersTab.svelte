@@ -47,6 +47,7 @@
    */
   let groups = [];
   let defaultId = 'default';
+  let adminId = 'admin';
   /** '' = tous les groupes, sinon l'identifiant d'un groupe. */
   let groupFilter = '';
   /**
@@ -99,6 +100,7 @@
     if (!res.ok) return;
     groups = res.data.groups || [];
     defaultId = res.data.defaultId || 'default';
+    adminId = res.data.adminId || 'admin';
   }
 
   /**
@@ -195,6 +197,7 @@
       {minLength}
       {groups}
       {defaultId}
+      {adminId}
       {lang}
       user={view === 'edit' ? editing : null}
       isSelf={view === 'edit' && String(editing?.email).toLowerCase() === currentEmail}

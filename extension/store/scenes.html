@@ -1,0 +1,692 @@
+<!doctype html>
+<!--
+  Visuels de la fiche Chrome Web Store, rendus par render.mjs (une scène par
+  hash : #fr-1 … #en-4, #tile). Le menu montré est le VRAI popup :
+  popup/popup.html, popup/popup.css et les textes de _locales/, chargés ici
+  et figés dans l'état de la scène — si le popup change, relancer le rendu.
+  Données fictives seulement : hôte « exemple », personne inventée.
+-->
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <title>MyBrief — visuels du Chrome Web Store</title>
+    <style>
+      :root {
+        --brand: #e8590c;
+        --brand-soft: #fff1e8;
+        --violet: #7c3aed;
+        --navy: #1d2033;
+        --ink: #1f2328;
+        --muted: #59636e;
+        --line: #e3e5ea;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        font-family:
+          system-ui,
+          -apple-system,
+          'Segoe UI',
+          Roboto,
+          sans-serif;
+        color: var(--ink);
+        -webkit-font-smoothing: antialiased;
+      }
+
+      /* ── Capture 1280×800 ─────────────────────────────────────────────── */
+      .shot {
+        position: relative;
+        width: 1280px;
+        height: 800px;
+        overflow: hidden;
+        background:
+          radial-gradient(900px 600px at 0% 0%, #fff4ec 0%, transparent 60%),
+          radial-gradient(700px 520px at 100% 100%, #f1ebff 0%, transparent 65%),
+          #fbfaf8;
+      }
+      .copy {
+        position: absolute;
+        left: 76px;
+        top: 0;
+        bottom: 0;
+        width: 450px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 22px;
+      }
+      .eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        align-self: flex-start;
+        padding: 7px 14px 7px 8px;
+        border-radius: 999px;
+        background: #fff;
+        border: 1px solid var(--line);
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--muted);
+        box-shadow: 0 2px 10px -6px rgb(0 0 0 / 0.25);
+      }
+      .eyebrow img {
+        width: 26px;
+        height: 26px;
+      }
+      .copy h1 {
+        margin: 0;
+        font-size: 48px;
+        line-height: 1.08;
+        letter-spacing: -0.02em;
+        color: var(--navy);
+      }
+      .copy h1 em {
+        font-style: normal;
+        color: var(--brand);
+      }
+      .copy p {
+        margin: 0;
+        font-size: 20px;
+        line-height: 1.5;
+        color: var(--muted);
+      }
+      .copy .keys {
+        white-space: nowrap;
+      }
+      .copy kbd {
+        display: inline-block;
+        padding: 1px 7px;
+        border: 1px solid var(--line);
+        border-bottom-width: 2px;
+        border-radius: 6px;
+        background: #fff;
+        font: 600 16px/1.4 ui-monospace, 'SF Mono', Menlo, monospace;
+        color: var(--ink);
+      }
+
+      /* Fenêtre de navigateur générique */
+      .window {
+        position: absolute;
+        left: 560px;
+        top: 92px;
+        width: 680px;
+        height: 616px;
+        border-radius: 14px;
+        background: #fff;
+        box-shadow:
+          0 30px 70px -20px rgb(29 32 51 / 0.35),
+          0 0 0 1px rgb(29 32 51 / 0.08);
+        overflow: hidden;
+      }
+      .tabs {
+        display: flex;
+        align-items: flex-end;
+        gap: 8px;
+        height: 42px;
+        padding: 0 14px;
+        background: #eceef2;
+      }
+      .dots {
+        display: flex;
+        gap: 7px;
+        align-self: center;
+        margin-right: 8px;
+      }
+      .dots i {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: #d5d8de;
+      }
+      .tab {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: 210px;
+        height: 34px;
+        padding: 0 12px;
+        border-radius: 10px 10px 0 0;
+        background: #fff;
+        font-size: 13px;
+        color: var(--ink);
+      }
+      .tab img,
+      .tab .fav {
+        width: 16px;
+        height: 16px;
+        border-radius: 4px;
+      }
+      .tab.off {
+        background: transparent;
+        color: var(--muted);
+      }
+      .bar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        height: 46px;
+        padding: 0 12px;
+        border-bottom: 1px solid var(--line);
+      }
+      .nav {
+        display: flex;
+        gap: 12px;
+        color: #8a9099;
+      }
+      .nav svg {
+        width: 18px;
+        height: 18px;
+      }
+      .url {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        height: 32px;
+        padding: 0 14px;
+        border-radius: 999px;
+        background: #f1f3f5;
+        font-size: 14px;
+        color: var(--ink);
+      }
+      .url svg {
+        width: 14px;
+        height: 14px;
+        color: #8a9099;
+      }
+      .url b {
+        font-weight: 400;
+        color: var(--muted);
+      }
+      .ext {
+        position: relative;
+        display: grid;
+        place-items: center;
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        background: var(--brand-soft);
+      }
+      .ext.on {
+        box-shadow: 0 0 0 5px var(--glow);
+      }
+      .ext img {
+        width: 22px;
+        height: 22px;
+      }
+      .badge {
+        position: absolute;
+        right: -6px;
+        bottom: -3px;
+        min-width: 16px;
+        padding: 1px 4px;
+        border-radius: 5px;
+        color: #fff;
+        font-size: 10.5px;
+        font-weight: 700;
+        line-height: 14px;
+        text-align: center;
+        box-shadow: 0 0 0 2px #fff;
+      }
+      .menu-dots {
+        width: 4px;
+        height: 18px;
+        background: radial-gradient(circle, #8a9099 1.6px, transparent 2px) 0 0 / 4px 6px;
+      }
+      .page {
+        position: absolute;
+        top: 88px;
+        left: 0;
+        right: 0;
+        bottom: 0;
+      }
+
+      /* Le menu de l'extension, posé sous son icône */
+      .popup {
+        position: absolute;
+        right: 52px;
+        top: 186px;
+        width: 364px;
+        border: 0;
+        border-radius: 12px;
+        background: #fff;
+        box-shadow:
+          0 24px 60px -12px rgb(29 32 51 / 0.45),
+          0 0 0 1px rgb(29 32 51 / 0.1);
+      }
+
+      /* Pages factices derrière le menu */
+      .sk {
+        border-radius: 6px;
+        background: #eef0f3;
+      }
+      .doc {
+        padding: 34px 44px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+      .doc .h {
+        width: 55%;
+        height: 26px;
+        background: #e2e5ea;
+      }
+      .doc .l {
+        height: 11px;
+      }
+      .doc .img {
+        height: 150px;
+        margin: 8px 0;
+        background: linear-gradient(135deg, #eef0f3, #e6e9ee);
+      }
+      .visio {
+        background: #1e2128;
+        padding: 18px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: 1fr 1fr 54px;
+        gap: 12px;
+      }
+      .visio .tile {
+        position: relative;
+        display: grid;
+        place-items: center;
+        border-radius: 12px;
+        background: #2b2f38;
+      }
+      .visio .tile i {
+        display: grid;
+        place-items: center;
+        width: 76px;
+        height: 76px;
+        border-radius: 50%;
+        font-style: normal;
+        font-size: 28px;
+        font-weight: 600;
+        color: #fff;
+      }
+      .visio .tile span {
+        position: absolute;
+        left: 12px;
+        bottom: 10px;
+        font-size: 13px;
+        color: #c9ced6;
+      }
+      .visio .controls {
+        grid-column: 1 / -1;
+        display: flex;
+        justify-content: center;
+        gap: 14px;
+      }
+      .visio .controls i {
+        width: 46px;
+        height: 46px;
+        border-radius: 50%;
+        background: #3a3f4a;
+      }
+      .visio .controls i.end {
+        width: 64px;
+        border-radius: 23px;
+        background: #d9534f;
+      }
+      .app {
+        display: grid;
+        grid-template-columns: 170px 1fr;
+        height: 100%;
+      }
+      .app aside {
+        padding: 20px 16px;
+        border-right: 1px solid var(--line);
+        background: #fbfbfc;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .app aside .brand {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 10px;
+        font-weight: 700;
+        font-size: 15px;
+      }
+      .app aside .brand img {
+        width: 26px;
+        height: 26px;
+      }
+      .app aside .sk {
+        height: 12px;
+      }
+      .app main {
+        padding: 30px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+      .app .rec {
+        align-self: flex-start;
+        padding: 12px 22px;
+        border-radius: 10px;
+        background: var(--brand);
+        color: #fff;
+        font-weight: 600;
+        font-size: 14px;
+      }
+      .app .card {
+        height: 74px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fff;
+        padding: 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .app .card .sk:first-child {
+        width: 45%;
+        height: 13px;
+        background: #e2e5ea;
+      }
+      .app .card .sk:last-child {
+        width: 70%;
+        height: 10px;
+      }
+
+      /* ── Petite vignette 440×280 ──────────────────────────────────────── */
+      .tile-promo {
+        position: relative;
+        width: 440px;
+        height: 280px;
+        overflow: hidden;
+        color: #fff;
+        background:
+          radial-gradient(320px 260px at 18% 92%, rgb(232 89 12 / 0.55), transparent 70%),
+          radial-gradient(260px 220px at 96% 0%, rgb(124 58 237 / 0.45), transparent 70%),
+          linear-gradient(135deg, #1d2033, #241a3d);
+      }
+      .tile-promo .alfred {
+        position: absolute;
+        left: -14px;
+        bottom: -18px;
+        width: 228px;
+        height: 228px;
+      }
+      .tile-promo .txt {
+        position: absolute;
+        left: 206px;
+        right: 22px;
+        top: 0;
+        bottom: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 10px;
+      }
+      .tile-promo .chip {
+        align-self: flex-start;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px 4px 5px;
+        border-radius: 999px;
+        background: rgb(255 255 255 / 0.12);
+        font-size: 12px;
+        font-weight: 600;
+        color: #f3e9ff;
+      }
+      .tile-promo .chip img {
+        width: 18px;
+        height: 18px;
+      }
+      .tile-promo h2 {
+        margin: 0;
+        font-size: 42px;
+        line-height: 1;
+        letter-spacing: -0.02em;
+      }
+      .tile-promo p {
+        margin: 0;
+        font-size: 21px;
+        line-height: 1.2;
+        font-weight: 600;
+        color: #ffb98a;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module">
+      const ICON = '../icons/48.png';
+      const LOGO = '../../public/logo.png';
+
+      // Textes des scènes. Les libellés du MENU, eux, viennent de _locales/.
+      const COPY = {
+        fr: {
+          eyebrow: 'Extension Chrome',
+          host: 'mybrief.exemple.fr',
+          person: 'Camille Martin',
+          scenes: {
+            1: {
+              title: 'Une réunion, <em>d’un&nbsp;clic.</em>',
+              text: 'Depuis n’importe quel onglet, «&nbsp;Nouvelle réunion&nbsp;» ouvre MyBrief et lance l’enregistrement. Ou <span class="keys"><kbd>Alt</kbd> + <kbd>Maj</kbd> + <kbd>M</kbd></span>, sans même ouvrir le menu.',
+              tab: 'Note de cadrage',
+              url: ['intranet.exemple.fr', '/projets/cadrage'],
+            },
+            2: {
+              title: 'REC, <em>toujours sous les&nbsp;yeux.</em>',
+              text: 'Pendant l’enregistrement, l’icône affiche REC et le menu la durée. «&nbsp;Revenir à la réunion&nbsp;» retrouve l’onglet MyBrief, sans en ouvrir un second.',
+              tab: 'Budget 2027',
+              url: ['intranet.exemple.fr', '/finances/budget'],
+            },
+            3: {
+              title: 'Ne manquez plus <em>le&nbsp;début.</em>',
+              text: 'En option, l’extension vous rappelle d’enregistrer quand une visio Meet, Teams, Zoom ou Webex est ouverte.',
+              tab: 'Point d’équipe',
+              url: ['visio.exemple.fr', '/point-equipe'],
+            },
+            4: {
+              title: 'Reliée à votre MyBrief, <em>sans rien&nbsp;saisir.</em>',
+              text: 'Depuis l’onglet MyBrief, un clic suffit. L’extension n’accède qu’à ce site, et seulement avec votre accord.',
+              tab: 'MyBrief',
+              url: ['mybrief.exemple.fr', '/'],
+            },
+          },
+          visio: ['Camille', 'Hugo', 'Inès', 'Paul'],
+          newMeetingApp: 'Nouvelle réunion',
+        },
+        en: {
+          eyebrow: 'Chrome extension',
+          host: 'mybrief.example.com',
+          person: 'Alex Morgan',
+          scenes: {
+            1: {
+              title: 'A meeting, <em>in one&nbsp;click.</em>',
+              text: 'From any tab, “New meeting” opens MyBrief and starts recording. Or press <span class="keys"><kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>M</kbd></span> without even opening the menu.',
+              tab: 'Project brief',
+              url: ['intranet.example.com', '/projects/brief'],
+            },
+            2: {
+              title: 'REC, <em>always in sight.</em>',
+              text: 'While recording, the icon shows REC and the menu shows the time. “Back to the meeting” finds your MyBrief tab instead of opening a second one.',
+              tab: '2027 budget',
+              url: ['intranet.example.com', '/finance/budget'],
+            },
+            3: {
+              title: 'Never miss <em>the start&nbsp;again.</em>',
+              text: 'Optionally, the extension reminds you to record when a Meet, Teams, Zoom or Webex call is open.',
+              tab: 'Team sync',
+              url: ['video.example.com', '/team-sync'],
+            },
+            4: {
+              title: 'Linked to your MyBrief, <em>nothing to&nbsp;type.</em>',
+              text: 'From your MyBrief tab, one click is enough. The extension only accesses that site, and only with your consent.',
+              tab: 'MyBrief',
+              url: ['mybrief.example.com', '/'],
+            },
+          },
+          visio: ['Alex', 'Sam', 'Priya', 'Leo'],
+          newMeetingApp: 'New meeting',
+        },
+      };
+
+      const SVG = {
+        back: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 5l-7 7 7 7"/></svg>',
+        fwd: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 5l7 7-7 7"/></svg>',
+        reload:
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5"/></svg>',
+        lock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>',
+      };
+
+      async function messages(lang) {
+        const raw = await (await fetch(`../_locales/${lang}/messages.json`)).json();
+        return (key, subs = []) => {
+          const m = raw[key];
+          if (!m) return key;
+          let text = m.message;
+          for (const [name, ph] of Object.entries(m.placeholders || {})) {
+            const i = Number(ph.content.replace('$', '')) - 1;
+            text = text.replaceAll(`$${name.toUpperCase()}$`, subs[i] ?? '');
+          }
+          return text;
+        };
+      }
+
+      /** Le vrai popup.html, figé dans l'état voulu, prêt pour un iframe. */
+      async function popupDoc(lang, state, copy) {
+        const t = await messages(lang);
+        const html = await (await fetch('../popup/popup.html')).text();
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        doc.querySelectorAll('script').forEach((s) => s.remove());
+        const base = doc.createElement('base');
+        base.href = new URL('../popup/', location.href).href;
+        doc.head.prepend(base);
+        const zoom = doc.createElement('style');
+        zoom.textContent = 'html{zoom:1.3}body{overflow:hidden}';
+        doc.head.append(zoom);
+        doc.documentElement.lang = lang;
+        doc.querySelectorAll('[data-i18n]').forEach((el) => (el.textContent = t(el.dataset.i18n)));
+        const $ = (id) => doc.getElementById(id);
+
+        if (state.screen === 'unlinked') {
+          $('unlinked').hidden = false;
+          $('probe').className = 'status';
+          $('probe').textContent = copy.host;
+          $('link').hidden = false;
+          $('link').textContent = t('linkUse', [copy.host]);
+        } else {
+          $('linked').hidden = false;
+          $('host').textContent = copy.host;
+          const status = $('status');
+          status.hidden = false;
+          if (state.recording) {
+            status.className = 'status rec';
+            status.textContent = t('meetingRunning', [state.elapsed]);
+            $('new-meeting').querySelector('span').textContent = t('backToMeeting');
+          } else {
+            status.className = 'status';
+            status.textContent = t('signedIn', [copy.person]);
+          }
+          if (state.visio) $('visio-hint').hidden = false;
+          if (state.reminder) $('reminder').setAttribute('checked', '');
+        }
+        return '<!doctype html>' + doc.documentElement.outerHTML;
+      }
+
+      function page(kind, copy) {
+        if (kind === 'visio') {
+          const colors = ['#e8590c', '#7c3aed', '#2f6fed', '#2e9e5b'];
+          return `<div class="page visio">${copy.visio
+            .map(
+              (n, i) =>
+                `<div class="tile"><i style="background:${colors[i]}">${n[0]}</i><span>${n}</span></div>`,
+            )
+            .join('')}<div class="controls"><i></i><i></i><i></i><i class="end"></i></div></div>`;
+        }
+        if (kind === 'app') {
+          return `<div class="page app"><aside><div class="brand"><img src="${ICON}" alt="">MyBrief</div>${'<div class="sk"></div>'.repeat(5)}</aside><main><div class="rec">● ${copy.newMeetingApp}</div>${'<div class="card"><div class="sk"></div><div class="sk"></div></div>'.repeat(4)}</main></div>`;
+        }
+        const lines = (n, w) =>
+          Array.from({ length: n }, (_, i) => `<div class="sk l" style="width:${w[i % w.length]}%"></div>`).join('');
+        return `<div class="page doc"><div class="sk h"></div>${lines(4, [96, 88, 92, 60])}<div class="sk img"></div>${lines(5, [94, 90, 97, 85, 40])}</div>`;
+      }
+
+      const SCENES = {
+        1: { page: 'doc', state: { screen: 'linked' }, badge: null },
+        2: { page: 'doc', state: { screen: 'linked', recording: true, elapsed: '12:47' }, badge: ['REC', '#d9534f'] },
+        3: { page: 'visio', state: { screen: 'linked', visio: true, reminder: true }, badge: ['•', '#2f6fed'] },
+        4: { page: 'app', state: { screen: 'unlinked' }, badge: null },
+      };
+
+      async function shot(lang, n) {
+        const copy = COPY[lang];
+        const scene = SCENES[n];
+        const text = copy.scenes[n];
+        const fav = scene.page === 'app' ? `<img src="${ICON}" alt="">` : `<span class="fav" style="background:${scene.page === 'visio' ? '#2e9e5b' : '#2f6fed'}"></span>`;
+        const badge = scene.badge
+          ? `<span class="badge" style="background:${scene.badge[1]}">${scene.badge[0]}</span>`
+          : '';
+        document.documentElement.lang = lang;
+        document.getElementById('root').innerHTML = `
+          <div class="shot">
+            <div class="copy">
+              <span class="eyebrow"><img src="${ICON}" alt="">${copy.eyebrow}</span>
+              <h1>${text.title}</h1>
+              <p>${text.text}</p>
+            </div>
+            <div class="window">
+              <div class="tabs">
+                <div class="dots"><i></i><i></i><i></i></div>
+                <div class="tab">${fav}${text.tab}</div>
+                <div class="tab off">${scene.page === 'app' ? '' : 'MyBrief'}</div>
+              </div>
+              <div class="bar">
+                <div class="nav">${SVG.back}${SVG.fwd}${SVG.reload}</div>
+                <div class="url">${SVG.lock}${text.url[0]}<b>${text.url[1]}</b></div>
+                <div class="ext${scene.badge ? ' on' : ''}" style="--glow:${scene.badge ? scene.badge[1] + '33' : 'transparent'}"><img src="../icons/32.png" alt="">${badge}</div>
+                <div class="menu-dots"></div>
+              </div>
+              ${page(scene.page, copy)}
+            </div>
+            <iframe class="popup" title="MyBrief"></iframe>
+          </div>`;
+        const frame = document.querySelector('.popup');
+        frame.srcdoc = await popupDoc(lang, scene.state, copy);
+        await new Promise((r) => (frame.onload = r));
+        await frame.contentDocument.fonts.ready;
+        const body = frame.contentDocument.body;
+        // Hauteur lue APRÈS le zoom du document (getBoundingClientRect l'inclut).
+        frame.style.height = `${Math.ceil(body.getBoundingClientRect().height)}px`;
+      }
+
+      function tile() {
+        document.getElementById('root').innerHTML = `
+          <div class="tile-promo">
+            <img class="alfred" src="${LOGO}" alt="">
+            <div class="txt">
+              <span class="chip"><img src="${ICON}" alt="">Extension Chrome</span>
+              <h2>MyBrief</h2>
+              <p>Vos réunions,<br>d’un clic.</p>
+            </div>
+          </div>`;
+      }
+
+      async function render() {
+        window.__ready = false;
+        const id = location.hash.slice(1) || 'fr-1';
+        if (id === 'tile') tile();
+        else {
+          const [lang, n] = id.split('-');
+          await shot(lang, Number(n));
+        }
+        await Promise.all([...document.images].map((img) => img.decode().catch(() => {})));
+        await document.fonts.ready;
+        window.__ready = true;
+      }
+      window.addEventListener('hashchange', render);
+      render();
+    </script>
+  </body>
+</html>

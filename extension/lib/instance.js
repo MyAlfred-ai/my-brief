@@ -9,7 +9,14 @@
  * limitée à ce seul site : c'est ce qui permet ensuite de retrouver l'onglet
  * (tabs.query par URL) et d'y injecter le script de contenu.
  */
-import { hostPattern, isMyBriefConfig, pickInstanceTab, recordUrl, homeUrl } from './core.js';
+import {
+  hostPattern,
+  isMyBriefConfig,
+  fetchConfigFromPage,
+  pickInstanceTab,
+  recordUrl,
+  homeUrl,
+} from './core.js';
 
 export const STORAGE_KEY = 'instance';
 export const SCRIPT_ID = 'mybrief-bridge';
@@ -43,9 +50,38 @@ export async function clearInstance() {
 }
 
 /**
- * « Cet onglet est-il un MyBrief ? » — interroge la sonde publique
- * /api/auth/config, sans cookie. Borné : sur un site quelconque, la réponse
- * peut être lente ou ne jamais venir.
+ * « Cet onglet est-il un MyBrief ? », demandé DEPUIS l'onglet — le chemin de
+ * la liaison (voir fetchConfigFromPage). activeTab, accordé par le clic sur
+ * l'icône, permet d'y exécuter la sonde le temps du popup.
+ *
+ * Trois réponses : `{logo}` (c'est un MyBrief), `null` (l'onglet a répondu :
+ * non), `undefined` (impossible d'y exécuter quoi que ce soit — page protégée,
+ * politique d'entreprise : l'appelant tente la sonde directe).
+ *
+ * @param {number} tabId
+ * @returns {Promise<{logo: string}|null|undefined>}
+ */
+export async function probeTab(tabId, { timeoutMs = 3000 } = {}) {
+  let injection;
+  try {
+    [injection] = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: fetchConfigFromPage,
+      args: [timeoutMs],
+    });
+  } catch {
+    return undefined;
+  }
+  const data = injection?.result;
+  if (!isMyBriefConfig(data)) return null;
+  return { logo: /** @type {any} */ (data).branding?.logo || '' };
+}
+
+/**
+ * La même sonde, lancée depuis l'extension. Ne passe le CORS que si la
+ * permission d'hôte est déjà accordée : repli de probeTab seulement.
+ * Sans cookie. Borné : sur un site quelconque, la réponse peut être lente ou
+ * ne jamais venir.
  *
  * @param {string} origin
  * @returns {Promise<{logo: string}|null>}
@@ -111,6 +147,46 @@ export async function ensureContentScript(origin) {
   const existing = await chrome.scripting.getRegisteredContentScripts({ ids: [SCRIPT_ID] });
   if (existing.length) await chrome.scripting.updateContentScripts([script]);
   else await chrome.scripting.registerContentScripts([script]);
+}
+
+/**
+ * L'extension a-t-elle encore la permission d'hôte du site lié ? Le site lié
+ * est dans `storage.sync` et suit le compte Chrome sur un autre ordinateur ;
+ * la permission, elle, reste sur le poste où elle a été accordée, et
+ * l'utilisateur peut la retirer dans chrome://extensions. Sans elle : pas de
+ * pont (badge REC, page « Extension Chrome »), et l'onglet MyBrief ouvert
+ * n'est pas retrouvé — chaque clic en ouvrirait un autre.
+ *
+ * @param {string} origin
+ */
+export async function hasSiteAccess(origin) {
+  return chrome.permissions.contains({ origins: [hostPattern(origin)] }).catch(() => false);
+}
+
+/**
+ * Met le pont en route sur le site lié, permission accordée : script de
+ * contenu inscrit pour les chargements à venir, ET exécuté tout de suite dans
+ * les onglets déjà ouverts — le script inscrit n'y jouerait qu'au prochain
+ * chargement, et la page « Extension Chrome » doit passer au vert sans F5.
+ * Un onglet où le script tourne déjà se signale une seconde fois : sans effet.
+ *
+ * @param {string} origin
+ */
+export async function activateBridge(origin) {
+  await ensureContentScript(origin);
+  const tabs = await chrome.tabs.query({ url: hostPattern(origin) }).catch(() => []);
+  await Promise.all(
+    tabs
+      .filter((tab) => tab.id != null)
+      .map((tab) =>
+        chrome.scripting
+          .executeScript({
+            target: { tabId: /** @type {number} */ (tab.id) },
+            files: ['content.js'],
+          })
+          .catch(() => {}),
+      ),
+  );
 }
 
 /**

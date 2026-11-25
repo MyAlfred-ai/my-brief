@@ -8,7 +8,7 @@
  *   - un COMPTE RENDU se paie à sa génération : chaque version porte sa date
  *     (`generatedAt`), et régénérer en septembre le compte rendu d'une réunion
  *     de juin est une dépense de septembre ;
- *   - une INFOGRAPHIE se paie à son dessin (`infographic.updatedAt`).
+ *   - une INFOGRAPHIE se paie à sa génération (`infographic.updatedAt`).
  *
  * Une durée ABSENTE n'est toujours pas une durée nulle (cf. lib/stats.js) :
  * ici elle se DÉDUIT de la longueur du texte transcrit, au débit de parole de
@@ -18,7 +18,7 @@
  *
  * Bornes connues, assumées : une version de compte rendu supprimée n'est plus
  * comptée, et seule la dernière infographie d'une réunion l'est (chaque
- * nouvelle image remplace la précédente, cf. lib/infographic.js).
+ * nouvelle infographie remplace la précédente, cf. lib/infographic.js).
  */
 import { meetingDate, ownerKey } from '../stats.js';
 import { ASSUMPTIONS } from './assumptions.js';

@@ -58,7 +58,9 @@ Elle reprend sa place dans la liste, et dans le prochain compte rendu.
 - **Un compte rendu déjà généré ne change pas** : pour qu'il reprenne la liste corrigée,
   **Nouveau résumé**.
 - **Régénérer un résumé ne redétecte rien** : il reprend la liste telle que vous l'avez corrigée.
-- **Le compte rendu ne reprend la liste** que si son template contient la pastille **📋 Actions**.
+- **Le compte rendu ne reprend la liste** que si son template contient la pastille **📋 Actions**, et
+  que la tuile **Actions détectées** est allumée au moment de générer — voir
+  [Générer un résumé](../resumes/generer-un-resume.md).
 
 ## En cas de problème
 

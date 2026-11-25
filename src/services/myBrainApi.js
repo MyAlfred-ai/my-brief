@@ -27,7 +27,7 @@ export const saveMyBrainAdminSettings = (patch) => post('/admin/settings/mybrain
  */
 export const testMyBrainConnection = (draft = {}) => post('/admin/settings/mybrain/test', draft);
 
-// ── Ma configuration → MyBrain ─────────────────────────────────────────────
+// ── Réglages → MyBrain ─────────────────────────────────────────────
 
 /** Ce que l'installation propose, le choix du compte, ses derniers envois. */
 export const fetchMyBrainSettings = () => get('/mybrain/settings');

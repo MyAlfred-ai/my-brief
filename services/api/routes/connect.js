@@ -14,7 +14,7 @@
  *
  * start/callback sont des NAVIGATIONS top-level (comme routes/auth/ssoFlow.js) :
  * elles répondent par des redirections, jamais du JSON. Les échecs reviennent
- * sur `/?connectError=<slug>#config`, que « Ma configuration » traduit.
+ * sur `/?connectError=<slug>#config`, que « Réglages » traduit.
  *
  * Le refresh token ne quitte jamais l'API ; les routes JSON n'exposent que
  * `{ connected, account, driveReady }`.
@@ -243,7 +243,7 @@ export default function connectRoutes(app) {
   app.addHook('onClose', async () => byIp.stop());
 
   /**
-   * État de la connexion du compte — consommé par « Ma configuration » et par
+   * État de la connexion du compte — consommé par « Réglages » et par
    * App.svelte pour décider de l'affichage des boutons d'action.
    */
   app.get('/connect/status', async (req, reply) => {

@@ -9,11 +9,15 @@
  * d'essai qui exerce des valeurs jamais enregistrées.
  *
  * Les valeurs par défaut sont celles qui étaient codées en dur avant tout
- * écran de réglage : un compte qui ne touche à rien vit exactement ce qu'il
- * vivait avant.
+ * écran de réglage, à une exception : la sensibilité est « Stricte » depuis le
+ * 2026-10-28 (« Équilibrée » auparavant). Choix produit : une action de trop
+ * dans le panneau coûte plus cher, en réunion, qu'une action à ajouter à la
+ * main. Le défaut ne vaut que pour un compte qui n'a rien enregistré — un
+ * document qui porte déjà `balanced` le garde, d'où la reprise de
+ * `resetDetectionSensitivity` (lib/bootstrap.js) là où l'on veut tout le monde.
  *
  * Le VOCABULAIRE de l'organisation n'est pas ici : il a sa propre vie
- * (`appSettings/orgContext`, onglet Configuration de l'administration) parce qu'il
+ * (`appSettings/orgContext`, rubrique Organisation de l'administration) parce qu'il
  * sert AUSSI à chaque compte rendu. La détection le reçoit au moment de
  * composer sa consigne, pas au moment de lire les réglages.
  */
@@ -26,10 +30,10 @@ export const DETECTION_INTERVAL_MAX = 10;
 export const DETECTION_TRIGGER_WORDS_MAX = 20;
 export const DETECTION_TRIGGER_WORD_MAX = 40;
 
-/** Comportement d'avant tout écran de réglage — le déploiement est inerte. */
+/** Comportement d'un compte qui n'a rien réglé (cf. l'en-tête pour la sensibilité). */
 export const DEFAULT_ACTION_DETECTION = {
   enabled: true,
-  sensitivity: 'balanced',
+  sensitivity: 'explicit',
   triggerWords: ['action'],
   allowUpdates: true,
   windowSize: 8,

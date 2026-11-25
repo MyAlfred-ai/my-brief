@@ -191,3 +191,19 @@ h1 {
   margin: 0;
   accent-color: var(--brand);
 }
+
+/* Permission du site lié absente : le bouton qui la redemande passe en tête. */
+.reauth {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.warn {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.45;
+}

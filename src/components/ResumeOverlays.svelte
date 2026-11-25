@@ -10,7 +10,8 @@
   import { formatPages, roundToStep } from '../lib/pageMeter.js';
   import { portal } from '../utils/portal.js';
   import { canGenerateInfographic } from '../stores/auth.js';
-  import { historyItems } from '../stores/history.js';
+  import { historyItems, meetingIdOf } from '../stores/history.js';
+  import { tagsById, tagLogos, ensureTagLogo, logoOf } from '../stores/tags.js';
   import {
     infographicView,
     syncInfographic,
@@ -18,13 +19,22 @@
     deleteInfographic,
   } from '../stores/infographic.js';
   import { showToast } from '../stores/toasts.js';
-  import { interceptAnchorDownload } from '../platform/download.js';
+  import { branding } from '../stores/branding.js';
+  import { companyLogo, loadCompanyLogo } from '../stores/companyLogo.js';
+  import { interceptAnchorDownload, saveFile } from '../platform/download.js';
+  import InfographicSheet from './infographic/InfographicSheet.svelte';
+  import Icon from './infographic/Icon.svelte';
+  import { TEMPLATE_ICONS, templateOf } from '../lib/infographic/catalog.js';
+  import { renderInfographicPng } from '../lib/infographic/exportPng.js';
+  import builtinLogo from '../logo.webp';
   import IconDownload from '~icons/solar/download-minimalistic-linear';
   import IconGallery from '~icons/solar/gallery-linear';
   import IconWarn from '~icons/solar/danger-triangle-linear';
   import IconClose from '~icons/solar/close-circle-linear';
   import IconRefresh from '~icons/solar/refresh-linear';
   import IconTrash from '~icons/solar/trash-bin-trash-linear';
+  import IconZoomIn from '~icons/solar/magnifer-zoom-in-linear';
+  import IconZoomOut from '~icons/solar/magnifer-zoom-out-linear';
 
   export let isGenerating = false;
   export let loadingLabel = '';
@@ -41,6 +51,11 @@
   export let meetingId = null;
 
   let lightboxOpen = false;
+  // Feuille agrandie dans la visionneuse : sur téléphone, la page entière tient
+  // dans 345 px et son texte devient illisible — agrandie, elle se lit et
+  // défile dans les deux sens.
+  let lightboxZoom = false;
+  $: if (!lightboxOpen) lightboxZoom = false;
 
   const DOWNLOAD_NAME = 'mybrief-infographie.png';
 
@@ -64,6 +79,27 @@
         .replace('{measured}', lengthLabel)
     : '';
   $: info = $infographicView;
+  // Infographie en gabarit (depuis le 2026-11-17) : les logos et les couleurs
+  // de Marque & apparence, lus au moment de l'affichage — une marque changée
+  // s'applique aux infographies existantes, sans les régénérer. Le logo de
+  // l'ENTREPRISE ouvre la feuille (lu à part, une fois, à la première
+  // infographie affichée) ; celui de l'APPLICATION signe le pied, et remplace
+  // le premier tant qu'il n'est pas renseigné.
+  $: appLogo = $branding.logo || builtinLogo;
+  // Le logo du TAG de la réunion (client, projet) : en médaillon sur la
+  // couverture. Lu à la demande ; sans tag ou sans logo, le pictogramme reste.
+  $: meetingTag = meetingId
+    ? $tagsById.get(
+        $historyItems.find((it) => String(meetingIdOf(it)) === String(meetingId))?.tagId,
+      ) || null
+    : null;
+  $: if (meetingTag) ensureTagLogo(meetingTag);
+  $: tagLogo = logoOf($tagLogos, meetingTag);
+  $: if (info.layout) loadCompanyLogo();
+  $: sheetBrand = {
+    primaryColor: $branding.primaryColor,
+    secondaryColor: $branding.secondaryColor,
+  };
   $: showInfographic =
     !isGenerating &&
     info.meetingId !== null &&
@@ -113,6 +149,34 @@
             ? T.notAllowedError
             : T.actionFailed;
       showToast(message, 'error', 6000);
+    }
+  }
+
+  /**
+   * Téléchargement d'une infographie en gabarit : l'image n'existe pas encore,
+   * elle se rend au clic (exportPng.js), puis part comme un fichier — web ou
+   * application mobile (saveFile). Une ancienne infographie, elle, se
+   * télécharge par son lien, comme avant.
+   */
+  let downloadBusy = false;
+
+  async function onDownloadLayout() {
+    if (downloadBusy || !info.layout) return;
+    downloadBusy = true;
+    try {
+      const blob = await renderInfographicPng({
+        layout: info.layout,
+        brand: sheetBrand,
+        companyLogo: $companyLogo.logo,
+        appLogo,
+        tagLogo,
+      });
+      await saveFile({ filename: DOWNLOAD_NAME, mimeType: 'image/png', data: blob });
+    } catch (err) {
+      console.error('Infographie : image non préparée', err);
+      showToast(T.downloadFailed, 'error', 6000);
+    } finally {
+      downloadBusy = false;
     }
   }
 
@@ -170,21 +234,54 @@
           aria-label={T.openAria}
           title={T.openAria}
         >
-          <img src={info.dataUrl} alt={T.thumbAlt} />
+          {#if info.layout}
+            <span class="igc-mini">
+              <InfographicSheet
+                layout={info.layout}
+                brand={sheetBrand}
+                companyLogo={$companyLogo.logo}
+                {appLogo}
+                {tagLogo}
+                decorative
+              />
+            </span>
+            <span class="igc-dot" aria-hidden="true">
+              <Icon
+                name={TEMPLATE_ICONS[templateOf(info.layout)]}
+                color="currentColor"
+                size="16px"
+              />
+            </span>
+          {:else}
+            <img src={info.dataUrl} alt={T.thumbAlt} />
+          {/if}
           <span class="igc-thumb-label" aria-hidden="true">{T.shortLabel}</span>
         </button>
         <!-- Téléphone : ces outils passent dans l'affichage en grand (CSS). -->
         <div class="igc-tools igc-tools-ready">
-          <a
-            class="igc-tool"
-            href={info.dataUrl}
-            download={DOWNLOAD_NAME}
-            aria-label={T.download}
-            title={T.download}
-            on:click={(e) => interceptAnchorDownload(e, info.dataUrl, DOWNLOAD_NAME)}
-          >
-            <IconDownload width="14" height="14" aria-hidden="true" />
-          </a>
+          {#if info.layout}
+            <button
+              type="button"
+              class="igc-tool"
+              on:click={onDownloadLayout}
+              disabled={downloadBusy}
+              aria-label={downloadBusy ? T.downloadPreparing : T.download}
+              title={downloadBusy ? T.downloadPreparing : T.download}
+            >
+              <IconDownload width="14" height="14" aria-hidden="true" />
+            </button>
+          {:else}
+            <a
+              class="igc-tool"
+              href={info.dataUrl}
+              download={DOWNLOAD_NAME}
+              aria-label={T.download}
+              title={T.download}
+              on:click={(e) => interceptAnchorDownload(e, info.dataUrl, DOWNLOAD_NAME)}
+            >
+              <IconDownload width="14" height="14" aria-hidden="true" />
+            </a>
+          {/if}
           {#if $canGenerateInfographic}
             <button
               type="button"
@@ -262,17 +359,57 @@
     on:click={onBackdropClick}
   >
     <div class="igc-lb-inner">
-      <img class="igc-lb-img" src={info.dataUrl} alt={T.thumbAlt} />
+      {#if info.layout}
+        <div class="igc-lb-sheet" class:igc-lb-zoom={lightboxZoom}>
+          <div class="igc-lb-page">
+            <InfographicSheet
+              layout={info.layout}
+              brand={sheetBrand}
+              companyLogo={$companyLogo.logo}
+              {appLogo}
+              {tagLogo}
+            />
+          </div>
+        </div>
+      {:else}
+        <img class="igc-lb-img" src={info.dataUrl} alt={T.thumbAlt} />
+      {/if}
       <div class="igc-lb-bar">
-        <a
-          class="igc-lb-btn igc-lb-download"
-          href={info.dataUrl}
-          download={DOWNLOAD_NAME}
-          on:click={(e) => interceptAnchorDownload(e, info.dataUrl, DOWNLOAD_NAME)}
-        >
-          <IconDownload width="15" height="15" aria-hidden="true" />
-          <span>{T.download}</span>
-        </a>
+        {#if info.layout}
+          <button
+            type="button"
+            class="igc-lb-btn igc-lb-download"
+            on:click={onDownloadLayout}
+            disabled={downloadBusy}
+          >
+            <IconDownload width="15" height="15" aria-hidden="true" />
+            <span>{downloadBusy ? T.downloadPreparing : T.download}</span>
+          </button>
+          <button
+            type="button"
+            class="igc-lb-btn"
+            aria-pressed={lightboxZoom}
+            on:click={() => (lightboxZoom = !lightboxZoom)}
+          >
+            {#if lightboxZoom}
+              <IconZoomOut width="15" height="15" aria-hidden="true" />
+              <span>{T.zoomOut}</span>
+            {:else}
+              <IconZoomIn width="15" height="15" aria-hidden="true" />
+              <span>{T.zoomIn}</span>
+            {/if}
+          </button>
+        {:else}
+          <a
+            class="igc-lb-btn igc-lb-download"
+            href={info.dataUrl}
+            download={DOWNLOAD_NAME}
+            on:click={(e) => interceptAnchorDownload(e, info.dataUrl, DOWNLOAD_NAME)}
+          >
+            <IconDownload width="15" height="15" aria-hidden="true" />
+            <span>{T.download}</span>
+          </a>
+        {/if}
         <!-- Régénérer / supprimer ici aussi : sur téléphone, la miniature réduite
              en pastille n'a plus sa rangée d'outils. -->
         {#if $canGenerateInfographic}
@@ -350,6 +487,21 @@
     height: 100%;
     object-fit: cover;
     display: block;
+  }
+
+  /* Miniature d'une infographie en gabarit : la feuille elle-même, à 86 px de
+     large (ses unités cqw la mettent à l'échelle), coupée au format 2:3. */
+  .igc-mini {
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  /* Sur téléphone, à la place de la miniature : le pictogramme du gabarit. */
+  .igc-dot {
+    display: none;
   }
 
   /* Empreinte commune de l'attente et de l'échec : la place exacte de la
@@ -504,7 +656,7 @@
     flex-direction: column;
     align-items: center;
     gap: 14px;
-    max-width: min(92vw, 640px);
+    max-width: min(92vw, 1100px);
     max-height: calc(100vh - 48px);
   }
 
@@ -514,6 +666,29 @@
     border-radius: 12px;
     box-shadow: 0 18px 50px -12px rgb(0 0 0 / 0.6);
     background: #fff;
+  }
+
+  /* Feuille en gabarit : la largeur qui fait tenir une page A4 dans la
+     hauteur disponible ; une page plus longue défile dans son cadre. */
+  .igc-lb-sheet {
+    width: min(92vw, 680px, calc((100vh - 48px - 52px) / 1.414));
+    min-width: min(92vw, 320px);
+    max-height: calc(100vh - 48px - 52px);
+    overflow: auto;
+    border-radius: 12px;
+    box-shadow: 0 18px 50px -12px rgb(0 0 0 / 0.6);
+    background: #fff;
+    overscroll-behavior: contain;
+  }
+
+  /* Agrandie : le cadre prend toute la place, la page une largeur où son
+     texte se lit (≈ 16 px), et défile dans les deux sens. */
+  .igc-lb-sheet.igc-lb-zoom {
+    width: min(92vw, 1100px);
+  }
+
+  .igc-lb-zoom .igc-lb-page {
+    width: max(100%, 760px);
   }
 
   .igc-lb-bar {
@@ -626,6 +801,22 @@
       height: 30px;
       border-radius: 50%;
       flex-shrink: 0;
+    }
+
+    .igc-mini {
+      display: none;
+    }
+
+    .igc-dot {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      background: var(--brand-soft-12);
+      color: var(--brand-text);
     }
 
     .igc-thumb-label {

@@ -13,7 +13,12 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { get } from 'svelte/store';
 
 const post = vi.fn(async () => ({ ok: true, status: 200, data: { ok: true } }));
-vi.mock('../services/apiClient.js', () => ({ post: (...args) => post(...args) }));
+// Lectures : panne réseau par défaut — chaque test qui lit injecte son faux.
+const apiGet = vi.fn(async () => ({ ok: false, status: 0, data: { error: 'network' } }));
+vi.mock('../services/apiClient.js', () => ({
+  post: (...args) => post(...args),
+  get: (...args) => apiGet(...args),
+}));
 
 const {
   historyItems,
@@ -25,6 +30,9 @@ const {
   applyTitleOverrides,
   getDeletedHistoryIds,
   pollHistoryUntilMeetingReady,
+  loadHistoryList,
+  historyItemWithContent,
+  WITH_CONTENT,
 } = await import('./history.js');
 
 /** Trois réunions ; `m-2` n'est PAS à l'index où la liste filtrée la placerait. */
@@ -198,6 +206,100 @@ describe('pollHistoryUntilMeetingReady', () => {
     const refetch = vi.fn(async () => {});
     await pollHistoryUntilMeetingReady(null, refetch, { intervalMs: 0 });
     expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  // Les tests ci-dessus tournent sans statut lisible (réseau en panne) : la
+  // liste à chaque tour, comme avant /history/status. Avec le statut :
+  it('avec /history/status : la liste n’est relue qu’au début et quand le titre est prêt', async () => {
+    const refetch = refetchThatSettlesTitleAfter(1);
+    let rounds = 0;
+    const probe = vi.fn(async () => ({ titlePending: ++rounds < 4 }));
+    await pollHistoryUntilMeetingReady('m-9', refetch, { intervalMs: 0, probe });
+    expect(probe).toHaveBeenCalledTimes(4);
+    expect(refetch).toHaveBeenCalledTimes(2);
+    expect(get(historyItems).find((m) => m.meetingId === 'm-9').title).toBe(
+      'Migration INITECH validée',
+    );
+  });
+
+  it('avec /history/status, titre jamais prêt : une dernière relecture, pas douze', async () => {
+    const refetch = refetchThatSettlesTitleAfter(Infinity);
+    const probe = vi.fn(async () => ({ titlePending: true }));
+    await pollHistoryUntilMeetingReady('m-9', refetch, { maxAttempts: 12, intervalMs: 0, probe });
+    expect(probe).toHaveBeenCalledTimes(11);
+    expect(refetch).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('liste allégée et ouverture d’une réunion', () => {
+  const lite = (id, over = {}) => ({ meetingId: id, title: id, versions: [{ id: 'v1' }], ...over });
+  const full = (id) => ({
+    meetingId: id,
+    title: `${id} (serveur)`,
+    notes: 'version serveur',
+    transcription: `Transcription de ${id}`,
+    resume: `<p>${id}</p>`,
+    versions: [{ id: 'v1', html: `<p>${id}</p>` }],
+  });
+
+  it('loadHistoryList : la liste, plus le contenu des réunions à l’écran — rien d’autre', async () => {
+    const fetchItem = vi.fn(async (id) => full(id));
+    const fetchList = async () => ({
+      ok: true,
+      status: 200,
+      data: [lite('a'), lite('b', { notes: 'locales' })],
+    });
+    const res = await loadHistoryList(['b', null, 'b'], { fetchList, fetchItem });
+    expect(fetchItem).toHaveBeenCalledTimes(1); // doublons et vides écartés
+    const [a, b] = res.items;
+    expect(a[WITH_CONTENT]).toBeUndefined();
+    expect(a.transcription).toBeUndefined();
+    expect(b[WITH_CONTENT]).toBe(true);
+    expect(b.transcription).toBe('Transcription de b');
+    expect(b.versions[0].html).toBe('<p>b</p>');
+    // Seuls les champs lourds viennent du serveur : le reste est celui de la liste.
+    expect(b.notes).toBe('locales');
+    expect(b.title).toBe('b');
+  });
+
+  it('loadHistoryList : erreurs rendues telles quelles à l’appelant', async () => {
+    const fetchItem = async () => null;
+    const call = (res) => loadHistoryList([], { fetchList: async () => res, fetchItem });
+    expect(await call({ ok: false, status: 401, data: {} })).toEqual({ status: 401 });
+    expect(await call({ ok: false, status: 0, data: { error: 'auth_redirect' } })).toEqual({
+      authRedirect: true,
+    });
+    expect(await call({ ok: true, status: 200, data: null })).toEqual({ invalid: true });
+  });
+
+  it('historyItemWithContent : lit le contenu une fois, le garde dans la liste', async () => {
+    historyItems.set([lite('a', { notes: 'en cours d’envoi' }), lite('b')]);
+    const fetchItem = vi.fn(async (id) => full(id));
+    const item = await historyItemWithContent('a', { fetchItem });
+    expect(item.transcription).toBe('Transcription de a');
+    expect(item.notes).toBe('en cours d’envoi'); // la copie locale l'emporte
+    expect(get(historyItems)[0]).toBe(item);
+    expect(await historyItemWithContent('a', { fetchItem })).toBe(item);
+    expect(fetchItem).toHaveBeenCalledTimes(1);
+  });
+
+  it('historyItemWithContent : la dernière ouverture demandée gagne', async () => {
+    historyItems.set([lite('a'), lite('b')]);
+    let release;
+    const slow = new Promise((resolve) => (release = resolve));
+    const fetchItem = vi.fn(async (id) => (id === 'a' ? slow.then(() => full('a')) : full('b')));
+    const first = historyItemWithContent('a', { fetchItem });
+    const second = await historyItemWithContent('b', { fetchItem });
+    release();
+    expect(await first).toBe(false);
+    expect(second.transcription).toBe('Transcription de b');
+  });
+
+  it('historyItemWithContent : introuvable ou illisible → null', async () => {
+    historyItems.set([lite('a')]);
+    expect(await historyItemWithContent('zz', { fetchItem: async () => full('zz') })).toBe(null);
+    expect(await historyItemWithContent('a', { fetchItem: async () => null })).toBe(null);
+    expect(get(historyItems)[0][WITH_CONTENT]).toBeUndefined();
   });
 });
 

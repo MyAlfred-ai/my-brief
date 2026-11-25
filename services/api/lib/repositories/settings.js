@@ -2,7 +2,7 @@
  * Réglages modifiables depuis le panneau d'administration (collection
  * `appSettings`). Un document par domaine fonctionnel :
  *   - `key: 'auth'`    : fournisseurs d'identité et domaines autorisés ;
- *   - `key: 'ai'`      : clé OpenAI ;
+ *   - `key: 'ai'`      : clés OpenAI et des fournisseurs tiers, modèles ;
  *   - `key: 'actions'` : actions proposées après chaque réunion et chaque résumé ;
  *   - `key: 'transcriptCorrections'` : corrections automatiques de la transcription.
  *
@@ -25,21 +25,39 @@ import { DEFAULT_MAX_RECIPIENTS, MAX_RECIPIENTS_CEILING } from '../actions/recip
 import { TEMPLATE_MAX } from '../actions/templating.js';
 import {
   TRANSCRIPTION_MODELS,
+  TRANSCRIPTION_PROVIDERS,
+  KEYED_PROVIDERS,
+  providerKeyField,
   TRANSCRIPTION_RETIREMENT_DATE,
   describeTranscriptionModel,
   isTranscriptionModel,
   resolveTranscriptionModel,
 } from '../transcriptionModels.js';
-import { SUMMARY_MODELS, isSummaryModel, resolveSummaryModel } from '../summaryModels.js';
+import {
+  SUMMARY_MODELS,
+  SUMMARY_PROVIDERS,
+  isSummaryModel,
+  resolveSummaryModel,
+} from '../summaryModels.js';
 import {
   INFOGRAPHIC_IMAGE_MODELS,
+  describeInfographicImageModel,
   isInfographicImageModel,
   resolveInfographicImageModel,
 } from '../infographicModels.js';
+import { retirementDate } from '../retiredModels.js';
 // Le plafond du style d'infographie vit avec le prompt qui le consomme (même
 // parti pris que TEMPLATE_MAX) : ce dépôt ne fait que le faire respecter.
 import { INFOGRAPHIC_STYLE_MAX } from '../prompts.js';
 import { sanitizeTranscriptCorrections } from '../transcriptCorrections.js';
+import {
+  AI_HELP_DOMAINS,
+  AI_HELP_PACE_DEFAULT,
+  AI_HELP_WAKE_WORD_DEFAULT,
+  normalizeDomains,
+  normalizePace,
+  normalizeWakeWord,
+} from '../aiHelp/domains.js';
 
 export const SETTINGS_COLLECTION = 'appSettings';
 const AUTH_KEY = 'auth';
@@ -48,6 +66,7 @@ const ACTIONS_KEY = 'actions';
 const BRANDING_KEY = 'branding';
 const ORG_CONTEXT_KEY = 'orgContext';
 const TRANSCRIPT_CORRECTIONS_KEY = 'transcriptCorrections';
+const AI_HELP_KEY = 'aiHelp';
 
 const DEFAULTS = {
   key: AUTH_KEY,
@@ -72,6 +91,14 @@ const DEFAULTS = {
 const DEFAULTS_AI = {
   key: AI_KEY,
   apiKey: '',
+  /**
+   * Clés des fournisseurs de transcription TIERS (KEYED_PROVIDERS,
+   * lib/transcriptionModels.js) : chacune ne sert qu'à la transcription, et
+   * seulement si un modèle de son fournisseur est choisi. Pas de repli sur
+   * l'environnement — elles se règlent dans la carte « Fournisseurs d'IA »,
+   * et nulle part ailleurs.
+   */
+  ...Object.fromEntries(KEYED_PROVIDERS.map((provider) => [providerKeyField(provider), ''])),
   // '' = « aucun choix » : le service retombe sur l'environnement puis sur le
   // défaut intégré. Une installation existante ne change donc pas de modèle en
   // déployant cette version.
@@ -126,6 +153,13 @@ const DEFAULTS_AI = {
  * comme n'importe quel autre réglage. Le plafond borne le poids de cette
  * sonde, appelée à chaque démarrage de l'application.
  *
+ * DEUX logos depuis le 2026-11-17 : `logo`, celui de l'APPLICATION (barre
+ * latérale, connexion, pied des infographies) ; `companyLogo`, celui de
+ * l'ENTREPRISE, en tête des infographies. Le second n'est PAS dans la sonde
+ * publique — la page de connexion n'en a pas l'usage, et la sonde porte déjà
+ * le premier à chaque démarrage : il se lit à part, par un compte connecté
+ * (GET /api/branding/company-logo).
+ *
  * La phrase d'accueil a DEUX champs : `tagline` (français) et `taglineEn`,
  * affichée quand l'interface est en anglais. Une phrase de marque ne se
  * traduit pas automatiquement : sans `taglineEn`, l'interface anglaise
@@ -140,6 +174,7 @@ export const BRANDING_COLOR_PATTERN = /^#[0-9a-f]{6}$/;
 const DEFAULTS_BRANDING = {
   key: BRANDING_KEY,
   logo: '',
+  companyLogo: '',
   tagline: '',
   taglineEn: '',
   primaryColor: '',
@@ -158,7 +193,7 @@ const DEFAULTS_BRANDING = {
  * Il vit dans l'onglet « Configuration » de l'administration parce qu'il vaut
  * pour toute l'organisation, avec le reste de l'identité de l'installation
  * (logo, phrase, couleur). Le contexte PERSONNEL (poste, entreprise de
- * l'utilisateur) reste dans « Ma configuration » : ce sont deux textes, deux
+ * l'utilisateur) reste dans « Réglages » : ce sont deux textes, deux
  * portées, deux écrans.
  *
  * Même plafond que l'ancien contexte métier de la détection d'actions, dont il
@@ -174,7 +209,23 @@ const DEFAULTS_ORG_CONTEXT = {
 };
 
 /**
- * Corrections automatiques de la transcription (onglet Configuration, sous le
+ * Aide IA d'une réunion (lib/aiHelp/) — ce que l'installation PROPOSE. Les
+ * quatre domaines naissent proposés : ce n'est pas ce réglage qui ouvre l'Aide
+ * IA à quelqu'un, c'est le droit de son groupe (`rightsOf`,
+ * lib/repositories/groups.js), refusé par défaut. Déployer n'allume donc rien ;
+ * donner le droit à un groupe suffit, sans second écran à régler.
+ */
+const DEFAULTS_AI_HELP = {
+  key: AI_HELP_KEY,
+  domains: Object.fromEntries(AI_HELP_DOMAINS.map((domain) => [domain, true])),
+  wakeWord: AI_HELP_WAKE_WORD_DEFAULT,
+  pace: AI_HELP_PACE_DEFAULT,
+  updatedAt: null,
+  updatedBy: null,
+};
+
+/**
+ * Corrections automatiques de la transcription (rubrique Organisation, sous le
  * vocabulaire). Une liste `[{ from: string[], to: string }]` — le nettoyage et
  * les plafonds vivent dans lib/transcriptCorrections.js. Vide par défaut : une
  * installation qui n'y touche pas transcrit exactement comme avant.
@@ -326,7 +377,7 @@ export function toPublicSettings(doc, { passwordLoginEnv = true, legacySsoEnv = 
 }
 
 /**
- * Projection sûre de la clé OpenAI. La clé elle-même ne sort jamais : seulement
+ * Projection sûre des clés OpenAI et des fournisseurs tiers. Une clé ne sort jamais : seulement
  * son existence, sa provenance et son indice.
  *
  * `source` distingue les deux origines, et c'est ce qui rend l'écran
@@ -352,6 +403,7 @@ export function toPublicAiSettings(
   const envSummary = String(envSummaryModel || '').trim();
   const storedImage = doc?.infographicImageModel || '';
   const envImage = String(envInfographicImageModel || '').trim();
+  const image = describeInfographicImageModel(storedImage, envImage);
   return {
     hasKey: !!effective,
     source: stored ? 'settings' : envKey ? 'env' : 'none',
@@ -365,11 +417,26 @@ export function toPublicAiSettings(
       ? { from: transcription.retiredFrom, date: TRANSCRIPTION_RETIREMENT_DATE }
       : null,
     transcriptionModels: TRANSCRIPTION_MODELS,
+    // Qui transcrit, modèle par modèle : l'écran en tire ses groupes et sait
+    // quelle clé chaque modèle demande.
+    transcriptionProviders: TRANSCRIPTION_PROVIDERS,
+    // Une entrée par fournisseur tiers, dans l'ordre de la carte : même
+    // projection que la clé OpenAI, sans provenance — elles ne viennent que
+    // de cet écran.
+    providerKeys: Object.fromEntries(
+      KEYED_PROVIDERS.map((provider) => {
+        const key = doc?.[providerKeyField(provider)] || '';
+        return [provider, { hasKey: !!key, hint: keyHint(key) }];
+      }),
+    ),
     summaryModel: resolveSummaryModel(storedSummary, envSummary),
     summaryModelSource: isSummaryModel(storedSummary) ? 'settings' : envSummary ? 'env' : 'default',
     // Servie AVEC la valeur, comme pour la transcription : l'écran ne peut pas
     // proposer un modèle que l'enregistrement refuserait.
     summaryModels: SUMMARY_MODELS,
+    // Qui rédige, modèle par modèle — même rôle que `transcriptionProviders` :
+    // l'écran en tire ses filtres et sait quelle clé chaque modèle demande.
+    summaryProviders: SUMMARY_PROVIDERS,
     // Un modèle imposé par le déploiement et INCONNU de la liste (porte de
     // sortie de l'administrateur système) doit rester affichable : l'écran
     // ajoute cette valeur à son menu plutôt que de la remplacer en silence.
@@ -383,12 +450,14 @@ export function toPublicAiSettings(
     // Modèle d'IMAGE : même trio valeur / provenance / liste que la rédaction,
     // et pour la même raison — l'écran ne doit pas pouvoir proposer un modèle
     // que l'enregistrement refuserait.
-    infographicImageModel: resolveInfographicImageModel(storedImage, envImage),
-    infographicImageModelSource: isInfographicImageModel(storedImage)
-      ? 'settings'
-      : envImage
-        ? 'env'
-        : 'default',
+    infographicImageModel: image.model,
+    infographicImageModelSource: image.source,
+    // Choix resté sur un modèle qu'OpenAI retire (gpt-image-2) : déjà
+    // remplacé à la résolution, l'écran le DIT — même forme que
+    // `transcriptionModelRetired`, et le même « Garder ».
+    infographicImageModelRetired: image.retiredFrom
+      ? { from: image.retiredFrom, date: retirementDate(image.retiredFrom) }
+      : null,
     infographicImageModels: INFOGRAPHIC_IMAGE_MODELS,
     // Un palier imposé par le déploiement et hors liste (`sunburst`, une
     // génération plus récente) doit rester AFFICHABLE : sans ce drapeau,
@@ -473,12 +542,16 @@ export function toPublicActionsSettings(doc, { mailerEnabled = false, withFolder
  * d'administrateur : il reste réservé à l'écran d'administration (`withMeta`),
  * une sonde publique n'a pas à divulguer qui administre l'installation.
  *
+ * Le logo d'ENTREPRISE ne sort qu'avec `withMeta` (l'écran d'administration,
+ * qui le règle) : la sonde publique n'en a pas l'usage.
+ *
  * @param {object|null} doc - document `branding` complet
  * @param {{withMeta?: boolean}} [context]
  */
 export function toPublicBrandingSettings(doc, { withMeta = false } = {}) {
   return {
     logo: doc?.logo || '',
+    ...(withMeta ? { companyLogo: doc?.companyLogo || '' } : {}),
     tagline: doc?.tagline || '',
     taglineEn: doc?.taglineEn || '',
     primaryColor: doc?.primaryColor || '',
@@ -505,6 +578,23 @@ export function toPublicBrandingSettings(doc, { withMeta = false } = {}) {
 export function toPublicOrgContextSettings(doc, { withMeta = false } = {}) {
   return {
     context: String(doc?.context || '').slice(0, ORG_CONTEXT_MAX),
+    ...(withMeta ? { updatedAt: doc?.updatedAt || null, updatedBy: doc?.updatedBy || null } : {}),
+  };
+}
+
+/**
+ * Réglages de l'Aide IA, normalisés. Un document absent ou abîmé rend les
+ * valeurs de naissance — jamais un domaine `undefined` que l'écran lirait
+ * comme coupé.
+ *
+ * @param {object|null} doc - document `aiHelp` complet
+ * @param {{withMeta?: boolean}} [context]
+ */
+export function toPublicAiHelpSettings(doc, { withMeta = false } = {}) {
+  return {
+    domains: normalizeDomains(doc?.domains, DEFAULTS_AI_HELP.domains),
+    wakeWord: normalizeWakeWord(doc?.wakeWord),
+    pace: normalizePace(doc?.pace),
     ...(withMeta ? { updatedAt: doc?.updatedAt || null, updatedBy: doc?.updatedBy || null } : {}),
   };
 }
@@ -595,6 +685,7 @@ export function createSettingsRepo(db) {
     toPublicBrandingSettings,
     toPublicOrgContextSettings,
     toPublicTranscriptCorrections,
+    toPublicAiHelpSettings,
 
     /** @returns {Promise<object>} le document COMPLET (secrets inclus) — usage serveur uniquement */
     async get() {
@@ -651,6 +742,17 @@ export function createSettingsRepo(db) {
     async resolveOpenAiKey(envKey = '') {
       const doc = await this.getAi();
       return doc.apiKey || envKey || '';
+    },
+
+    /**
+     * Clé d'un fournisseur de transcription tiers, relue à chaque appel comme
+     * la clé OpenAI. '' tant qu'aucune n'est enregistrée.
+     * @param {string} provider - un de KEYED_PROVIDERS
+     * @returns {Promise<string>}
+     */
+    async resolveProviderKey(provider) {
+      if (!KEYED_PROVIDERS.includes(provider)) return '';
+      return (await this.getAi())[providerKeyField(provider)] || '';
     },
 
     /**
@@ -727,9 +829,12 @@ export function createSettingsRepo(db) {
      * déjà) : ce dépôt est appelé par les tests et par le futur écran, il ne
      * peut pas dépendre d'une validation qui vit ailleurs.
      *
+     * Les clés tierces arrivent sous leur nom de champ (`mistralApiKey`,
+     * `speechmaticsApiKey`, `assemblyaiApiKey`), même contrat que `apiKey`.
+     *
      * @param {{apiKey?: string, transcriptionModel?: string, summaryModel?: string,
      *          infographicEnabled?: boolean, infographicStyle?: string,
-     *          infographicImageModel?: string}} patch
+     *          infographicImageModel?: string, [providerKey: string]: any}} patch
      * @param {{actor?: string}} [context] - email de l'administrateur, pour la traçabilité
      */
     async updateAi(
@@ -740,6 +845,7 @@ export function createSettingsRepo(db) {
         infographicEnabled,
         infographicStyle,
         infographicImageModel,
+        ...providerKeys
       },
       { actor = null } = {},
     ) {
@@ -748,6 +854,10 @@ export function createSettingsRepo(db) {
         updatedBy: actor,
       };
       if (apiKey !== undefined) next.apiKey = String(apiKey).trim();
+      for (const provider of KEYED_PROVIDERS) {
+        const field = providerKeyField(provider);
+        if (providerKeys[field] !== undefined) next[field] = String(providerKeys[field]).trim();
+      }
       if (infographicEnabled !== undefined) next.infographicEnabled = !!infographicEnabled;
       // Champ vide = « plus de style imposé », comme la clé et les modèles :
       // c'est le seul moyen de revenir au libre choix du modèle depuis l'écran.
@@ -913,26 +1023,31 @@ export function createSettingsRepo(db) {
      * mais VIDE = retour à la valeur intégrée. Revalidé ici en plus du schéma
      * de route, pour les mêmes raisons (tests, appels futurs).
      *
-     * @param {{logo?: string, tagline?: string, taglineEn?: string, primaryColor?: string, secondaryColor?: string}} patch
+     * @param {{logo?: string, companyLogo?: string, tagline?: string, taglineEn?: string, primaryColor?: string, secondaryColor?: string}} patch
      * @param {{actor?: string}} [context] - email de l'administrateur, pour la traçabilité
      */
     async updateBranding(
-      { logo, tagline, taglineEn, primaryColor, secondaryColor },
+      { logo, companyLogo, tagline, taglineEn, primaryColor, secondaryColor },
       { actor = null } = {},
     ) {
       const next = {
         updatedAt: new Date().toISOString(),
         updatedBy: actor,
       };
-      if (logo !== undefined) {
-        const value = String(logo).trim();
+      // Les deux logos suivent la même règle : data-URL d'image, plafonnée.
+      for (const [field, raw] of [
+        ['logo', logo],
+        ['companyLogo', companyLogo],
+      ]) {
+        if (raw === undefined) continue;
+        const value = String(raw).trim();
         if (value && !BRANDING_LOGO_PATTERN.test(value)) {
-          throw new Error('logo invalide : data-URL image attendue');
+          throw new Error(`${field} invalide : data-URL image attendue`);
         }
         if (value.length > BRANDING_LOGO_MAX) {
-          throw new Error('logo trop lourd');
+          throw new Error(`${field} trop lourd`);
         }
-        next.logo = value;
+        next[field] = value;
       }
       for (const [field, raw] of [
         ['tagline', tagline],
@@ -963,7 +1078,7 @@ export function createSettingsRepo(db) {
       return this.getBranding();
     },
 
-    // ── Contexte de l'organisation (onglet Configuration) ──────────────────
+    // ── Contexte de l'organisation (rubrique Organisation) ──────────────────
 
     /** @returns {Promise<object>} le document `orgContext` COMPLET */
     async getOrgContext() {
@@ -1004,7 +1119,39 @@ export function createSettingsRepo(db) {
       return this.getOrgContext();
     },
 
-    // ── Corrections automatiques de la transcription (onglet Configuration) ─
+    // ── Aide IA d'une réunion (onglet Aide IA) ─────────────────────────────
+
+    /** @returns {Promise<object>} le document `aiHelp` COMPLET, normalisé */
+    async getAiHelp() {
+      const doc = await settings().findOne({ key: AI_HELP_KEY });
+      return { ...DEFAULTS_AI_HELP, ...(doc || {}), ...toPublicAiHelpSettings(doc) };
+    },
+
+    /**
+     * Champ ABSENT = inchangé. `domains` est lui-même partiel : ne nommer que
+     * `ideas` ne touche pas aux trois autres. Un mot d'appel VIDE revient au
+     * défaut (`normalizeWakeWord`) — la question à voix haute ne se coupe pas
+     * en effaçant un champ, elle se coupe en retirant le domaine.
+     *
+     * @param {{domains?: object, wakeWord?: string, pace?: string}} patch
+     * @param {{actor?: string}} [context] - email de l'administrateur, pour la traçabilité
+     */
+    async updateAiHelp({ domains, wakeWord, pace } = {}, { actor = null } = {}) {
+      const next = { updatedAt: new Date().toISOString(), updatedBy: actor };
+      if (domains !== undefined) {
+        next.domains = normalizeDomains(domains, (await this.getAiHelp()).domains);
+      }
+      if (wakeWord !== undefined) next.wakeWord = normalizeWakeWord(wakeWord);
+      if (pace !== undefined) next.pace = normalizePace(pace);
+      await settings().updateOne(
+        { key: AI_HELP_KEY },
+        { $set: next, $setOnInsert: { key: AI_HELP_KEY, createdAt: next.updatedAt } },
+        { upsert: true },
+      );
+      return this.getAiHelp();
+    },
+
+    // ── Corrections automatiques de la transcription (rubrique Organisation) ─
 
     /** @returns {Promise<object>} le document `transcriptCorrections` COMPLET */
     async getTranscriptCorrections() {

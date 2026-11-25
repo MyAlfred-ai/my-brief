@@ -52,7 +52,7 @@ longueur, une infobulle donne la longueur demandée et celle obtenue.
   « Réunion courte : au-delà de 1,5 page, il n’y aurait plus rien de vrai à écrire. Le résumé
   s’arrêtera vers 1,5 page. » myBrief n'invente rien pour atteindre la longueur.
 - **Régénérer une version.** **Nouveau résumé** avec le même template repart de la longueur de la
-  version affichée : il suffit de déplacer le curseur pour un résumé plus court ou plus long.
+  version affichée : déplacez le curseur pour un résumé plus court ou plus long.
 - **Passer d'un template à l'autre** dans la carte garde le réglage de chacun, jusqu'à la fermeture
   de la carte : la pastille de chaque carte affiche la longueur réglée (**3 p.** après avoir choisi
   3 pages).

@@ -24,8 +24,41 @@ import { randomUUID } from 'node:crypto';
 import { requireEmail } from '../lib/identity.js';
 import { ownerFilter, ownerFields } from '../lib/ownerScope.js';
 import { fail } from '../lib/errors.js';
+import { TAG_CONTEXT_MAX, normalizeTagContext } from '../lib/tagContext.js';
 
 export const TAGS_COLLECTION = 'userTags';
+
+/**
+ * Logos des tags — une collection À PART : GET /tags renvoie toute la liste à
+ * chaque ouverture de « Mes tags » et du sélecteur ; trente logos dedans la
+ * feraient peser plusieurs Mo. Le tag ne porte que `logoAt` (date du logo),
+ * qui dit au navigateur s'il en a un et si sa copie est à jour ; le logo se
+ * lit à part (GET /tags/logo), un par un, à la demande.
+ */
+export const TAG_LOGOS_COLLECTION = 'userTagLogos';
+
+/**
+ * Taille maximale d'un logo, en caractères de data URL (≈ 220 Ko d'image).
+ * Le navigateur le réduit à 512 px de côté avant l'envoi (src/utils/tagLogo.js,
+ * même borne) : un logo y tient largement. Le serveur revérifie.
+ */
+export const TAG_LOGO_MAX = 300_000;
+
+/**
+ * Un logo admis : un data URL PNG, JPEG ou WebP — ce que produit le canvas du
+ * navigateur — dont les premiers octets sont bien ceux du format annoncé. Pas
+ * de SVG : un document actif n'a rien à faire dans un logo qu'on affiche,
+ * imprime et exporte ; le navigateur le convertit en PNG avant l'envoi.
+ */
+const LOGO_SIGNATURES = {
+  'image/png': 'iVBORw0KGgo',
+  'image/jpeg': '/9j/',
+  'image/webp': 'UklGR',
+};
+function isTagLogo(dataUrl) {
+  const m = /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/]+={0,2})$/.exec(dataUrl);
+  return !!m && m[2].startsWith(LOGO_SIGNATURES[m[1]]);
+}
 
 /**
  * Slugs de couleur admis. Le rendu (jeton CSS) appartient au frontend.
@@ -111,10 +144,34 @@ export const TAG_LABEL_MAX = 32;
  * tag par client est un usage attendu, pas un abus. Assez bas pour qu'un
  * sélecteur reste lisible sans recherche.
  */
-export const USER_TAGS_MAX = 20;
+export const USER_TAGS_MAX = 30;
 
-/** Jamais de _id ni de champs d'appartenance vers le client. */
-const TAG_FIELDS = { _id: 0, id: 1, label: 1, color: 1, shape: 1, createdAt: 1, updatedAt: 1 };
+/**
+ * Jamais de _id ni de champs d'appartenance vers le client.
+ *
+ * `myBrainProject` (`{ path, title }`) : la fiche de projet reliée au tag, pour
+ * l'Aide IA d'une réunion. Elle ne s'écrit PAS ici mais par
+ * `POST /ai-help/tag-project` (routes/aiHelp.js), qui la relit dans myBrain ;
+ * `/tags/save` ne touche qu'au nom, à la couleur et à la forme, et la laisse
+ * donc en place.
+ *
+ * `context` : ce que l'IA doit savoir du dossier (lib/tagContext.js). Même
+ * régime : il s'écrit par `POST /tags/context`, et `/tags/save` le laisse en
+ * place. Il descend avec la liste parce que le navigateur assemble le prompt
+ * du compte rendu.
+ */
+const TAG_FIELDS = {
+  _id: 0,
+  id: 1,
+  label: 1,
+  color: 1,
+  shape: 1,
+  context: 1,
+  logoAt: 1,
+  myBrainProject: 1,
+  createdAt: 1,
+  updatedAt: 1,
+};
 
 /**
  * Forme du corps — bornée par ajv pour que la validation sémantique ci-dessous
@@ -142,6 +199,38 @@ const deleteBody = {
   properties: { id: { type: 'string', maxLength: 64 } },
 };
 
+const logoBody = {
+  type: 'object',
+  required: ['id', 'dataUrl'],
+  additionalProperties: false,
+  properties: {
+    id: { type: 'string', maxLength: 64 },
+    dataUrl: { type: 'string', maxLength: TAG_LOGO_MAX + 100 },
+  },
+};
+
+const logoQuery = {
+  type: 'object',
+  required: ['id'],
+  additionalProperties: false,
+  properties: { id: { type: 'string', maxLength: 64 } },
+};
+
+/**
+ * Garde-fou de transport, large devant `TAG_CONTEXT_MAX` : la borne métier
+ * se vérifie après normalisation, pour renvoyer `context_too_long` et son
+ * maximum plutôt qu'un `invalid_body`.
+ */
+const contextBody = {
+  type: 'object',
+  required: ['id', 'context'],
+  additionalProperties: false,
+  properties: {
+    id: { type: 'string', maxLength: 64 },
+    context: { type: 'string', maxLength: 8000 },
+  },
+};
+
 /**
  * Clé de comparaison des libellés : casse et espaces neutralisés.
  * Deux tags « Client Dupont » et « client  dupont » sont le même classeur pour
@@ -153,6 +242,7 @@ function labelKey(label) {
 
 export default function tagsRoutes(app) {
   const tags = () => app.db.collection(TAGS_COLLECTION);
+  const logos = () => app.db.collection(TAG_LOGOS_COLLECTION);
 
   /**
    * Tags de l'utilisateur + le vocabulaire dont le frontend a besoin (palette,
@@ -173,6 +263,8 @@ export default function tagsRoutes(app) {
       shapes: TAG_SHAPES,
       hueLightness: TAG_HUE_LIGHTNESS,
       max: USER_TAGS_MAX,
+      contextMax: TAG_CONTEXT_MAX,
+      logoMax: TAG_LOGO_MAX,
     };
   });
 
@@ -224,6 +316,86 @@ export default function tagsRoutes(app) {
   });
 
   /**
+   * Contexte d'un tag : ce que l'IA doit savoir du dossier (lib/tagContext.js).
+   * Une route à part de `/tags/save` : la fiche l'enregistre au fil de la
+   * frappe, sans renvoyer nom, couleur et forme — et un client qui ne connaît
+   * pas le contexte ne peut pas l'effacer en sauvant une couleur. Vide =
+   * retiré : le tag redevient un simple classeur.
+   */
+  app.post('/tags/context', { schema: { body: contextBody } }, async (req, reply) => {
+    const email = requireEmail(req, reply);
+    if (!email) return;
+    const { id } = req.body;
+    const context = normalizeTagContext(req.body.context);
+    if (context.length > TAG_CONTEXT_MAX)
+      return fail(reply, 400, 'context_too_long', { max: TAG_CONTEXT_MAX });
+
+    const updatedAt = new Date().toISOString();
+    const res = await tags().updateOne(
+      ownerFilter(email, { id }),
+      context ? { $set: { context, updatedAt } } : { $unset: { context: '' }, $set: { updatedAt } },
+    );
+    if (!res.matchedCount) return fail(reply, 404, 'tag_not_found');
+    return { tag: { id, context, updatedAt } };
+  });
+
+  /**
+   * Logo d'un tag — celui du client ou du projet qu'il range, posé en
+   * médaillon sur l'infographie, en tête du compte rendu PDF et dans la liste
+   * de « Mes tags ».
+   *
+   * Remplacer = retirer puis insérer, jamais un upsert : `ownerFilter` est un
+   * `$or`, le document créé n'aurait pas d'appartenance (CLAUDE.md, règle 2).
+   * Le tag n'en garde que la date (`logoAt`), écrite APRÈS le logo : si la
+   * seconde écriture échoue, le logo existe sans être annoncé — invisible et
+   * rejouable — plutôt qu'annoncé sans exister.
+   */
+  app.post('/tags/logo', { schema: { body: logoBody } }, async (req, reply) => {
+    const email = requireEmail(req, reply);
+    if (!email) return;
+    const { id, dataUrl } = req.body;
+    if (dataUrl.length > TAG_LOGO_MAX)
+      return fail(reply, 400, 'logo_too_big', { max: TAG_LOGO_MAX });
+    if (!isTagLogo(dataUrl)) return fail(reply, 400, 'logo_invalid');
+    const existing = await tags().findOne(ownerFilter(email, { id }), {
+      projection: { _id: 0, id: 1 },
+    });
+    if (!existing) return fail(reply, 404, 'tag_not_found');
+
+    const logoAt = new Date().toISOString();
+    await logos().deleteMany(ownerFilter(email, { tagId: id }));
+    await logos().insertOne({ ...ownerFields(email), tagId: id, dataUrl, updatedAt: logoAt });
+    await tags().updateOne(ownerFilter(email, { id }), { $set: { logoAt, updatedAt: logoAt } });
+    return { tag: { id, logoAt } };
+  });
+
+  /** Le logo d'un tag du compte, ou 404 : pas de tag, ou pas de logo. */
+  app.get('/tags/logo', { schema: { querystring: logoQuery } }, async (req, reply) => {
+    const email = requireEmail(req, reply);
+    if (!email) return;
+    const logo = await logos().findOne(ownerFilter(email, { tagId: req.query.id }), {
+      projection: { _id: 0, dataUrl: 1, updatedAt: 1 },
+    });
+    if (!logo?.dataUrl) return fail(reply, 404, 'logo_not_found');
+    return { id: req.query.id, dataUrl: logo.dataUrl, logoAt: logo.updatedAt || null };
+  });
+
+  /** Retire le logo d'un tag : l'annonce d'abord, le logo ensuite. */
+  app.post('/tags/logo/delete', { schema: { body: deleteBody } }, async (req, reply) => {
+    const email = requireEmail(req, reply);
+    if (!email) return;
+    const { id } = req.body;
+    const updatedAt = new Date().toISOString();
+    const res = await tags().updateOne(ownerFilter(email, { id }), {
+      $unset: { logoAt: '' },
+      $set: { updatedAt },
+    });
+    if (!res.matchedCount) return fail(reply, 404, 'tag_not_found');
+    await logos().deleteMany(ownerFilter(email, { tagId: id }));
+    return { tag: { id, logoAt: null } };
+  });
+
+  /**
    * Suppression d'un tag, et de toutes les références qui y pointent.
    *
    * Les conversations sont détaguées AVANT que le tag disparaisse : si la
@@ -243,6 +415,8 @@ export default function tagsRoutes(app) {
       .collection('resume')
       .updateMany(ownerFilter(email, { tagId: id }), { $unset: { tagId: '' } });
     await tags().deleteMany(ownerFilter(email, { id }));
+    // Son logo part avec lui : il n'a de sens que pour ce tag.
+    await logos().deleteMany(ownerFilter(email, { tagId: id }));
 
     return { ok: true, untagged: untagged?.modifiedCount || 0 };
   });

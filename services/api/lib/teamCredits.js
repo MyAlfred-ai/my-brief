@@ -2,8 +2,8 @@
  * Le crédit de temps de chaque compte — Administration → Crédit de temps.
  * Fonction PURE : la route lit, ceci calcule.
  *
- * Mêmes règles que le compteur de chacun (lib/quota.js) : la limite la plus
- * généreuse de ses groupes, le mois civil à l'heure de Paris, les réunions
+ * Mêmes règles que le compteur de chacun (lib/quota.js) : la limite de son
+ * groupe, le mois civil à l'heure de Paris, les réunions
  * supprimées comptées jusqu'à la fin du mois, une réunion comptée une fois.
  * Recalculer ici plutôt qu'appeler `statusFor` compte par compte : une
  * lecture de la période pour toute l'installation au lieu de deux par compte.

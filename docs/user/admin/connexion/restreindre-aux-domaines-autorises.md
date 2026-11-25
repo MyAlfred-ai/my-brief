@@ -5,7 +5,8 @@ sidebar:
   order: 4
 ---
 
-**Administration → Authentification**, carte **Domaines autorisés**.
+**Administration → Organisation → Authentification**, carte **Domaines autorisés**, sous la page de
+connexion. Son en-tête compte les domaines de la liste ; l'ⓘ rappelle la règle.
 
 ## Comment ça marche
 
@@ -29,7 +30,7 @@ email n'est pas autorisé sur cette application. Contactez un administrateur. »
 
 1. Tapez le domaine — *exemple.fr* ; un « @ » ou une adresse web collés sont nettoyés.
 2. Cliquez **Ajouter** pour en taper un autre. Le dernier domaine tapé est enregistré même sans ce clic.
-3. Cliquez **Enregistrer**, en bas de l'onglet.
+3. Cliquez **Enregistrer**, en bas de la page.
 
 **Retirer le domaine** l'enlève de la liste : les comptes déjà créés restent.
 

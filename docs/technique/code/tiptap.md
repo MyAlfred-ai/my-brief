@@ -2,38 +2,14 @@
 
 ### src/lib/tiptap/BlockDragHandle.js
 
-- **Rôle du fichier :**
-  - Fournit une extension Tiptap ajoutant une poignée (⠿) de drag & drop flottante pour déplacer facilement des blocs top-level (titres, paragraphes, listes) dans l’éditeur.
-  - Permet la sélection automatique et le déplacement natif ProseMirror du bloc survolé via le drag & drop HTML standard.
-  - Ne nécessite aucune dépendance externe (hors Tiptap/ProseMirror).
-
-- **Fonctions exportées :**
-  - **BlockDragHandle** (const, Extension Tiptap)
-    - Paramètres : aucun (Utilisation via ajout dans la liste des extensions Tiptap).
-    - Retour : instance Tiptap Extension, injectant le plugin ProseMirror associé.
-    - Effet de bord notable :
-      - Ajoute dynamiquement un élément DOM `.ut-ed-drag-handle` dans le wrapper de l’éditeur.
-      - Modifie la sélection au drag start, injecte des données dans le drag event.
-      - Nettoyage DOM et listeners à la destruction de la vue.
-
-- **Fonctions internes non exportées :**
-  - **blockDragHandlePlugin**
-    - Paramètres : aucun (utilisé via Extension.create).
-    - Retour : Instance ProseMirror Plugin.
-    - Effet : Gère l’apparition/positionnement/removal de la poignée, la sélection et le drag & drop bloc.
-
-- **Points d’attention / edge cases :**
-  - **Dépendances** : ProseMirror (`@tiptap/core`, `@tiptap/pm/state`). Aucune dépendance externe.
-  - **Edge cases** :
-    - La poignée n’apparaît que sur des blocs de profondeur > 0 (skip les racines/document vide).
-    - Très dépendant de la structure DOM attendue (`.ut-ed-wrap` doit envelopper le DOM de l’éditeur pour un placement correct).
-    - Fait l’hypothèse que le bloc a un nœud DOM d’élément (nodeType === 1).
-    - Ne gère pas (encore) le déplacement de groupes de blocs (ex : section entière ; cf. B2 dans le commentaire).
-    - Le drag & drop s’appuie sur l’implémentation native de ProseMirror : certains effets visuels ou comportements (dropcursor) dépendent des plugins installés côté éditeur.
-
-- **Autres remarques :**
-  - Nettoie tous les listeners DOM et la poignée à la destruction de la vue.
-  - Respecte l’accessibilité de base (`aria-label`).
+- **Rôle :** extension Tiptap sans dépendance externe qui affiche une poignée dans la gouttière gauche pour déplacer un bloc top-level par glisser-déposer. Le déplacement utilise le mécanisme natif de ProseMirror.
+- **`BlockDragHandle`** — extension exportée ; option `label` (défaut : `'Déplacer le bloc'`) pour l’`aria-label`. Retourne un plugin ProseMirror. À son initialisation, le plugin ajoute la poignée au wrapper de l’éditeur et installe des écouteurs DOM ; ceux-ci sont retirés à la destruction de la vue.
+- **`blockDragHandlePlugin(label)`** — fonction interne, non exportée ; `label` est une chaîne. Retourne un `Plugin`. Au survol, positionne la poignée sur le bloc détecté ; au démarrage du drag, crée une `NodeSelection` et définit `editorView.dragging` avec `move: true`. Le drag-end réinitialise cet état et masque la poignée.
+- **Points d’attention :**
+  - Déplace un seul bloc top-level, pas une section composée d’un titre et de son contenu.
+  - La détection dépend de `posAtCoords`, de `nodeDOM` et de la structure du document ; les positions invalides ou les blocs sans nœud DOM sont ignorés.
+  - Le wrapper est `.ut-ed-wrap`, sinon le parent de l’éditeur. Si aucun wrapper n’est trouvé, le calcul de position dépend de `wrapper` et peut échouer.
+  - Dépend de `@tiptap/core` et des API ProseMirror `@tiptap/pm/state` (`Plugin`, `PluginKey`, `NodeSelection`). Le curseur de dépôt est fourni séparément, notamment par StarterKit.
 
 ### src/lib/tiptap/VariableNode.js
 

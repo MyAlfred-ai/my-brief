@@ -14,6 +14,11 @@ tel quel dans Chrome.
 - **Liaison sans saisie** : depuis l'onglet MyBrief, le popup propose « Utiliser ce site
   comme mon MyBrief ». La permission d'hôte est demandée pour ce seul site
   (`optional_host_permissions`). Une extension unique sert toutes les installations.
+  La sonde `/api/auth/config` est jouée DANS l'onglet (`executeScript`, permis par
+  `activeTab`) : l'API n'envoie aucun en-tête CORS, et avant la liaison l'extension n'a pas
+  la permission d'hôte qui l'en dispenserait.
+- **Accès perdu** : le site lié vit dans `storage.sync` (il suit le compte Chrome), la
+  permission d'hôte reste sur le poste. Sans elle, le popup affiche « Autoriser … » en tête.
 - **Pont avec l'app** : `content.js`, inscrit sur le site lié, se signale à la page
   (`postMessage`) ; la page « Extension Chrome » de « Ma configuration » passe au vert.
 
@@ -53,9 +58,16 @@ Pas encore : la capture audio de l'onglet visio (tabCapture, V3).
 
 - `npm run build:extension` (lancé aussi par `prebuild`/`predev`) produit
   `public/mybrief-extension.zip` — ce que la page de configuration propose tant que
-  `EXTENSION_STORE_URL` (`src/config/constants.js`) est vide.
+  `EXTENSION_STORE_URL` (`src/config/constants.js`) est vide. Les fichiers y sont à la
+  racine, sans dossier englobant : « Extraire tout » de Windows en ajoute déjà un, et le
+  store exige `manifest.json` à la racine (en-tête de `scripts/build-extension.mjs`).
 - Cible : fiche **non répertoriée** du Chrome Web Store (installation en un clic, mises à
   jour automatiques, installation forcée possible par la DSI via `ExtensionInstallForcelist`).
   Renseigner `EXTENSION_STORE_URL` fait basculer la page sur « Ajouter à Chrome ». Le zip à
   téléverser sur le store est le même fichier.
-- Monter `version` dans `manifest.json` à chaque publication.
+- Fiche du store (textes, confidentialité, images et leur rendu) : [`store/FICHE.md`](store/FICHE.md),
+  hors du zip.
+- Monter `version` dans `manifest.json` à chaque publication : la page « Extension Chrome »
+  compare la version annoncée par l'extension à celle du zip servi
+  (`src/utils/extensionVersion.js`) et propose la mise à jour — sans le store, c'est le seul
+  moyen pour l'utilisateur de l'apprendre.

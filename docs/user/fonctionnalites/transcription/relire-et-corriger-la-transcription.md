@@ -36,11 +36,20 @@ Le message « ✅ Transcription sauvegardée » confirme l'enregistrement, peu a
 
 - **Un nom qui revient souvent** : écrivez-le dans vos notes, avec la consigne « Remplace Alexe par
   Alex ». Le compte rendu l'écrira juste, même si la transcription se trompe — voir
-  [Corriger un nom ou un sigle](../notes/corriger-un-nom-ou-un-sigle.md).
+  [Corriger un nom ou un sigle](../notes/corriger-un-nom-ou-un-sigle.md). Ce remplacement est retenu :
+  à vos réunions suivantes, la transcription l'écrit juste d'elle-même — voir
+  [Faire remplacer d'office un mot mal transcrit](faire-remplacer-d-office-un-mot-mal-transcrit.md).
+- **Les noms d'un projet ou d'un client** : écrivez-les dans le texte de son tag (**Mes tags** → **Que
+  doit savoir l'IA ?**). Pendant l'enregistrement d'une réunion rangée dans ce tag, un nom écorché est
+  rétabli tel que vous l'avez écrit — voir
+  [Dire à l'IA de quoi parle un tag](../tags/dire-a-l-ia-de-quoi-parle-un-tag.md).
 - **Les noms propres de toute l'organisation** — clients, produits, sigles — peuvent être déclarés une
   fois pour toutes par votre administrateur, dans le vocabulaire de l'organisation.
 - **Un nom mal transcrit dans toutes les réunions** : signalez-le à votre administrateur. Il peut le
   faire corriger automatiquement, pour tout le monde, dès la fin de chaque phrase.
+- **Pendant la réunion, avec l'Aide IA** : « Alfred, remplace partout Durend par Durand » corrige les
+  lignes déjà écrites, sans quitter la réunion des yeux — voir
+  [L'Aide IA en réunion](../aide-ia/index.md).
 
 ## En cas de problème
 

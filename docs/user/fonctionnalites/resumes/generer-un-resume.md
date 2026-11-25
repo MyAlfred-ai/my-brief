@@ -28,8 +28,12 @@ Le résumé se génère depuis la barre du bas, en terminant la réunion.
    [Régler la longueur du résumé](regler-la-longueur.md).
 5. Facultatif : cliquez **Instructions supplémentaires**, puis écrivez vos consignes, pour ce résumé
    seulement — « mets en avant les risques », « garde tous les chiffres », « rédige pour un client ».
-6. Facultatif : cochez **Générer une infographie** (**Infographie** sur téléphone), si la case est
-   proposée — voir [Créer une infographie](creer-une-infographie.md).
+6. Sous **Ajouter au compte rendu**, choisissez ce qui accompagne le résumé — cliquez une tuile pour
+   l'allumer ou l'éteindre :
+   - **Actions détectées**, allumée au départ, avec leur nombre : la liste des actions dans sa section
+     du compte rendu. Éteignez-la pour un compte rendu sans cette section ;
+   - **Infographie**, éteinte au départ, si elle vous est proposée — voir
+     [Créer une infographie](creer-une-infographie.md).
 7. Cliquez **Générer →**.
 
 ## Résultat
@@ -55,9 +59,18 @@ envoyer par mail, entreposer, en un geste — voir
 - **Le template déjà sélectionné** à l'ouverture de la carte : celui de la version affichée, sinon le
   dernier utilisé depuis l'ouverture de myBrief, sinon **Standard**.
 - **Fermer la carte sans générer** : **Annuler**, touche **Échap**, ou onglet **Transcription**.
-  L'enregistrement reste arrêté ; la barre du bas propose alors **Enregistrer** et **Résumer →**.
+  L'enregistrement reste arrêté ; la barre du bas propose alors **Reprendre**, **Enregistrer** et
+  **Résumer →**.
 - **Les instructions supplémentaires** ne valent que pour ce résumé : le champ est replié et vide à
   chaque ouverture de la carte. Dans un template à mise en forme, elles ne s'appliquent qu'au bloc **✨ Résumé IA**.
+- **Les tuiles d'options** reviennent à leur position de départ à chaque ouverture de la carte :
+  **Actions détectées** allumée, **Infographie** éteinte.
+- **Actions détectées éteinte** : le compte rendu perd la section des actions, titre compris. Les
+  actions restent dans le panneau **Actions** et dans l'infographie.
+- **Aucune action détectée** : la tuile le dit et reste éteinte ; le compte rendu part sans section des
+  actions.
+- **Le nombre de la tuile** compte les actions que le compte rendu reprendra : ni les actions masquées,
+  ni les cartes laissées vides.
 - **Terminer sans résumé** : **Enregistrer**, dans la barre du bas — voir
   [Terminer une réunion](../pause-et-fin/terminer-une-reunion.md).
 

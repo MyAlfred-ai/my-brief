@@ -22,10 +22,18 @@
    * Téléphone (≤ 768 px) : le dock se masque pendant la réunion,
    * MobileMeetingBar prend le relais avec sa propre feuille de fin. Il reste
    * pour « Démarrer » et, après l'arrêt, pour « Enregistrer » / « Résumer → ».
+   *
+   * Après l'arrêt, « Reprendre » à gauche (`onResumeMeeting`) : la réunion
+   * n'est pas condamnée par « Terminer » — arrêtée trop tôt, ou qui continue
+   * après une pause déjeuner, elle se rouvre et la suite s'ajoute à SA
+   * transcription (utils/meetingResume.js). Même mot que la pause : un arrêt
+   * se reprend comme une pause. À gauche et en creux : continuer est
+   * possible, conclure (Enregistrer, Résumer) reste le geste attendu.
    */
   import { uiText } from '../store.js';
   import IconArrowRight from '~icons/solar/arrow-right-linear';
   import IconMicBold from '~icons/solar/microphone-2-bold';
+  import IconMic from '~icons/solar/microphone-2-linear';
   import IconSave from '~icons/solar/diskette-linear';
   import IconPause from '~icons/solar/pause-bold';
   import IconPlay from '~icons/solar/play-bold';
@@ -33,6 +41,8 @@
   import IconLock from '~icons/solar/lock-keyhole-minimalistic-linear';
   import AudioWave from './AudioWave.svelte';
   import EndMeetingSheet from './EndMeetingSheet.svelte';
+  import AiHelpPill from './aiHelp/AiHelpPill.svelte';
+  import { aiHelp } from '../stores/aiHelp.js';
   import { portal } from '../utils/portal.js';
 
   export let isRecording = false;
@@ -55,6 +65,8 @@
   export let onSave = () => {};
   export let canSave = false;
   export let isRequestingMic = false;
+  /** « Reprendre » une réunion arrêtée ; `null` = pas de reprise offerte (App décide). */
+  export let onResumeMeeting = null;
   /**
    * « Démarrer » retenu par le quota de minutes (stores/quota.js) : le libellé
    * à afficher à la place, vide sinon. Le bouton reste cliquable : c'est App
@@ -101,10 +113,25 @@
           <IconStop width="14" height="14" aria-hidden="true" />
           {$uiText.meetingBar.end}
         </button>
+        <AiHelpPill />
       </div>
     {:else if showComposer}
       <!-- Arrêtée sans compte rendu (sélecteur de template refermé) -->
       <div class="action-bar">
+        {#if onResumeMeeting}
+          <button
+            type="button"
+            class="resume-rec"
+            on:click={onResumeMeeting}
+            disabled={isGeneratingSummary || isRequestingMic}
+            aria-busy={isRequestingMic}
+            aria-label={$uiText.meetingResume.dockTitle}
+            title={$uiText.meetingResume.dockTitle}
+          >
+            <IconMic width="16" height="16" aria-hidden="true" />
+            <span class="resume-label">{$uiText.meetingResume.dock}</span>
+          </button>
+        {/if}
         <div class="spacer"></div>
 
         {#if canSave}
@@ -135,7 +162,7 @@
     {:else if showWaveform}
       <!-- Enregistrement : l'onde (MyBrief écoute), « Pause », « Terminer » -->
       <div class="live-bar">
-        <div class="wave-pill">
+        <div class="wave-pill" class:wave-pill-tight={$aiHelp.available}>
           <AudioWave
             {analyser}
             active={showWaveform}
@@ -150,6 +177,8 @@
           <IconStop width="14" height="14" aria-hidden="true" />
           {$uiText.meetingBar.end}
         </button>
+        <!-- L'Aide IA de la réunion : marche/arrêt, domaines, « Demander ». -->
+        <AiHelpPill />
       </div>
     {:else}
       <!-- Idle / start state -->
@@ -287,6 +316,45 @@
     box-shadow: 0 6px 18px -4px rgb(var(--brand-rgb) / 0.35);
   }
 
+  /* « Reprendre » une réunion arrêtée : en creux, sans cadre — une
+     possibilité à côté des deux conclusions, pas un troisième bouton qui
+     leur dispute l'attention. Le micro en couleur de marque dit « enregistrer ». */
+  .resume-rec {
+    height: 38px;
+    padding: 0 12px 0 10px;
+    border-radius: 10px;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--brand-text);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex: none;
+    transition:
+      background 0.15s,
+      border-color 0.15s;
+  }
+  .resume-rec :global(svg) {
+    color: var(--brand);
+    flex: none;
+  }
+  .resume-rec:hover {
+    background: var(--mb-bg-warm);
+    border-color: var(--mb-border-card);
+  }
+  .resume-rec:focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+  }
+  .resume-rec:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
   /* Réunion en cours — barre flottante sans boîte (Vocal view Figma) : les
      pastilles portent chacune leur fond et leur halo. */
   .composer-wrap-recording .composer {
@@ -315,6 +383,15 @@
     border-radius: 12px;
     box-shadow: 0 4px 40px rgb(var(--brand-rgb) / 0.3);
     overflow: hidden;
+  }
+  /* Avec la pastille de l'Aide IA à côté (AiHelpPill), l'onde cède de la
+     place : c'est un témoin d'écoute, pas une mesure. Le dock est centré sur
+     toute la zone principale et passe déjà devant le bas du panneau Notes ;
+     mesuré à 1 280 px, il le recouvrait de 64 px de plus avec la pastille et
+     une onde à 14vw — à 8vw, de 25 px. APRÈS la règle de base. */
+  .wave-pill-tight {
+    width: clamp(72px, 8vw, 150px);
+    padding: 0 12px;
   }
   /* En pause, à la place de l'onde : l'état, en toutes lettres. Plafond lié à
      la place restante (historique de 280 px, deux pastilles, marges) : la
@@ -493,6 +570,22 @@
     }
     .generate-secondary {
       padding: 0 12px;
+    }
+  }
+  /* Petit téléphone : trois boutons ne tiennent plus nommés — le micro seul,
+     son nom reste dans aria-label. Cadré en bouton rond : sans libellé ni
+     bord, un micro isolé se lisait comme une décoration. APRÈS la règle de base. */
+  @media (max-width: 400px) {
+    .resume-label {
+      display: none;
+    }
+    .resume-rec {
+      width: 38px;
+      padding: 0;
+      justify-content: center;
+      border-radius: 50%;
+      border-color: var(--mb-border-card);
+      background: var(--surface);
     }
   }
 </style>

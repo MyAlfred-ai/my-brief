@@ -5,9 +5,9 @@ sidebar:
   order: 1
 ---
 
-L'onglet **Administration → Configuration** — le premier de l'administration — règle ce qui vaut pour
-toute l'instance : le **vocabulaire et le contexte de votre organisation**, les **corrections
-automatiques de la transcription**, et l'**apparence** de myBrief.
+Deux pages de **Administration → Organisation** règlent ce qui vaut pour toute l'instance :
+**Entreprise**, pour le **vocabulaire et le contexte de votre organisation** et les **corrections
+automatiques de la transcription** ; **Marque & apparence**, pour l'**apparence** de myBrief.
 
 ## À quoi ça sert
 
@@ -22,7 +22,8 @@ automatiques de la transcription**, et l'**apparence** de myBrief.
 
 **Le vocabulaire** est un texte de 2 000 caractères au plus, joint à **chaque compte rendu, pour tous
 les comptes**, et à chaque analyse de la **détection d'actions**. Il fait foi pour l'orthographe des
-noms. Chaque utilisateur peut y ajouter son propre contexte, dans **Ma configuration → Mon contexte**.
+noms. Chaque utilisateur peut y ajouter son propre contexte, dans **Réglages → Préférences IA → Mon
+contexte**.
 
 Laissé vide, rien n'est joint aux comptes rendus, et la détection d'actions reçoit un contexte par
 défaut qui ne décrit pas votre organisation : renseignez-le dès la mise en service.
@@ -31,30 +32,39 @@ défaut qui ne décrit pas votre organisation : renseignez-le dès la mise en se
 à la place », **valable pour toutes les réunions, de tous les comptes** : à manier avec modération,
 pour les noms propres et les sigles seulement. Le remplacement porte sur des mots entiers, sans tenir
 compte des majuscules ni des accents, quand chaque phrase se termine ; le mot corrigé s'éclaire un
-instant à l'écran. Les réunions passées ne changent pas. La carte se termine par **Essayer** : une
+instant à l'écran. Les réunions passées ne changent pas. Le réglage se termine par **Essayer** : une
 phrase tapée montre le résultat avant d'enregistrer.
 
 **L'apparence** :
 
 | Élément | Où il s'affiche |
 |---|---|
-| **Logo** | La barre latérale, la page de connexion — y compris dans l'application mobile —, la fenêtre de bienvenue, l'aide |
+| **Logo** | La barre latérale, la page de connexion — y compris dans l'application mobile —, l'écran d'accueil, la fenêtre de bienvenue. Sur un écran de téléphone, la barre du haut garde le logo intégré : c'est un défaut |
 | **Phrase d'accueil** | Sous le nom de l'application, dans la barre latérale — en français et en anglais, selon la langue de l'interface |
 | **Couleur primaire** | Les boutons, les liens, les accents, la page de connexion |
 | **Couleur secondaire** | Les surfaces claires, les fonds de cartes et d'onglets, les bordures |
 
 Les couleurs d'alerte et celles des tags ne changent pas : elles portent un sens, pas une identité.
 
-**Un seul bouton Enregistrer** pour tout l'onglet. Vous voyez l'effet aussitôt ; les autres comptes, au
+**Chaque page s'ouvre repliée**, sur un groupe de tuiles : **Entreprise** porte **Les mots de
+l'organisation** — **Vocabulaire**, **Corrections** ; **Marque & apparence** porte **Apparence** —
+**Logo**, **Phrase d'accueil**, **Couleurs**. Chaque tuile dit ce qui est en place : le début du
+vocabulaire, le nombre de corrections et la première d'entre elles, le logo, la phrase, les deux
+couleurs. Un clic déplie son réglage sous le groupe, un seul à la fois ; l'ⓘ de son titre en rappelle
+l'usage. Replier une tuile ne perd rien : elle porte **Modifié** jusqu'à l'enregistrement, ou **À
+corriger** quand une saisie bloque l'enregistrement.
+
+**Chaque page a son bouton Enregistrer**, qui n'enregistre que ce qu'elle montre : passer de l'une à
+l'autre sans enregistrer perd la saisie en cours. Vous voyez l'effet aussitôt ; les autres comptes, au
 prochain chargement de myBrief.
 
 ## Configurer
 
 | Réglage | Où | Effet | Page |
 |---|---|---|---|
-| **Texte joint aux comptes rendus** | Configuration → Vocabulaire et contexte de votre organisation | L'orthographe des noms et la compréhension des allusions, pour tous | [Renseigner le vocabulaire de l'organisation](renseigner-le-vocabulaire-de-l-organisation.md) |
-| **La transcription écrit…**, **Écrire à la place** | Configuration → Corrections automatiques de la transcription | Les mots remplacés dans la transcription de toutes les réunions | [Corriger automatiquement la transcription](corriger-automatiquement-la-transcription.md) |
-| **Logo**, **Phrase d'accueil**, **Couleurs de l'interface** | Configuration | L'identité visuelle de myBrief | [Personnaliser l'apparence](personnaliser-l-apparence.md) |
+| **Texte joint aux comptes rendus** | Entreprise → tuile **Vocabulaire** | L'orthographe des noms et la compréhension des allusions, pour tous | [Renseigner le vocabulaire de l'organisation](renseigner-le-vocabulaire-de-l-organisation.md) |
+| **La transcription écrit…**, **Écrire à la place** | Entreprise → tuile **Corrections** | Les mots remplacés dans la transcription de toutes les réunions | [Corriger automatiquement la transcription](corriger-automatiquement-la-transcription.md) |
+| **Logo**, **Phrase d'accueil**, **Couleurs de l'interface** | Marque & apparence → tuiles **Logo**, **Phrase d'accueil**, **Couleurs** | L'identité visuelle de myBrief | [Personnaliser l'apparence](personnaliser-l-apparence.md) |
 
 ## Exemples de configuration
 
@@ -69,8 +79,9 @@ chaque trimestre. Apparence laissée par défaut.
 ## Vérifier que tout fonctionne
 
 1. Générez un compte rendu d'une réunion où un nom du vocabulaire est prononcé : il est écrit juste.
-2. Dans **Ma configuration → Détection d'actions**, le **Banc d'essai** avec un extrait qui cite un
-   client : la consigne affichée par **Voir la consigne envoyée au modèle** contient votre vocabulaire.
+2. Dans **Réglages → Pendant la réunion → Détection d'actions**, le **Banc d'essai** avec un extrait qui
+   cite un client : la consigne affichée par **Voir la consigne envoyée au modèle** contient votre
+   vocabulaire.
 3. Dans **Essayer**, une phrase avec un mot à corriger : le **Résultat** le remplace. Puis une courte
    réunion où le mot est prononcé : il s'écrit juste dès la fin de la phrase.
 4. Déconnectez-vous : la page de connexion porte le logo et la couleur primaire.

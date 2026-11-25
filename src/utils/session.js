@@ -3,6 +3,7 @@
  */
 
 import { normalizeActions } from './liveActionsMerge.js';
+import { SESSION_SAVE_COALESCE_MS } from '../config/constants.js';
 
 /**
  * Retire les marqueurs d'animation avant écriture : ils ne décrivent qu'un
@@ -21,6 +22,8 @@ function stripActionFlashes(detectedActions) {
  */
 function stripRefineFlashes(transcriptionHistory) {
   if (!Array.isArray(transcriptionHistory)) return [];
+  // Cas courant, aucune ligne en animation : pas de copie de tout l'historique.
+  if (!transcriptionHistory.some((t) => t && t.refineFlash)) return transcriptionHistory;
   return transcriptionHistory.map(({ refineFlash, ...rest }) => rest);
 }
 
@@ -93,11 +96,60 @@ export function saveSessionData(config) {
       localStorage.removeItem('mybrief_summary_versions');
       localStorage.removeItem('mybrief_active_version_id');
     }
-
-    console.log('Données de session sauvegardées');
   } catch (e) {
     console.error('Erreur lors de la sauvegarde de la session:', e);
   }
+}
+
+/**
+ * Regroupe les sauvegardes du direct : `schedule()` écrit au plus tard
+ * `delayMs` après le premier appel d'une rafale, au lieu d'une écriture par
+ * phrase finalisée. Pourquoi : `saveSessionData` sérialise TOUT l'historique,
+ * de façon synchrone (~0,5 Mo à 3 h de réunion), et le direct en finalise une
+ * toutes les 2 à 5 s.
+ *
+ * Rien n'attend au-delà de la page : l'écriture en attente part aussitôt à la
+ * fermeture (`pagehide`) et à la mise en arrière-plan (`visibilitychange`), où
+ * une app mobile peut être tuée sans autre préavis. Seul un plantage dur perd
+ * au plus `delayMs` de phrases locales — la base, elle, les reçoit déjà toutes
+ * les 20 s (stores/liveMeeting.js).
+ *
+ * @param {() => void} save
+ * @param {number} [delayMs]
+ * @param {{ target?: EventTarget, doc?: Document }} [env] - injectables (tests)
+ */
+export function coalesceSaves(
+  save,
+  delayMs = SESSION_SAVE_COALESCE_MS,
+  {
+    target = typeof window !== 'undefined' ? window : null,
+    doc = typeof document !== 'undefined' ? document : null,
+  } = {},
+) {
+  let timer = null;
+  const flush = () => {
+    if (timer === null) return;
+    clearTimeout(timer);
+    timer = null;
+    save();
+  };
+  const onVisibility = () => {
+    if (doc?.visibilityState === 'hidden') flush();
+  };
+  target?.addEventListener('pagehide', flush);
+  doc?.addEventListener('visibilitychange', onVisibility);
+  return {
+    schedule() {
+      if (timer === null) timer = setTimeout(flush, delayMs);
+    },
+    flush,
+    dispose() {
+      if (timer !== null) clearTimeout(timer);
+      timer = null;
+      target?.removeEventListener('pagehide', flush);
+      doc?.removeEventListener('visibilitychange', onVisibility);
+    },
+  };
 }
 
 /**

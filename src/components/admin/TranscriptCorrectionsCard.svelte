@@ -1,9 +1,11 @@
 <script>
   /**
-   * Carte « Corrections automatiques de la transcription » de l'onglet
-   * Configuration, juste sous le vocabulaire de l'organisation : les mots que
-   * la transcription écrit mal à chaque fois (« Klobex »), et ce qu'il faut
-   * écrire à la place (« Globex »). Moteur : utils/transcriptCorrections.js.
+   * Panneau « Corrections automatiques de la transcription » de l'onglet
+   * Configuration, déplié par sa tuile (« Corrections », à côté du
+   * vocabulaire) : les mots que la transcription écrit mal à chaque fois
+   * (« Klobex »), et ce qu'il faut écrire à la place (« Globex »). Moteur :
+   * utils/transcriptCorrections.js. Le nombre de corrections est dit par la
+   * tuile, pas ici.
    *
    * Écrite pour un administrateur qui n'est pas technicien :
    *  - la portée est dite EN TÊTE, dans un encadré — toutes les réunions, tous
@@ -17,17 +19,22 @@
    *
    * Présentationnelle : le parent (BrandingTab) charge la liste, la compare à
    * l'enregistrée et l'envoie avec le bouton unique de la page (`bind:rows`).
+   *
+   * Elle sert aussi aux « Mots remplacés » d'un compte (Réglages → Préférences
+   * IA, settings/CorrectionsSection) : même moteur, mêmes lignes, mêmes
+   * diagnostics — seuls changent les textes, le plafond, et le ton de la
+   * portée (`personal` : la liste ne touche que son auteur, rien à craindre
+   * pour les autres).
    */
   import { tick } from 'svelte';
-  import IconPen from '~icons/solar/pen-new-square-linear';
   import IconArrow from '~icons/solar/arrow-right-linear';
   import IconTrash from '~icons/solar/trash-bin-minimalistic-linear';
   import IconAdd from '~icons/solar/add-circle-linear';
   import IconUsers from '~icons/solar/users-group-rounded-linear';
+  import IconUser from '~icons/solar/user-linear';
   import IconWarn from '~icons/solar/danger-triangle-linear';
   import IconWand from '~icons/solar/magic-stick-3-linear';
-  import SettingsCard from '../ui/SettingsCard.svelte';
-  import StatusBadge from '../ui/StatusBadge.svelte';
+  import DashCard from '../ui/DashCard.svelte';
   import {
     CORRECTIONS_MAX,
     FROM_FIELD_MAX,
@@ -41,29 +48,27 @@
 
   /** Lignes éditées : `[{ id, from: 'Klobex, Clobex', to: 'Globex' }]`. */
   export let rows = [];
-  /** Nombre de corrections ENREGISTRÉES — allume le liseré de la carte. */
-  export let savedCount = 0;
   export let updatedBy = null;
+  /** Textes de la carte ; à défaut, ceux de l'administration. */
+  export let texts = null;
+  /** Plafond de lignes : celui de l'organisation, ou celui d'un compte. */
+  export let max = CORRECTIONS_MAX;
+  /** Liste d'un compte : la portée se dit sans alarme. */
+  export let personal = false;
 
   let listEl;
   let trial = '';
 
-  $: T = $uiText.adminTranscriptCorrections;
+  $: T = texts || $uiText.adminTranscriptCorrections;
   // Déclarations réactives, jamais des appels dans le gabarit : Svelte ne suit
   // que les identifiants qu'il voit (piège payé quatre fois dans ce dépôt).
   $: verdicts = checkRows(rows);
-  $: rules = rowsToRules(rows);
-  $: compiled = compileCorrections(rules);
+  $: rules = rowsToRules(rows, max);
+  $: compiled = compileCorrections(rules, { max });
   $: parts = trial.trim() ? compiled.parts(trial) : [];
   $: changed = parts.some((p) => p.changed);
-  $: full = rows.length >= CORRECTIONS_MAX;
-  $: badge =
-    rules.length === 0
-      ? T.badgeEmpty
-      : rules.length === 1
-        ? T.badgeOne
-        : T.badgeMany.replace('{n}', String(rules.length));
-  $: counter = T.counter.replace('{n}', String(rows.length)).replace('{max}', CORRECTIONS_MAX);
+  $: full = rows.length >= max;
+  $: counter = T.counter.replace('{n}', String(rows.length)).replace('{max}', String(max));
 
   function message(verdict) {
     const pool = verdict.level === 'error' ? T.errors : T.warnings;
@@ -85,12 +90,12 @@
   }
 </script>
 
-<SettingsCard title={T.title} hint={T.intro} icon={IconPen} on={savedCount > 0}>
-  <StatusBadge slot="badge" tone={rules.length ? 'ok' : 'neutral'} text={badge} />
-
+<DashCard id="tc" level={5} title={T.title} info={T.intro}>
   <!-- La portée d'abord : c'est elle qui demande la modération. -->
-  <div class="tc-scope" role="note">
-    <span class="tc-scope-icon" aria-hidden="true"><IconUsers width="18" height="18" /></span>
+  <div class="tc-scope" class:tc-scope-calm={personal} role="note">
+    <span class="tc-scope-icon" aria-hidden="true">
+      <svelte:component this={personal ? IconUser : IconUsers} width="18" height="18" />
+    </span>
     <p><strong>{T.scopeTitle}</strong> {T.scopeText}</p>
   </div>
 
@@ -183,7 +188,7 @@
     </div>
     {#if full}
       <p class="tc-hint tc-hint-strong">
-        {T.limitReached.replace('{max}', String(CORRECTIONS_MAX))}
+        {T.limitReached.replace('{max}', String(max))}
       </p>
     {/if}
     <p class="tc-hint">{T.rules}</p>
@@ -225,7 +230,7 @@
   {#if updatedBy}
     <p class="tc-meta">{T.updatedBy} {updatedBy}</p>
   {/if}
-</SettingsCard>
+</DashCard>
 
 <style>
   /* ── Portée : toutes les réunions, tous les comptes ── */
@@ -251,6 +256,12 @@
   }
   .tc-scope strong {
     font-weight: 650;
+  }
+  /* Liste d'un compte : une information, pas une mise en garde. */
+  .tc-scope-calm {
+    background: var(--surface-tint);
+    border-color: var(--line);
+    color: var(--ink-soft);
   }
 
   /* ── Liste vide ── */

@@ -1,5 +1,5 @@
 /**
- * MyBrain, côté utilisateur — « Ma configuration → MyBrain ».
+ * MyBrain, côté utilisateur — « Réglages → Après la réunion → MyBrain ».
  *
  *   GET  /mybrain/settings  ce que l'installation propose, le choix du compte,
  *                           et ses derniers envois

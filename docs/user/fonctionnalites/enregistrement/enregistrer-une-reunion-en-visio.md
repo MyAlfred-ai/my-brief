@@ -40,8 +40,9 @@ seule option qui ne partage rien d'autre que la réunion.
 1. Ouvrez votre réunion et laissez-la tourner.
 2. Dans myBrief, cliquez **Démarrer** — ou **Nouvelle réunion** si une réunion est affichée.
    Autorisez le micro si le navigateur le demande.
-3. L'écran **Quel type de réunion ?** s'affiche : cliquez **Réunion avec visio**. La fenêtre de
-   partage du navigateur s'ouvre aussitôt.
+3. L'écran **Quel type de réunion ?** s'affiche. Sous le titre, **Consentement obligatoire** :
+   assurez-vous que tous les participants acceptent l'enregistrement, puis cliquez **Réunion avec
+   visio**. La fenêtre de partage du navigateur s'ouvre aussitôt.
 4. Dans la fenêtre de partage du navigateur, choisissez **Onglet** et l'onglet de votre réunion, ou
    **Tout l'écran**.
 5. **Cochez la case de partage de l'audio**, en bas de la fenêtre. C'est la case que tout le monde

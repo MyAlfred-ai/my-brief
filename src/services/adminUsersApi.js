@@ -98,20 +98,31 @@ export const testAiKey = () => post('/admin/settings/ai/test');
 /**
  * Ouvre une vraie session Realtime avec ce modèle — c'est l'appel exact que
  * fera l'application au prochain enregistrement. Sans modèle : teste celui déjà
- * enregistré.
+ * enregistré. `providerKey` : clé collée pas encore enregistrée, celle du
+ * fournisseur tiers du modèle, éprouvée sans être stockée.
  * @param {string} [model]
+ * @param {string} [providerKey]
  */
-export const testTranscriptionModel = (model) =>
-  post('/admin/settings/ai/test-transcription', model ? { model } : undefined);
+export const testTranscriptionModel = (model, providerKey = '') =>
+  post(
+    '/admin/settings/ai/test-transcription',
+    model ? { model, ...(providerKey ? { providerKey } : {}) } : undefined,
+  );
 
 /**
- * Vérifie que le compte OpenAI a bien ACCÈS à ce modèle de rédaction : un appel
- * de chat minuscule, pas une génération de compte rendu (qui coûterait le prix
- * d'un vrai résumé). Sans modèle : teste celui déjà en vigueur.
+ * Vérifie que le compte a bien ACCÈS à ce modèle de rédaction, chez son
+ * fournisseur (OpenAI ou Mistral) : un appel de chat minuscule, pas une
+ * génération de compte rendu (qui coûterait le prix d'un vrai résumé). Sans
+ * modèle : teste celui déjà en vigueur. `providerKey` : clé Mistral collée,
+ * pas encore enregistrée.
  * @param {string} [model]
+ * @param {string} [providerKey]
  */
-export const testSummaryModel = (model) =>
-  post('/admin/settings/ai/test-summary', model ? { model } : undefined);
+export const testSummaryModel = (model, providerKey = '') =>
+  post(
+    '/admin/settings/ai/test-summary',
+    model ? { model, ...(providerKey ? { providerKey } : {}) } : undefined,
+  );
 
 // ── Actions après réunion / résumé ─────────────────────────────────────────
 // Visibilité des boutons « Envoyer par mail » / « Entreposer » / « Télécharger »

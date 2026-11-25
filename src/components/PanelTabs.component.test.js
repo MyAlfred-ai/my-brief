@@ -115,4 +115,118 @@ describe('PanelTabs — pastilles de configuration', () => {
     render(PanelTabs, { props: { tabs: TABS, active: 'templates', ariaLabel: 'Sections' } });
     expect(document.querySelector('.cad')).toBeNull();
   });
+
+  it('un intertitre ouvre chaque groupe, comme dans la colonne de l’ordinateur', async () => {
+    const tabs = [
+      { id: 'users', label: 'Comptes', icon: Icon, group: 'Personnes' },
+      { id: 'groups', label: 'Groupes', icon: Icon, group: 'Personnes' },
+      { id: 'ai', label: 'Clés API', icon: Icon, group: 'Modèles IA' },
+    ];
+    render(PanelTabs, { props: { tabs, active: 'users', ariaLabel: 'Sections' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Sections' }));
+
+    expect([...document.querySelectorAll('.pt-dd-group')].map((el) => el.textContent)).toEqual([
+      'Personnes',
+      'Modèles IA',
+    ]);
+    // Un intertitre n'est pas une entrée du menu.
+    expect(screen.getAllByRole('menuitemradio')).toHaveLength(3);
+  });
+
+  it('un GESTE (« Se déconnecter ») remonte son identifiant et n’est jamais la section affichée', async () => {
+    const onSelect = vi.fn();
+    const onAction = vi.fn();
+    const tabs = [
+      ...TABS,
+      { id: 'logout', label: 'Se déconnecter', icon: Icon, action: 'logout', danger: true },
+    ];
+    render(PanelTabs, {
+      props: { tabs, active: 'logout', onSelect, onAction, ariaLabel: 'Sections' },
+    });
+
+    const trigger = screen.getByRole('button', { name: 'Sections' });
+    expect(trigger.textContent).toContain('Templates');
+    await userEvent.click(trigger);
+    expect(screen.getAllByRole('menuitemradio')).toHaveLength(3);
+
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Se déconnecter' }));
+    expect(onAction).toHaveBeenCalledWith('logout');
+    expect(onSelect).not.toHaveBeenCalled();
+    // Le geste fait, la liste se referme.
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+});
+
+describe('PanelTabs — recherche dans les réglages (téléphone)', () => {
+  it('en tête du déroulant : taper remplace les sections par les réglages, un choix y mène', async () => {
+    const { get } = await import('svelte/store');
+    const { activePanel, registerPanelNav, panelNav, clearPanelNav } =
+      await import('../stores/panels.js');
+    const items = [
+      { id: 'profile', label: 'Mon profil', icon: Icon },
+      { id: 'audio', label: 'Audio', icon: Icon },
+    ];
+    activePanel.set('config');
+    registerPanelNav('config', { title: 'Réglages', items, active: 'profile' });
+    render(PanelTabs, { props: { tabs: items, active: 'profile', ariaLabel: 'Sections' } });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Sections' }));
+    // Pas de focus d'office : le clavier du téléphone cacherait la liste.
+    const field = screen.getByRole('combobox', { name: 'Rechercher dans les réglages' });
+    expect(document.activeElement).not.toBe(field);
+    expect(screen.getAllByRole('menuitemradio')).toHaveLength(2);
+
+    await userEvent.type(field, 'langue');
+    expect(screen.queryByRole('menuitemradio')).toBeNull();
+    await userEvent.click(screen.getByRole('option', { name: /Langue/ }));
+
+    expect(get(panelNav).active).toBe('profile');
+    // Le déroulant se referme sur la page.
+    expect(screen.queryByRole('combobox')).toBeNull();
+
+    activePanel.set(null);
+    clearPanelNav('config');
+  });
+});
+
+describe('PanelTabs — pied de liste', () => {
+  it('une section sans groupe (« Outils ») s’y range sous un filet, les liens la suivent', async () => {
+    const tabs = [
+      { id: 'profile', label: 'Mon profil', icon: Icon, group: 'Mon compte' },
+      { id: 'tags', label: 'Mes tags', icon: Icon, group: 'Ma bibliothèque' },
+      { id: 'tools', label: 'Outils', icon: Icon },
+      { id: 'help', label: 'Aide', icon: Icon, href: 'https://docs.test/' },
+    ];
+    const { container } = render(PanelTabs, {
+      props: { tabs, active: 'tools', ariaLabel: 'Sections' },
+    });
+
+    // « Outils » a un écran : c'est une section, affichée sur le bouton.
+    const trigger = screen.getByRole('button', { name: 'Sections', expanded: false });
+    expect(trigger.textContent).toContain('Outils');
+
+    await userEvent.click(trigger);
+    const rows = [...container.querySelector('.pt-dd-items').children].map((el) => {
+      if (el.classList.contains('pt-dd-rule')) return '—';
+      const text = el.textContent.trim();
+      return el.classList.contains('pt-dd-group') ? `[${text}]` : text;
+    });
+    expect(rows).toEqual([
+      '[Mon compte]',
+      'Mon profil',
+      '[Ma bibliothèque]',
+      'Mes tags',
+      '—',
+      'Outils',
+      'Aide',
+    ]);
+  });
+
+  it('sans section en pied, aucun filet', async () => {
+    const { container } = render(PanelTabs, {
+      props: { tabs: TABS, active: 'templates', ariaLabel: 'Sections' },
+    });
+    await userEvent.click(screen.getByRole('button', { name: 'Sections', expanded: false }));
+    expect(container.querySelector('.pt-dd-rule')).toBeNull();
+  });
 });

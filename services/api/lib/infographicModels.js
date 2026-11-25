@@ -16,7 +16,7 @@
  * fond — l'infographie finirait en `error` sans que l'administrateur qui a
  * saisi la coquille ne voie quoi que ce soit.
  *
- * Pourquoi ces deux-là, et dans cet ordre :
+ * Pourquoi Flare, et lui seul à l'écran :
  *
  *   modèle               ce qu'en dit OpenAI (docs, 2026-09-16)
  *   ───────────────────  ──────────────────────────────────────────────────
@@ -24,15 +24,23 @@
  *                        qualité que gpt-image-2 pour environ moitié moins de
  *                        latence. Six niveaux de qualité, jusqu'à 3840 px.
  *                        ← défaut
- *   gpt-image-2          le modèle en service depuis le 2026-09-02, mesuré
- *                        chez nous : lettrage sans coquille, composition
- *                        entière dans le cadre. Le repli si Flare déçoit.
  *
- * ⚠️ NON MESURÉ CHEZ NOUS. Les caractéristiques de Flare viennent de la
+ * `gpt-image-2` — le modèle en service du 2026-09-02 au 2026-09-16, mesuré chez
+ * nous (lettrage sans coquille, composition entière dans le cadre) — a été le
+ * second choix, le repli si Flare décevait, jusqu'au 2026-11-12 : OpenAI le
+ * coupe le 2027-02-10 (annonce du 2026-11-10). Il n'est plus proposé, et un
+ * choix enregistré avant est TRADUIT en Flare à la résolution
+ * (RETIRED_INFOGRAPHIC_IMAGE_MODELS), comme la transcription
+ * (RETIRED_TRANSCRIPTION_MODELS) : la rubrique Modèles IA le dit, « Garder » l'enregistre.
+ * Flare plutôt que `gpt-image-2.6-*`, les remplaçants désignés par OpenAI :
+ * déjà proposé, même prix au jeton que gpt-image-2, et la génération 2.6 n'a
+ * été ni relevée (prix, paramètres) ni essayée ici.
+ *
+ * ⚠️ FLARE N'EST PAS MESURÉ CHEZ NOUS. Ses caractéristiques viennent de la
  * documentation d'OpenAI, pas d'une comparaison sur une réunion connue depuis
- * ce dépôt (clé et facturation de l'organisation). C'est précisément pourquoi
- * `gpt-image-2` reste proposé : un revirement se fait depuis l'écran, sans
- * déploiement. À juger en recette, en régénérant une réunion connue.
+ * ce dépôt (clé et facturation de l'organisation). Le repli qu'offrait
+ * gpt-image-2 n'existe plus : à juger en recette, en régénérant une réunion
+ * connue, AVANT que les installations qui l'avaient gardé n'y passent.
  *
  * `gpt-image-2.5-sunburst` (le palier haut de la même génération) n'est PAS
  * dans la liste : rien ne l'a départagé de Flare ici, et l'y mettre reviendrait
@@ -48,7 +56,17 @@
 export const DEFAULT_INFOGRAPHIC_IMAGE_MODEL = 'gpt-image-2.5-flare';
 
 /** Identifiants acceptés, dans l'ordre d'affichage de l'écran d'administration. */
-export const INFOGRAPHIC_IMAGE_MODELS = ['gpt-image-2.5-flare', 'gpt-image-2'];
+export const INFOGRAPHIC_IMAGE_MODELS = ['gpt-image-2.5-flare'];
+
+/**
+ * Modèles retirés par OpenAI → leur remplaçant, pour un choix ENREGISTRÉ avant
+ * le retrait. Sans cette table, ce choix serait une valeur hors liste, ignorée
+ * en silence : l'écran montrerait un autre modèle sans dire pourquoi. La date
+ * de coupure vient de lib/retiredModels.js, qui fait foi.
+ */
+export const RETIRED_INFOGRAPHIC_IMAGE_MODELS = {
+  'gpt-image-2': 'gpt-image-2.5-flare',
+};
 
 /**
  * @param {string} id
@@ -59,8 +77,9 @@ export function isInfographicImageModel(id) {
 }
 
 /**
- * Modèle effectif : celui de l'administration, sinon celui de l'environnement,
- * sinon le défaut.
+ * Modèle effectif, sa provenance, et le modèle retiré qu'il remplace le cas
+ * échéant : celui de l'administration, sinon celui de l'environnement, sinon
+ * le défaut.
  *
  * Même arbitrage que la RÉDACTION (lib/summaryModels.js) et non que la
  * transcription : une valeur d'ENVIRONNEMENT hors liste est CONSERVÉE. C'est la
@@ -68,17 +87,37 @@ export function isInfographicImageModel(id) {
  * (`gpt-image-2.5-sunburst`), une génération plus récente que cette version, un
  * déploiement Azure — sans attendre une version de l'application. Ce qui est
  * refusé, c'est ce qui vient de l'ÉCRAN : là, la liste est la seule source.
+ * Un modèle retiré, lui, n'arrive jamais par l'environnement : lib/config.js
+ * l'a déjà vidé (lib/retiredModels.js).
  *
  * Une valeur ENREGISTRÉE hors liste est ignorée (base éditée à la main) : elle
  * ferait échouer toutes les infographies de l'installation, en tâche de fond.
+ * Un modèle retiré enregistré est traduit en son remplaçant, et le dit.
  *
+ * @param {string} [stored] - valeur enregistrée en administration
+ * @param {string} [envModel] - OPENAI_MODEL_INFOGRAPHIC_IMAGE, déjà résolu par lib/config.js
+ * @returns {{model: string, source: 'settings'|'env'|'default', retiredFrom: string|null}}
+ */
+export function describeInfographicImageModel(stored, envModel) {
+  if (isInfographicImageModel(stored))
+    return { model: stored, source: 'settings', retiredFrom: null };
+  if (Object.hasOwn(RETIRED_INFOGRAPHIC_IMAGE_MODELS, stored || '')) {
+    return {
+      model: RETIRED_INFOGRAPHIC_IMAGE_MODELS[stored],
+      source: 'settings',
+      retiredFrom: stored,
+    };
+  }
+  const env = String(envModel || '').trim();
+  if (env) return { model: env, source: 'env', retiredFrom: null };
+  return { model: DEFAULT_INFOGRAPHIC_IMAGE_MODEL, source: 'default', retiredFrom: null };
+}
+
+/**
  * @param {string} [stored] - valeur enregistrée en administration
  * @param {string} [envModel] - OPENAI_MODEL_INFOGRAPHIC_IMAGE, déjà résolu par lib/config.js
  * @returns {string}
  */
 export function resolveInfographicImageModel(stored, envModel) {
-  if (isInfographicImageModel(stored)) return stored;
-  const env = String(envModel || '').trim();
-  if (env) return env;
-  return DEFAULT_INFOGRAPHIC_IMAGE_MODEL;
+  return describeInfographicImageModel(stored, envModel).model;
 }

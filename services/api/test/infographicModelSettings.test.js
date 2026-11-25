@@ -1,18 +1,16 @@
 /**
- * Modèle qui DESSINE l'infographie, réglable depuis Administration → IA.
+ * Modèle d'IMAGE de l'infographie, réglable depuis Administration → IA.
  *
- * Il était FIXE dans le code jusqu'au 2026-09-16 (`gpt-image-2`). Ce qui se
- * vérifie ici et nulle part ailleurs :
- *   - le modèle choisi arrive bien jusqu'à l'appel image de /resume — et jusqu'au
- *     document d'infographie enregistré, qui dit avec quoi l'image a été faite ;
- *   - il est relu à CHAQUE image, sans cache : un modèle changé s'applique à la
- *     génération suivante, sans redémarrage ;
+ * ⚠️ Depuis les gabarits (2026-11-17), plus aucune infographie n'est DESSINÉE :
+ * l'IA écrit un contenu que le frontend met en page (lib/infographicLayout.js),
+ * et ce réglage n'apparaît plus à l'écran. Sa mécanique est gardée telle
+ * quelle — l'API des réglages l'accepte toujours, des valeurs sont en base —
+ * et vérifiée ici tant qu'elle existe :
  *   - une valeur hors liste venant de l'ÉCRAN est refusée, celle qui vient de
- *     l'ENVIRONNEMENT est conservée (porte de sortie vers `sunburst` ou une
- *     génération plus récente que cette version) ;
- *   - le réglage est INDÉPENDANT du modèle TEXTE qui écrit le prompt d'image :
- *     deux appels, deux modèles, et les confondre ferait dessiner par un modèle
- *     de chat — 404 à chaque infographie.
+ *     l'ENVIRONNEMENT est conservée ;
+ *   - un choix resté sur `gpt-image-2`, retiré par OpenAI le 2027-02-10, est
+ *     lu comme Flare, et la projection le DIT (`infographicImageModelRetired`) ;
+ *   - le client OpenAI transmet l'identifiant tel quel.
  */
 import { describe, it, expect } from 'vitest';
 import { buildTestApp, identityHeaders, userDoc } from './helpers.js';
@@ -20,12 +18,10 @@ import { createOpenAiClient } from '../lib/openai.js';
 import {
   INFOGRAPHIC_IMAGE_MODELS,
   DEFAULT_INFOGRAPHIC_IMAGE_MODEL,
+  describeInfographicImageModel,
   resolveInfographicImageModel,
 } from '../lib/infographicModels.js';
-import { INFOGRAPHICS_COLLECTION } from '../lib/infographic.js';
 import { toPublicAiSettings } from '../lib/repositories/settings.js';
-import { ownerFilter } from '../lib/ownerScope.js';
-import { loadConfig } from '../lib/config.js';
 
 const ADMIN = 'patron@client.fr';
 
@@ -34,39 +30,35 @@ const seed = (ai) => ({
   ...(ai ? { appSettings: [{ key: 'ai', ...ai }] } : {}),
 });
 
-const postResume = (app) =>
-  app.inject({
-    method: 'POST',
-    url: '/api/resume',
-    headers: { ...identityHeaders(ADMIN), 'content-type': 'application/json' },
-    body: JSON.stringify({
-      transcription: 'On a parlé du projet INITECH.',
-      systemPrompt: 'Tu es un rédacteur de comptes-rendus.',
-      template: 'standard',
-      language: 'fr',
-      actions: [],
-      versionId: 'v1',
-      meetingId: null,
-      isEdit: false,
-      infographic: true,
-    }),
-  });
-
-/** L'appel qui DESSINE, distingué des appels de chat (réécrivain, titre, CR). */
-const imageCall = (ai) => ai.calls.find((c) => c.method === 'generateImage');
-
 describe('resolveInfographicImageModel — provenance', () => {
   it("l'écran l'emporte sur l'environnement, qui l'emporte sur le défaut", () => {
-    expect(resolveInfographicImageModel('gpt-image-2', 'gpt-image-2.5-flare')).toBe('gpt-image-2');
-    expect(resolveInfographicImageModel('', 'gpt-image-2')).toBe('gpt-image-2');
+    expect(resolveInfographicImageModel('gpt-image-2.5-flare', 'gpt-image-2.5-sunburst')).toBe(
+      'gpt-image-2.5-flare',
+    );
+    expect(resolveInfographicImageModel('', 'gpt-image-2.5-sunburst')).toBe(
+      'gpt-image-2.5-sunburst',
+    );
     expect(resolveInfographicImageModel('', '')).toBe(DEFAULT_INFOGRAPHIC_IMAGE_MODEL);
   });
 
   it('le défaut est le palier Flare de la génération 2.5', () => {
     expect(DEFAULT_INFOGRAPHIC_IMAGE_MODEL).toBe('gpt-image-2.5-flare');
-    // Le modèle précédent reste proposé : c'est le repli si Flare déçoit en
-    // recette, et il se choisit depuis l'écran, sans déploiement.
-    expect(INFOGRAPHIC_IMAGE_MODELS).toContain('gpt-image-2');
+    // gpt-image-2, le repli d'avant, n'est plus proposé : OpenAI le coupe le
+    // 2027-02-10.
+    expect(INFOGRAPHIC_IMAGE_MODELS).not.toContain('gpt-image-2');
+  });
+
+  it('un choix resté sur gpt-image-2 (retiré) est lu comme Flare, et le dit', () => {
+    // Le choix de l'écran l'emporte encore sur l'environnement : c'est lui
+    // qu'on traduit, comme pour la transcription.
+    expect(describeInfographicImageModel('gpt-image-2', 'gpt-image-2.5-sunburst')).toEqual({
+      model: 'gpt-image-2.5-flare',
+      source: 'settings',
+      retiredFrom: 'gpt-image-2',
+    });
+    expect(describeInfographicImageModel('gpt-image-2.5-flare', '')).toMatchObject({
+      retiredFrom: null,
+    });
   });
 
   it('une valeur enregistrée hors liste est IGNORÉE (base éditée à la main)', () => {
@@ -87,12 +79,22 @@ describe('resolveInfographicImageModel — provenance', () => {
 describe('projection admin', () => {
   it('sert la valeur, sa provenance et la liste des choix', () => {
     const pub = toPublicAiSettings(
-      { infographicImageModel: 'gpt-image-2' },
-      { envInfographicImageModel: 'gpt-image-2.5-flare' },
+      { infographicImageModel: 'gpt-image-2.5-flare' },
+      { envInfographicImageModel: 'gpt-image-2.5-sunburst' },
     );
-    expect(pub.infographicImageModel).toBe('gpt-image-2');
+    expect(pub.infographicImageModel).toBe('gpt-image-2.5-flare');
     expect(pub.infographicImageModelSource).toBe('settings');
     expect(pub.infographicImageModels).toEqual(INFOGRAPHIC_IMAGE_MODELS);
+    expect(pub.infographicImageModelOffList).toBe(false);
+    expect(pub.infographicImageModelRetired).toBeNull();
+  });
+
+  it('dit le remplacement d’un choix resté sur gpt-image-2, avec la date de coupure', () => {
+    const pub = toPublicAiSettings({ infographicImageModel: 'gpt-image-2' }, {});
+    expect(pub.infographicImageModel).toBe('gpt-image-2.5-flare');
+    expect(pub.infographicImageModelSource).toBe('settings');
+    expect(pub.infographicImageModelRetired).toEqual({ from: 'gpt-image-2', date: '2027-02-10' });
+    // Le menu ne montre pas le modèle retiré : seulement la liste servie.
     expect(pub.infographicImageModelOffList).toBe(false);
   });
 
@@ -123,10 +125,23 @@ describe('POST /api/admin/settings/ai — infographicImageModel', () => {
 
   it('enregistre un modèle de la liste', async () => {
     const { app } = buildTestApp({ seed: seed() });
-    const res = await save(app, { infographicImageModel: 'gpt-image-2' });
+    const res = await save(app, { infographicImageModel: 'gpt-image-2.5-flare' });
     expect(res.statusCode).toBe(200);
-    expect(res.json().settings.infographicImageModel).toBe('gpt-image-2');
+    expect(res.json().settings.infographicImageModel).toBe('gpt-image-2.5-flare');
     expect(res.json().settings.infographicImageModelSource).toBe('settings');
+  });
+
+  it('refuse gpt-image-2 : retiré par OpenAI, il ne se choisit plus', async () => {
+    const { app } = buildTestApp({ seed: seed() });
+    expect((await save(app, { infographicImageModel: 'gpt-image-2' })).statusCode).toBe(400);
+  });
+
+  it('« Garder » enregistre le remplaçant : l’avis disparaît', async () => {
+    const { app } = buildTestApp({ seed: seed({ infographicImageModel: 'gpt-image-2' }) });
+    const res = await save(app, { infographicImageModel: 'gpt-image-2.5-flare' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().settings.infographicImageModelRetired).toBeNull();
+    expect(res.json().settings.infographicImageModel).toBe('gpt-image-2.5-flare');
   });
 
   it('refuse un modèle hors liste — la panne serait invisible côté administration', async () => {
@@ -145,65 +160,6 @@ describe('POST /api/admin/settings/ai — infographicImageModel', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json().settings.infographicImageModel).toBe(DEFAULT_INFOGRAPHIC_IMAGE_MODEL);
     expect(res.json().settings.source).toBe('settings');
-  });
-});
-
-describe('/api/resume — le modèle choisi dessine vraiment', () => {
-  it("utilise le modèle enregistré dans l'administration, et l'inscrit sur l'image", async () => {
-    const { app, db, ai } = buildTestApp({ seed: seed({ infographicImageModel: 'gpt-image-2' }) });
-    const res = await postResume(app);
-    expect(res.statusCode).toBe(200);
-    await app.background.drain();
-
-    expect(imageCall(ai).params.model).toBe('gpt-image-2');
-    // Le document d'infographie dit avec QUOI l'image a été faite : sans cela,
-    // comparer deux générations après un changement de modèle serait impossible.
-    const meetingId = res.json().meetingId;
-    const img = await db
-      .collection(INFOGRAPHICS_COLLECTION)
-      .findOne(ownerFilter(ADMIN, { meetingId }));
-    expect(img.model).toBe('gpt-image-2');
-  });
-
-  it("sans réglage : le défaut de l'application", async () => {
-    const { app, ai } = buildTestApp({ seed: seed() });
-    await postResume(app);
-    await app.background.drain();
-    expect(imageCall(ai).params.model).toBe(DEFAULT_INFOGRAPHIC_IMAGE_MODEL);
-  });
-
-  it('OPENAI_MODEL_INFOGRAPHIC_IMAGE impose un palier non listé', async () => {
-    const { openai } = loadConfig({ OPENAI_MODEL_INFOGRAPHIC_IMAGE: 'gpt-image-2.5-sunburst' });
-    const { app, ai } = buildTestApp({ seed: seed(), config: { openai } });
-    await postResume(app);
-    await app.background.drain();
-    expect(imageCall(ai).params.model).toBe('gpt-image-2.5-sunburst');
-  });
-
-  it('relu à CHAQUE image : pas de cache à invalider', async () => {
-    const { app, ai } = buildTestApp({ seed: seed({ infographicImageModel: 'gpt-image-2' }) });
-    await postResume(app);
-    await app.background.drain();
-    expect(imageCall(ai).params.model).toBe('gpt-image-2');
-
-    // Un administrateur change le modèle pendant qu'un onglet reste ouvert.
-    await app.settings.updateAi({ infographicImageModel: 'gpt-image-2.5-flare' }, { actor: ADMIN });
-    ai.calls.length = 0;
-    await postResume(app);
-    await app.background.drain();
-    expect(imageCall(ai).params.model).toBe('gpt-image-2.5-flare');
-  });
-
-  it("ne touche PAS au modèle TEXTE qui écrit le prompt d'image", async () => {
-    // Deux appels, deux réglages : confondre les deux ferait dessiner par un
-    // modèle de chat (404 à chaque infographie) ou écrire le prompt par un
-    // modèle d'image.
-    const { app, ai } = buildTestApp({ seed: seed({ infographicImageModel: 'gpt-image-2' }) });
-    await postResume(app);
-    await app.background.drain();
-    const writer = ai.calls.filter((c) => c.method === 'chat').map((c) => c.params.model);
-    expect(writer).toContain('gpt-5.4');
-    expect(writer).not.toContain('gpt-image-2');
   });
 });
 

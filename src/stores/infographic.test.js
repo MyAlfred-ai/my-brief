@@ -28,6 +28,7 @@ const {
   resetInfographic,
   regenerateInfographic,
   deleteInfographic,
+  POLL_MS,
 } = await import('./infographic.js');
 
 // Sous fake timers, un vrai setTimeout ne tirerait jamais : on avance l'horloge factice.
@@ -74,6 +75,30 @@ describe('amorçage depuis l’historique', () => {
     expect(apiGet.mock.calls[0][0]).toBe('/infographic?meetingId=m-1');
   });
 
+  it('réunion prête en GABARIT → le contenu, sans image', async () => {
+    const layout = { version: 1, gabarit: 'bilan', titre: 'Sprint 14' };
+    apiGet.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { status: 'ready', layout, updatedAt: 't1' },
+    });
+    syncInfographic('m-1', [item('m-1', { status: 'ready', updatedAt: 't1' })]);
+    await flush();
+    expect(get(infographicView)).toMatchObject({
+      meetingId: 'm-1',
+      status: 'ready',
+      dataUrl: '',
+      layout,
+    });
+  });
+
+  it('prête sans contenu (ni gabarit ni image) → rien, pas un « prêt » vide', async () => {
+    apiGet.mockResolvedValue({ ok: true, status: 200, data: { status: 'ready', updatedAt: 't1' } });
+    syncInfographic('m-1', [item('m-1', { status: 'ready', updatedAt: 't1' })]);
+    await flush();
+    expect(get(infographicView).status).toBe('none');
+  });
+
   it('aucune réunion affichée → purge', () => {
     syncInfographic('m-1', [item('m-1', { status: 'error', updatedAt: 't1' })]);
     expect(get(infographicView).status).toBe('error');
@@ -89,7 +114,7 @@ describe('génération en cours', () => {
 
     // Premier tour : toujours en cours.
     apiGet.mockResolvedValueOnce({ ok: true, status: 200, data: { status: 'pending' } });
-    await vi.advanceTimersByTimeAsync(4000);
+    await vi.advanceTimersByTimeAsync(POLL_MS);
     expect(get(infographicView).status).toBe('pending');
 
     // Deuxième tour : l'image est là.
@@ -98,7 +123,7 @@ describe('génération en cours', () => {
       status: 200,
       data: { status: 'ready', dataUrl: 'data:image/png;base64,BBB', updatedAt: 't2' },
     });
-    await vi.advanceTimersByTimeAsync(4000);
+    await vi.advanceTimersByTimeAsync(POLL_MS);
     expect(get(infographicView)).toMatchObject({
       status: 'ready',
       dataUrl: 'data:image/png;base64,BBB',
@@ -117,8 +142,20 @@ describe('génération en cours', () => {
       status: 200,
       data: { status: 'error', updatedAt: 't2' },
     });
-    await vi.advanceTimersByTimeAsync(4000);
+    await vi.advanceTimersByTimeAsync(POLL_MS);
     expect(get(infographicView).status).toBe('error');
+  });
+
+  it('relit toutes les 2 secondes : une infographie prête se voit vite', async () => {
+    syncInfographic('m-1', [item('m-1', { status: 'pending', updatedAt: 't1' })]);
+    expect(POLL_MS).toBeLessThanOrEqual(2000);
+    apiGet.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      data: { status: 'ready', layout: { gabarit: 'bilan' }, updatedAt: 't2' },
+    });
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(get(infographicView).status).toBe('ready');
   });
 
   it('changement de réunion en plein poll : la réponse tardive est ignorée', async () => {
@@ -137,7 +174,7 @@ describe('préséance de l’état frais sur l’instantané d’historique', ()
       status: 200,
       data: { status: 'ready', dataUrl: 'data:image/png;base64,CCC', updatedAt: 't1' },
     });
-    await vi.advanceTimersByTimeAsync(4000);
+    await vi.advanceTimersByTimeAsync(POLL_MS);
     expect(get(infographicView).status).toBe('ready');
 
     // L'historique rejoue son instantané daté (même updatedAt) : rien ne bouge.

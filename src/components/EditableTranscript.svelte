@@ -1,17 +1,24 @@
 <script>
-  import { afterUpdate, createEventDispatcher, tick } from 'svelte';
+  import { afterUpdate, createEventDispatcher } from 'svelte';
 
   import { uiText } from '../store.js';
   import { effectiveSpeakerLabels } from '../utils/transcriptAttribution.js';
   import { knownRemoteSpeakers } from '../utils/transcriptSpeakers.js';
   import SpeakerNamePopover from './SpeakerNamePopover.svelte';
-  import IconPen from '~icons/solar/pen-linear';
-  import IconUserSpeak from '~icons/solar/user-speak-rounded-linear';
+  import TranscriptLine from './TranscriptLine.svelte';
 
   // Historique de transcription : [{ time, timestamp, author, text, isDelta, source, speaker }]
   export let items = [];
   // Nom de l'utilisateur (userInfo.name, non validé) : étiquette du canal micro.
   export let selfName = '';
+  /**
+   * Ce que l'Aide IA a pris pour elle dans une ligne : `(ligne) => { before,
+   * word, after, label } | null`. `word` — son prénom, quand il l'a déclenchée —
+   * s'écrit dans sa teinte. Fournie par LiveTranscript ; absente ailleurs
+   * (une réunion rouverte ne sait plus quelles phrases l'ont appelée).
+   * @type {((item: object) => {before: string, word: string, after: string, label: string} | null) | null}
+   */
+  export let aiMark = null;
 
   const dispatch = createEventDispatcher();
 
@@ -19,15 +26,27 @@
 
   // Badge de locuteur : uniquement si la réunion a VRAIMENT tourné sur les deux
   // canaux (micro + audio système de la visio). Une réunion mono-flux garde
-  // l'affichage d'avant, sans décoration inutile.
-  $: hasTwoSources =
-    items.some((t) => sourceOf(t) === 'local') && items.some((t) => sourceOf(t) === 'remote');
+  // l'affichage d'avant, sans décoration inutile. Un seul passage, arrêté dès
+  // les deux canaux vus : recalculé à chaque delta du direct.
+  $: hasTwoSources = bothSources(items);
+  function bothSources(list) {
+    let local = false;
+    let remote = false;
+    for (const t of list) {
+      const source = sourceOf(t);
+      if (source === 'remote') remote = true;
+      else if (source === 'local') local = true;
+      if (local && remote) return true;
+    }
+    return false;
+  }
 
   // Étiquette effective de chaque ligne — nom posé, héritage en direct,
   // « Visio » sinon : le MÊME calcul que le texte envoyé au modèle, ce que
   // l'utilisateur voit est ce que le compte rendu reçoit.
   $: labels = effectiveSpeakerLabels(items, selfName);
-  $: knownNames = knownRemoteSpeakers(items, selfName);
+  // Les noms déjà donnés ne servent qu'au menu : rien à calculer menu fermé.
+  $: knownNames = speakerMenu ? knownRemoteSpeakers(items, selfName) : [];
   $: TS = $uiText.transcription.speakers;
 
   /**
@@ -53,7 +72,10 @@
   // naissance, et ne se ferme que si elle a disparu.
   let speakerMenu = null;
   let popover;
-  let lineEls = [];
+  // Élément de chaque ligne, par position — rempli par TranscriptLine au
+  // montage, lu seulement par afterUpdate (aucune réactivité attachée).
+  const lineEls = [];
+  const onLine = (i, el) => (lineEls[i] = el);
 
   const lineKey = (t) => {
     if (t?.itemId) return `seg:${sourceOf(t)}:${t.itemId}`;
@@ -94,7 +116,8 @@
   }
 
   // Après chaque rendu, la ligne a pu changer d'élément (la liste n'est pas
-  // keyée) ou de hauteur sans que rien ne défile : réancrer, puis replacer.
+  // keyée : l'état d'édition et le menu suivent une POSITION) ou de hauteur
+  // sans que rien ne défile : réancrer, puis replacer.
   afterUpdate(() => {
     if (!speakerMenu) return;
     const line = lineEls[speakerMenu.index];
@@ -111,30 +134,22 @@
   $: dispatch('naming', naming);
 
   let editingIndex = -1;
-  let editValue = '';
-  let textareaEl;
 
   // Double-clic sur une ligne FINALE → édition. La ligne live (isDelta) reste
   // verrouillée : elle est encore réécrite par les deltas → édition = race.
-  async function startEdit(i, item) {
+  // Le champ (TranscriptLine) se remplit et prend le focus à sa naissance.
+  function startEdit(i, item) {
     if (item.isDelta) return;
     editingIndex = i;
-    editValue = item.text;
-    await tick();
-    if (textareaEl) {
-      textareaEl.focus();
-      textareaEl.select();
-      autoGrow(textareaEl);
-    }
   }
 
   // Écrasement simple : on remplace le texte. On ignore vide / inchangé pour
   // éviter d'effacer une ligne par accident (pas de suppression demandée).
-  function commit() {
+  function commit(value) {
     if (editingIndex < 0) return;
     const i = editingIndex;
     const original = items[i] ? items[i].text : '';
-    const next = editValue.trim();
+    const next = String(value || '').trim();
     editingIndex = -1;
     if (next && next !== original) {
       dispatch('edit', { index: i, text: next });
@@ -145,123 +160,38 @@
     editingIndex = -1;
   }
 
-  function onKeydown(e) {
+  function onKeydown(e, value) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      commit(); // Entrée = valider, Maj+Entrée = saut de ligne
+      commit(value); // Entrée = valider, Maj+Entrée = saut de ligne
     } else if (e.key === 'Escape') {
       e.preventDefault();
       cancel(); // Échap = annuler
     }
   }
-
-  function autoGrow(el) {
-    el.style.height = 'auto';
-    el.style.height = el.scrollHeight + 'px';
-  }
 </script>
 
+<!-- Non keyée, à dessein : l'édition et le menu suivent une position. Chaque
+     ligne est un composant `immutable` — une ligne inchangée ne coûte rien
+     quand un delta du direct remplace la liste. -->
 {#each items as t, i}
-  {@const badge = badgeAt(labels, hasTwoSources, i)}
-  {@const remote = sourceOf(t) === 'remote'}
-  <div
-    class="transcript-item"
-    class:transcript-delta={t.isDelta}
-    class:transcript-remote={remote}
-    bind:this={lineEls[i]}
-  >
-    <!-- Colonne d'heure UNIQUEMENT quand la ligne en porte une (le direct :
-         écoulé + horloge). Une réunion rouverte n'a plus d'heure par ligne
-         (cf. utils/historySelection.js) : la colonne disparaît au lieu
-         d'afficher une date ISO illisible en marge. -->
-    {#if t.time || t.timestamp}
-      <div class="transcript-time-container">
-        <span class="transcript-time">{t.time}</span>
-        {#if t.timestamp}
-          <span class="transcript-timestamp">{t.timestamp}</span>
-        {/if}
-      </div>
-    {/if}
-    {#if editingIndex === i}
-      <textarea
-        class="transcript-text transcript-edit"
-        bind:this={textareaEl}
-        bind:value={editValue}
-        on:keydown={onKeydown}
-        on:blur={commit}
-        on:input={(e) => autoGrow(e.target)}
-        rows="1"
-      ></textarea>
-    {:else}
-      <span
-        class="transcript-text"
-        class:transcript-editable={!t.isDelta}
-        role={t.isDelta ? undefined : 'button'}
-        tabindex={t.isDelta ? undefined : 0}
-        title={t.isDelta ? undefined : $uiText.transcription.editHint}
-        on:dblclick={() => startEdit(i, t)}
-        on:keydown={(e) => {
-          if (!t.isDelta && e.key === 'Enter') {
-            e.preventDefault();
-            startEdit(i, t);
-          }
-        }}
-        ><!-- Étiquette de locuteur DANS le fil du texte, au changement de
-            locuteur : une pastille inline en tête de réplique, au lieu d'une
-            ligne dédiée qui espaçait verticalement chaque prise de parole.
-            Voix de la visio : la pastille est un bouton — nommer le
-            participant. Ses événements ne remontent pas à la ligne (double-clic
-            = édition, Entrée = édition). -->{#if badge && remote}<button
-            type="button"
-            class="transcript-speaker transcript-speaker-remote transcript-speaker-btn"
-            class:transcript-speaker-open={speakerMenu?.index === i}
-            title={TS.nameBadge}
-            aria-label="{badge} — {TS.nameBadge}"
-            aria-haspopup="dialog"
-            aria-expanded={speakerMenu?.index === i}
-            on:click|stopPropagation={(e) => toggleSpeakerMenu(e, i)}
-            on:dblclick|stopPropagation
-            on:keydown|stopPropagation
-            >{badge}<IconPen
-              class="transcript-speaker-pen"
-              width="10"
-              height="10"
-              aria-hidden="true"
-            /></button
-          >{:else if badge}<span class="transcript-speaker">{badge}</span
-          >{/if}{#if t.refineFlash}<!-- Relecture par les notes : les mots corrigés
-            s'allument le temps de l'animation (marqueur transitoire posé par
-            flashRefinedWords, jamais persisté), puis la ligne redevient du
-            texte brut. --><span
-            class="transcript-refined-line"
-            >{#each t.refineFlash.tokens as tok, k}{#if k > 0}{' '}{/if}<span
-                class="word-refined"
-                class:word-refined-changed={tok.changed}>{tok.word}</span
-              >{/each}</span
-          >{:else}{t.text}{/if}</span
-      >
-    {/if}
-    {#if t.isDelta}
-      <span class="transcript-delta-indicator">...</span>
-    {/if}
-    <!-- Ligne de suite d'une voix distante (sans pastille) : « autre
-         participant à partir d'ici ». Révélé au survol de la ligne, posé en
-         absolu à droite pour ne jamais faire bouger le texte. -->
-    {#if hasTwoSources && remote && !badge && !t.offlineGapId && editingIndex !== i}
-      <button
-        type="button"
-        class="transcript-speaker-split"
-        class:transcript-speaker-open={speakerMenu?.index === i}
-        title={TS.splitHere}
-        aria-label={TS.splitHere}
-        aria-haspopup="dialog"
-        aria-expanded={speakerMenu?.index === i}
-        on:click|stopPropagation={(e) => toggleSpeakerMenu(e, i, 'end')}
-      >
-        <IconUserSpeak width="13" height="13" aria-hidden="true" />
-      </button>
-    {/if}
-  </div>
+  <TranscriptLine
+    {t}
+    index={i}
+    badge={badgeAt(labels, hasTwoSources, i)}
+    remote={sourceOf(t) === 'remote'}
+    mark={aiMark ? aiMark(t) : null}
+    twoSources={hasTwoSources}
+    editing={editingIndex === i}
+    menuOpen={speakerMenu?.index === i}
+    {TS}
+    editHint={$uiText.transcription.editHint}
+    onStartEdit={startEdit}
+    onEditKeydown={onKeydown}
+    onEditBlur={commit}
+    onToggleMenu={toggleSpeakerMenu}
+    {onLine}
+  />
 {/each}
 
 {#if speakerMenu}

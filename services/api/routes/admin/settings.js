@@ -3,10 +3,10 @@
  *
  * Cinq familles, cinq documents en base (cf. lib/repositories/settings.js) :
  * `/settings/auth` (fournisseurs d'identité, domaines), `/settings/ai`
- * (clé OpenAI), `/settings/actions` (actions après réunion / résumé),
- * `/settings/branding` (logo, phrase d'accueil, couleur primaire) et
- * `/settings/org-context` (vocabulaire de l'organisation, joint à chaque
- * résumé — réglé depuis le même onglet Configuration, en tête de page) et
+ * (clés OpenAI et tierces, modèles), `/settings/actions` (actions après
+ * réunion / résumé), `/settings/branding` (logo, phrase d'accueil, couleur
+ * primaire) et `/settings/org-context` (vocabulaire de l'organisation, joint à
+ * chaque résumé — réglé depuis la même rubrique Organisation, en tête de page) et
  * `/settings/transcript-corrections` (corrections automatiques de la
  * transcription, même onglet, juste dessous).
  *
@@ -26,6 +26,14 @@ import { sanitizeDomainList } from '../../lib/auth/domains.js';
 import { mergeAuthSettings } from '../../lib/repositories/settings.js';
 import { isProviderUsable } from '../../lib/auth/providers.js';
 import { normalizeApiKey, upstreamMessage, UpstreamError } from '../../lib/openai.js';
+import { normalizeProviderKey } from '../../lib/speechProviders.js';
+import {
+  KEYED_PROVIDERS,
+  providerKeyField,
+  resolveTranscriptionModel,
+  transcriptionProvider,
+} from '../../lib/transcriptionModels.js';
+import { resolveSummaryModel, summaryClient, summaryProvider } from '../../lib/summaryModels.js';
 import { fail } from '../../lib/errors.js';
 import { ACTION_VARIABLES, listTemplateVariables } from '../../lib/actions/templating.js';
 import { activeModels, referencePrices } from '../../lib/costs/estimate.js';
@@ -88,27 +96,28 @@ export default function adminSettingsRoutes(app) {
   // ── Clé OpenAI ────────────────────────────────────────────────────────────
 
   /**
-   * Prix des modèles de transcription proposés, pour choisir en connaissance
-   * de cause : les tarifs de l'écran Statistiques (lib/costs), « Actualiser les
-   * tarifs » compris. Des tarifs illisibles ne doivent jamais empêcher de
+   * Prix des modèles proposés, pour choisir en connaissance de cause : une
+   * heure de transcription, un compte rendu d'une réunion d'une heure — les
+   * tarifs et les hypothèses de l'écran Statistiques (lib/costs), « Actualiser
+   * les tarifs » compris. Des tarifs illisibles ne doivent jamais empêcher de
    * régler l'IA : `null`, et l'écran affiche les modèles sans leur prix.
    */
   async function aiPrices(aiDoc, log) {
     try {
       const pricing = effectivePricing(await app.pricing.get());
-      const transcription = referencePrices('transcription', {
-        models: activeModels(aiDoc, app.config.openai?.models),
-        pricing,
-      });
+      const models = activeModels(aiDoc, app.config.openai?.models);
+      const transcription = referencePrices('transcription', { models, pricing });
+      const summary = referencePrices('summary', { models, pricing });
       return {
         transcription,
+        summary,
         ...pricingProvenance(
           pricing,
-          transcription.map((entry) => entry.model),
+          [...transcription, ...summary].map((entry) => entry.model),
         ),
       };
     } catch (err) {
-      log?.error({ err }, 'onglet IA : tarifs des modèles indisponibles');
+      log?.error({ err }, 'rubrique Modèles IA : tarifs des modèles indisponibles');
       return null;
     }
   }
@@ -172,8 +181,60 @@ export default function adminSettingsRoutes(app) {
       patch.transcriptionModel = req.body.transcriptionModel;
     }
 
+    // Clés des fournisseurs tiers : même vérification que la clé OpenAI, et un
+    // garde-fou de plus, jugé sur l'état d'ARRIVÉE (patch + existant) : un
+    // modèle tiers sans la clé de son fournisseur ferait échouer chaque
+    // réunion au démarrage, chez l'utilisateur. Refusé ici, avant tout appel
+    // réseau. Le corps de l'erreur nomme le fournisseur (`provider`).
+    for (const provider of KEYED_PROVIDERS) {
+      const field = providerKeyField(provider);
+      if (req.body[field] === undefined) continue;
+      const { key, problem } = normalizeProviderKey(req.body[field]);
+      if (problem) return fail(reply, 400, problem, { provider });
+      patch[field] = key;
+    }
     if (req.body.summaryModel !== undefined) {
       patch.summaryModel = req.body.summaryModel;
+    }
+    // Le même garde-fou pour la RÉDACTION : un modèle Mistral sans sa clé
+    // ferait échouer chaque compte rendu. Deux réglages, une clé par
+    // fournisseur : chacun des modèles en service APRÈS l'enregistrement
+    // exige la sienne.
+    const current = await app.settings.getAi();
+    const nextTranscription = resolveTranscriptionModel(
+      patch.transcriptionModel ?? current.transcriptionModel,
+      app.config.openai?.models?.transcription || '',
+    );
+    const nextSummary = resolveSummaryModel(
+      patch.summaryModel ?? current.summaryModel,
+      app.config.openai?.models?.summary || '',
+    );
+    for (const needed of new Set([
+      transcriptionProvider(nextTranscription),
+      summaryProvider(nextSummary),
+    ])) {
+      if (!KEYED_PROVIDERS.includes(needed)) continue;
+      const field = providerKeyField(needed);
+      if (!(patch[field] ?? current[field])) {
+        // Deux messages : on ne dit pas « collez une clé » à qui vient d'en retirer une.
+        const slug = patch[field] === '' ? 'provider_key_in_use' : 'provider_key_missing';
+        return fail(reply, 400, slug, { provider: needed });
+      }
+    }
+    for (const provider of KEYED_PROVIDERS) {
+      const key = patch[providerKeyField(provider)];
+      if (!key) continue;
+      try {
+        await app.verifyProviderKey(provider, key);
+      } catch (err) {
+        if (!(err instanceof UpstreamError)) throw err;
+        req.log?.warn({ status: err.status, provider }, 'clé tierce refusée à la vérification');
+        return fail(reply, 400, 'provider_key_rejected', {
+          provider,
+          upstreamStatus: err.status,
+          upstreamMessage: upstreamMessage(err),
+        });
+      }
     }
 
     if (req.body.infographicEnabled !== undefined) {
@@ -268,6 +329,7 @@ export default function adminSettingsRoutes(app) {
       await app.settings.updateBranding(
         {
           logo: req.body.logo,
+          companyLogo: req.body.companyLogo,
           tagline: req.body.tagline,
           taglineEn: req.body.taglineEn,
           primaryColor: req.body.primaryColor,
@@ -279,7 +341,7 @@ export default function adminSettingsRoutes(app) {
     },
   );
 
-  // ── Contexte de l'organisation (onglet Configuration) ────────────────────
+  // ── Contexte de l'organisation (rubrique Organisation) ────────────────────
 
   // `withMeta` : l'administration voit qui a enregistré. La projection servie
   // avec les templates à tout compte authentifié ne porte que le texte.
@@ -302,7 +364,7 @@ export default function adminSettingsRoutes(app) {
     },
   );
 
-  // ── Corrections automatiques de la transcription (onglet Configuration) ──
+  // ── Corrections automatiques de la transcription (rubrique Organisation) ──
 
   const publicTranscriptCorrections = async () =>
     app.settings.toPublicTranscriptCorrections(await app.settings.getTranscriptCorrections(), {
@@ -361,6 +423,13 @@ export default function adminSettingsRoutes(app) {
    *
    * Le modèle testé est celui du corps — celui qu'on s'apprête à choisir — ou,
    * à défaut, celui déjà enregistré.
+   *
+   * Un modèle tiers est éprouvé chez son fournisseur, avec la clé collée dans
+   * le corps (`providerKey`) si l'administrateur ne l'a pas encore
+   * enregistrée : coller, tester, enregistrer, dans l'ordre où l'écran se lit.
+   * Le jeton du direct ne coûte rien. Chez Mistral il est lié au modèle et
+   * prouve aussi l'accès à celui-ci ; chez Speechmatics et AssemblyAI il ne
+   * prouve que la clé — le modèle part avec le socket.
    */
   app.post(
     '/settings/ai/test-transcription',
@@ -372,13 +441,31 @@ export default function adminSettingsRoutes(app) {
         (await app.settings.resolveTranscriptionModel(
           app.config.openai?.models?.transcription || '',
         ));
+      const provider = transcriptionProvider(model);
+      const keyed = KEYED_PROVIDERS.includes(provider);
+      let key = '';
+      if (keyed) {
+        const candidate = normalizeProviderKey(req.body?.providerKey);
+        if (candidate.problem) return fail(reply, 400, candidate.problem, { provider });
+        key = candidate.key || (await app.settings.resolveProviderKey(provider));
+        if (!key) return fail(reply, 400, 'provider_key_missing', { provider });
+      }
       try {
-        await app.openai.realtimeClientSecret('fr', model);
+        if (keyed) await app.speech[provider].realtimeClientSecret(model, { key });
+        else await app.openai.realtimeClientSecret('fr', model);
       } catch (err) {
         if (!(err instanceof UpstreamError)) throw err;
         req.log?.warn({ status: err.status, model }, 'modèle de transcription refusé');
-        return fail(reply, 400, 'transcription_model_rejected', {
+        // Chez un tiers, un 401 accuse la clé, pas le modèle : le dire, sinon
+        // l'administrateur changerait de modèle pour rien.
+        const slug = !keyed
+          ? 'transcription_model_rejected'
+          : err.status === 401
+            ? 'provider_key_rejected'
+            : 'provider_model_rejected';
+        return fail(reply, 400, slug, {
           model,
+          ...(keyed ? { provider } : {}),
           upstreamStatus: err.status,
           upstreamMessage: upstreamMessage(err),
         });
@@ -391,11 +478,15 @@ export default function adminSettingsRoutes(app) {
    * Test RÉEL du modèle de résumé : un appel de chat minuscule sur ce modèle.
    *
    * Il ne juge PAS la qualité du compte rendu — il répond à la seule question
-   * qu'un écran peut trancher avant d'enregistrer : « ce compte OpenAI a-t-il
-   * accès à ce modèle ? ». Sans lui, un modèle refusé par l'organisation ne se
+   * qu'un écran peut trancher avant d'enregistrer : « ce compte a-t-il accès à
+   * ce modèle ? ». Sans lui, un modèle refusé par l'organisation ne se
    * découvrirait qu'à la première génération, chez l'utilisateur. Deux mots de
    * sortie : le test coûte une fraction de centime, là où une vraie génération
    * coûterait un compte rendu entier.
+   *
+   * Un modèle Mistral est éprouvé chez Mistral, avec la clé collée dans le
+   * corps (`providerKey`) si elle n'est pas encore enregistrée — même ordre
+   * que la transcription : coller, tester, enregistrer.
    */
   app.post(
     '/settings/ai/test-summary',
@@ -405,6 +496,15 @@ export default function adminSettingsRoutes(app) {
       const model =
         req.body?.model ||
         (await app.settings.resolveSummaryModel(app.config.openai?.models?.summary || ''));
+      const provider = summaryProvider(model);
+      const keyed = KEYED_PROVIDERS.includes(provider);
+      let key = '';
+      if (keyed) {
+        const candidate = normalizeProviderKey(req.body?.providerKey);
+        if (candidate.problem) return fail(reply, 400, candidate.problem, { provider });
+        key = candidate.key || (await app.settings.resolveProviderKey(provider));
+        if (!key) return fail(reply, 400, 'provider_key_missing', { provider });
+      }
       try {
         // AUCUN réglage de volume ni de raisonnement : on teste l'ACCÈS au
         // modèle, et chaque paramètre en plus est une façon supplémentaire de
@@ -414,16 +514,25 @@ export default function adminSettingsRoutes(app) {
         // proposés, le bouton ne pouvant alors jamais réussir. Un appel nu
         // fonctionne sur toute la famille chat, y compris un modèle hors liste
         // imposé par `OPENAI_MODEL_SUMMARY`.
-        await app.openai.chat({
+        await summaryClient(app, model).chat({
           model,
           messages: [{ role: 'user', content: 'Réponds exactement : OK' }],
           timeoutMs: 30_000,
+          ...(keyed ? { key } : {}),
         });
       } catch (err) {
         if (!(err instanceof UpstreamError)) throw err;
         req.log?.warn({ status: err.status, model }, 'modèle de résumé refusé');
-        return fail(reply, 400, 'summary_model_rejected', {
+        // Chez un tiers, un 401 accuse la clé, pas le modèle — même lecture
+        // que le test de transcription.
+        const slug = !keyed
+          ? 'summary_model_rejected'
+          : err.status === 401
+            ? 'provider_key_rejected'
+            : 'provider_model_rejected';
+        return fail(reply, 400, slug, {
           model,
+          ...(keyed ? { provider } : {}),
           upstreamStatus: err.status,
           upstreamMessage: upstreamMessage(err),
         });

@@ -51,7 +51,11 @@ const tidySettings = (over = {}) => [
   { key: 'ai', apiKey: OPENAI_KEY },
   GOOGLE_AUTH,
   { key: 'actions', connections: { provider: 'google' } },
-  { key: 'branding', logo: 'data:image/png;base64,AAAA' },
+  {
+    key: 'branding',
+    logo: 'data:image/png;base64,AAAA',
+    companyLogo: 'data:image/png;base64,BBBB',
+  },
   { key: 'orgContext', context: 'Vocabulaire maison : CRM, BU, comex.' },
   ...(over.extra || []),
 ];
@@ -91,8 +95,9 @@ describe("GET /api/admin/config-checks — l'organisation", () => {
     expect(issues).toEqual([
       { section: 'ai', code: 'ai_key_missing', level: 'error' },
       { section: 'actions', code: 'storage_provider_missing', level: 'warning' },
+      { section: 'branding', code: 'company_logo_missing', level: 'warning' },
       { section: 'branding', code: 'branding_default', level: 'tip' },
-      { section: 'branding', code: 'org_context_empty', level: 'tip' },
+      { section: 'company', code: 'org_context_empty', level: 'tip' },
     ]);
   });
 
@@ -102,6 +107,21 @@ describe("GET /api/admin/config-checks — l'organisation", () => {
       config: NO_ENV_KEY,
     });
     expect((await get(app, '/api/admin/config-checks')).json().issues).toEqual([]);
+  });
+
+  it("logo d'entreprise absent : un avertissement, même quand le reste de l'apparence est réglé", async () => {
+    // Les infographies prennent alors le logo de l'application en tête : la
+    // pastille signale le manque à l'administrateur.
+    const settings = tidySettings().map((doc) =>
+      doc.key === 'branding' ? { key: 'branding', logo: doc.logo } : doc,
+    );
+    const { app } = buildTestApp({
+      seed: { user: [userDoc(ADMIN, { role: 'admin' })], appSettings: settings },
+      config: NO_ENV_KEY,
+    });
+    expect((await get(app, '/api/admin/config-checks')).json().issues).toEqual([
+      { section: 'branding', code: 'company_logo_missing', level: 'warning' },
+    ]);
   });
 
   it("la clé de l'environnement compte comme une clé", async () => {

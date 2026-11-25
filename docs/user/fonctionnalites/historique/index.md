@@ -36,7 +36,7 @@ rouge « Réunion de » suivi de votre nom s'affiche en haut de la colonne : un 
 pouvez consulter une autre réunion pendant ce temps ; l'enregistrement continue.
 
 **Revenir à l'accueil.** Le logo myBrief, en haut de la colonne — sur téléphone, dans la barre du
-haut —, referme la réunion ouverte, comme **Ma configuration**, et ramène à l'écran « Bienvenue ». Pendant
+haut —, referme la réunion ouverte, comme **Réglages**, et ramène à l'écran « Bienvenue ». Pendant
 un enregistrement, il ramène au direct : la réunion continue.
 
 **La réunion dont le résumé s'écrit.** Son titre s'anime d'un reflet le temps de la rédaction. Vous

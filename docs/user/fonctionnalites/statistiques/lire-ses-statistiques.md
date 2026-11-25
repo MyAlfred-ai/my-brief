@@ -1,11 +1,11 @@
 ---
 title: Lire ses statistiques
-description: Ce que mesurent la jauge, chaque indicateur et chaque graphique de « Mes statistiques ».
+description: Ce que mesurent la jauge, chaque indicateur et chaque graphique de « Usage & crédits ».
 sidebar:
   order: 1
 ---
 
-**Mes statistiques.** Choisissez d'abord la période : **Ce mois**, **3 mois**, **12 mois** ou
+**Réglages → Usage & crédits.** Choisissez d'abord la période : **Ce mois**, **3 mois**, **12 mois** ou
 **Depuis toujours**. **Actualiser** relit les chiffres.
 
 ## Le crédit du mois

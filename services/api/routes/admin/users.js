@@ -8,6 +8,7 @@
  */
 import { hashPassword, checkPasswordPolicy, generatePassword } from '../../lib/auth/password.js';
 import { normalizeEmail, toPublicUser } from '../../lib/repositories/users.js';
+import { groupAfterRoleChange, groupIdOf } from '../../lib/repositories/groups.js';
 import { requireAdmin } from '../../lib/rbac.js';
 import { fail } from '../../lib/errors.js';
 import { CONNECT_PROVIDERS } from '../../lib/connections/providers.js';
@@ -53,6 +54,8 @@ export default function adminUsersRoutes(app) {
 
   /**
    * Création par un administrateur — il n'y a pas d'inscription publique.
+   * Sans groupe choisi, le compte naît dans celui de son rôle (cf.
+   * `users.create`).
    * Sans mot de passe fourni, on en génère un et on le renvoie UNE SEULE FOIS
    * (il n'est stocké que haché, il ne sera jamais réaffichable).
    */
@@ -98,7 +101,21 @@ export default function adminUsersRoutes(app) {
       return fail(reply, 409, 'self_target');
     if (await refuseUnknownGroups(reply, groupIds)) return;
 
-    const updated = await app.users.update(emailLower, { name, role, disabled, groupIds });
+    // Un changement de rôle déplace le compte (cf. `groupAfterRoleChange`) —
+    // sauf si l'appel choisit lui-même le groupe : la fiche applique déjà la
+    // règle à l'écran, et ce qu'elle envoie est ce que l'administrateur a vu.
+    const roleChanged = role !== undefined && role !== doc.role;
+    const nextGroupIds =
+      groupIds === undefined && roleChanged
+        ? [groupAfterRoleChange(groupIdOf(doc.groupIds), role)]
+        : groupIds;
+
+    const updated = await app.users.update(emailLower, {
+      name,
+      role,
+      disabled,
+      groupIds: nextGroupIds,
+    });
     // Un compte désactivé ou rétrogradé ne doit pas garder de session ouverte
     // avec ses anciens droits jusqu'à sa prochaine reconnexion.
     if (disabled === true || (role !== undefined && role !== doc.role)) {

@@ -11,7 +11,7 @@
  * jsdom ne calcule aucune géométrie : scrollHeight/clientHeight sont posés à
  * la main, et l'événement scroll est dispatché explicitement.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 
 const LiveTranscript = (await import('./LiveTranscript.svelte')).default;
@@ -92,6 +92,33 @@ describe('LiveTranscript', () => {
     expect(screen.queryByLabelText(props.followLabel)).toBeNull();
 
     component.scrollToLatest();
+    expect(scroller.scrollTop).toBe(1000);
+  });
+});
+
+describe('LiveTranscript — onglet caché', () => {
+  const setVisibility = (state) => {
+    Object.defineProperty(document, 'visibilityState', { value: state, configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  };
+  afterEach(() => {
+    delete document.visibilityState; // retour au getter de jsdom
+  });
+
+  it('caché : la liste reste figée et ne défile pas ; au retour, elle rattrape le direct et recolle', async () => {
+    const first = { time: '00:00:01', text: 'Bonjour.' };
+    const { component, container, scroller } = renderWithGeometry([first]);
+    scroller.scrollTop = 700; // en bas : le suivi est actif
+    setVisibility('hidden');
+
+    await component.$set({ items: [first, { time: '00:00:02', text: 'Salut.' }] });
+    component.scrollToLatest();
+    expect(container.querySelectorAll('.transcript-item')).toHaveLength(1);
+    expect(scroller.scrollTop).toBe(700);
+
+    setVisibility('visible');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(container.querySelectorAll('.transcript-item')).toHaveLength(2);
     expect(scroller.scrollTop).toBe(1000);
   });
 });

@@ -12,6 +12,7 @@ import { loadToken, getCachedToken } from './platform/auth.js';
 import { installBackButton } from './platform/backButton.js';
 import { runVersionGuard } from './utils/versionGuard.js';
 import { initAuth, bootstrapAuth } from './stores/auth.js';
+import { markdownEditor } from './components/lazy/panels.js';
 
 // Installer l'intercepteur de fetch AVANT tout appel réseau (auth recovery, init
 // de l'app...). Il marque les requêtes /api/ comme XHR pour que le plugin OIDC
@@ -170,4 +171,10 @@ bootstrapAuthRecovery().then(async (recovered) => {
   });
 
   app;
+
+  // L'éditeur du compte rendu est chargé à la demande (components/lazy/) :
+  // il arrive pendant un temps mort après le démarrage, prêt avant qu'un
+  // compte rendu s'ouvre, sans peser sur le premier affichage.
+  const whenIdle = window.requestIdleCallback || ((fn) => setTimeout(fn, 1500));
+  whenIdle(() => markdownEditor.preload(), { timeout: 4000 });
 });

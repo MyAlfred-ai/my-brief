@@ -161,7 +161,7 @@ describe('/api/actions', () => {
     expect(res.json()).toEqual({ actions: [] });
   });
 
-  it('demande explicitement les engagements induits et les mises à jour par id', async () => {
+  it('sans réglage : niveau « Stricte », et mises à jour par id', async () => {
     const { app, ai } = buildTestApp({ openai: { chat: '[]' } });
     await app.inject({
       method: 'POST',
@@ -170,11 +170,13 @@ describe('/api/actions', () => {
       body: JSON.stringify({ content: 'blabla', actions: [] }),
     });
     const prompt = ai.calls[0].params.messages[0].content;
-    // Sans ces deux consignes, on retombe sur le comportement d'origine : une
-    // action au mot « action », et plus jamais modifiable ensuite. L'engagement
-    // pris sans annonce est la seconde question du niveau par défaut
-    // (cf. SENSITIVITY_RULES.balanced) ; c'est lui qu'on vérifie ici.
-    expect(prompt).toContain('se la voit-il CONFIER');
+    // « Stricte » est le défaut depuis le 2026-10-28 : un compte qui n'a rien
+    // réglé ne voit que les tâches annoncées. L'engagement pris sans annonce
+    // (« Équilibrée ») est vérifié dans actionDetectionUserSettings.test.js.
+    // Sans la consigne de mise à jour, une action ne serait plus jamais
+    // modifiable une fois détectée.
+    expect(prompt).toContain('Ne sont PAS des actions ici');
+    expect(prompt).not.toContain('se la voit-il CONFIER');
     expect(prompt).toContain('MISES À JOUR');
     expect(prompt).toContain('"id"');
   });

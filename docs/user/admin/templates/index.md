@@ -5,8 +5,11 @@ sidebar:
   order: 2
 ---
 
-L'onglet **Administration → Templates** gère les templates proposés à **tous les comptes** : les six
-templates fournis par myBrief, que vous pouvez adapter, et ceux que vous créez pour l'organisation.
+La page **Administration → Capacités → Templates** gère les templates proposés à **tous les comptes** :
+les six templates fournis par myBrief, que vous pouvez adapter, et ceux que vous créez pour
+l'organisation.
+
+![Administration, page Templates : à gauche, les six templates fournis, chacun avec le badge défaut — Standard, ouvert, Réunion de décision, Entretien RH, Brainstorming, Planification, Rétrospective —, puis Ajouter un template ; à droite, l'éditeur de Standard : l'avertissement qu'un template par défaut modifié l'est pour tous les comptes, l'Identité — icône et nom —, les Directives à l'IA, puis la Mise en forme du résumé et ses blocs IA ; en bas, Annuler et Sauvegarder.](../../images/admin-templates.png)
 
 ## À quoi ça sert
 
@@ -54,9 +57,9 @@ myBrief, même si vous les avez adaptées.
 
 | Réglage | Où | Effet | Page |
 |---|---|---|---|
-| **Ajouter un template** | Administration → Templates | Un template de plus, pour tous les comptes | [Créer un template d'organisation](creer-un-template-d-organisation.md) |
-| Modifier un template **défaut**, **Rétablir le défaut** | Administration → Templates | La version utilisée par tous | [Modifier un template par défaut](modifier-un-template-par-defaut.md) |
-| **Proposer le Pagimètre**, **Position par défaut** | Administration → Templates, section **Pagimètre** | La longueur du résumé se règle en pages, et part de cette position | [Régler la longueur du résumé, côté utilisateur](../../fonctionnalites/resumes/regler-la-longueur.md) |
+| **Ajouter un template** | Administration → Capacités → Templates | Un template de plus, pour tous les comptes | [Créer un template d'organisation](creer-un-template-d-organisation.md) |
+| Modifier un template **défaut**, **Rétablir le défaut** | Administration → Capacités → Templates | La version utilisée par tous | [Modifier un template par défaut](modifier-un-template-par-defaut.md) |
+| **Proposer le Pagimètre**, **Position par défaut** | Administration → Capacités → Templates, section **Pagimètre** | La longueur du résumé se règle en pages, et part de cette position | [Régler la longueur du résumé, côté utilisateur](../../fonctionnalites/resumes/regler-la-longueur.md) |
 
 ## Exemples de configuration
 

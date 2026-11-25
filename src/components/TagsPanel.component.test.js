@@ -20,12 +20,20 @@ import { get } from 'svelte/store';
 const api = {
   fetchTags: vi.fn(),
   saveTag: vi.fn(),
+  saveTagContextRequest: vi.fn(),
+  fetchTagLogo: vi.fn(),
+  saveTagLogoRequest: vi.fn(),
+  deleteTagLogoRequest: vi.fn(),
   deleteTag: vi.fn(),
   setMeetingTag: vi.fn(),
 };
 vi.mock('../services/tagsApi.js', () => ({
   fetchTags: (...a) => api.fetchTags(...a),
   saveTag: (...a) => api.saveTag(...a),
+  saveTagContextRequest: (...a) => api.saveTagContextRequest(...a),
+  fetchTagLogo: (...a) => api.fetchTagLogo(...a),
+  saveTagLogoRequest: (...a) => api.saveTagLogoRequest(...a),
+  deleteTagLogoRequest: (...a) => api.deleteTagLogoRequest(...a),
   deleteTag: (...a) => api.deleteTag(...a),
   setMeetingTag: (...a) => api.setMeetingTag(...a),
 }));
@@ -47,14 +55,30 @@ vi.mock('../services/actionsApi.js', () => ({
   createStorageFolder: (...a) => actionsApi.createStorageFolder(...a),
 }));
 
+// La réduction de l'image passe par un canvas, absent de jsdom.
+const logoUtil = { prepare: vi.fn() };
+vi.mock('../utils/tagLogo.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  prepareTagLogo: (...a) => logoUtil.prepare(...a),
+}));
+
 const connectApi = { fetchConnectStatus: vi.fn() };
 vi.mock('../services/connectApi.js', () => ({
   fetchConnectStatus: (...a) => connectApi.fetchConnectStatus(...a),
 }));
 
 const TagsPanel = (await import('./TagsPanel.svelte')).default;
-const { tags, tagsMax, tagColors, tagShapes, tagHueLightness, TAG_HUE_LIGHTNESS } =
-  await import('../stores/tags.js');
+const {
+  tags,
+  tagsMax,
+  tagColors,
+  tagShapes,
+  tagHueLightness,
+  tagContextMax,
+  tagLogos,
+  TAG_HUE_LIGHTNESS,
+  TAG_CONTEXT_MAX,
+} = await import('../stores/tags.js');
 const { currentLanguageStore } = await import('../store.js');
 const { historyItems } = await import('../stores/history.js');
 const { resetActionSettings, applyActionSettings } = await import('../stores/actionSettings.js');
@@ -115,6 +139,8 @@ beforeEach(() => {
   tagColors.set(COLORS);
   tagShapes.set(SHAPES);
   tagHueLightness.set(TAG_HUE_LIGHTNESS);
+  tagContextMax.set(TAG_CONTEXT_MAX);
+  tagLogos.set(new Map());
   tagsMax.set(20);
   historyItems.set([]);
   resetActionSettings();
@@ -127,7 +153,24 @@ async function setup() {
 }
 
 /** Attend que la fiche du tag `label` soit celle affichée. */
-const fiche = (label) => screen.findByRole('heading', { name: label });
+/**
+ * Attend la fiche du tag `label`, et DÉPLIE ses règles (rangement, envoi),
+ * repliées par défaut : les tests de ces règles en manipulent les choix. Sans
+ * effet sur une règle déjà dépliée.
+ */
+async function fiche(label) {
+  const heading = await screen.findByRole('heading', { name: label });
+  for (const toggle of screen.queryAllByRole('button', { name: /^Modifier : / })) {
+    if (toggle.getAttribute('aria-expanded') === 'false') await fireEvent.click(toggle);
+  }
+  return heading;
+}
+
+/** Ouvre le formulaire complet d'un tag : la pastille, puis « Motifs et couleur libre… ». */
+async function openForm() {
+  await userEvent.click(await screen.findByRole('button', { name: 'Couleur et forme' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Motifs et couleur libre…' }));
+}
 
 /** Le choix radio de la fiche dont le libellé COMMENCE par `title`. */
 const choice = (title) =>
@@ -263,7 +306,7 @@ describe('TagsPanel — création', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Annuler' }));
 
     // Modification d'un tag à motif : on ne cache pas ce qui est choisi.
-    await userEvent.click(await screen.findByRole('button', { name: 'Nom et apparence' }));
+    await openForm();
     expect(screen.getByRole('radio', { name: 'Bleu rayé' }).getAttribute('aria-checked')).toBe(
       'true',
     );
@@ -495,6 +538,27 @@ describe('TagsPanel — la liste et la fiche', () => {
     expect(screen.queryByRole('searchbox')).toBeNull();
   });
 
+  it('dès qu’un tag a un contexte, la recherche apparaît et trouve par lui', async () => {
+    api.fetchTags.mockResolvedValue(
+      ok({
+        tags: [{ ...TAG, context: 'Interlocutrice : Claire Martin, achats.' }, TAG2],
+        colors: COLORS,
+        max: 20,
+      }),
+    );
+    await setup();
+    await fiche('Client Dupont');
+    const search = screen.getByRole('searchbox', { name: 'Rechercher un tag' });
+    expect(search.getAttribute('placeholder')).toBe('Nom, personne, sigle…');
+    await userEvent.type(search, 'claire');
+    const nav = screen.getByRole('navigation', { name: 'Mes tags' });
+    const dupont = within(nav).getByRole('button', { name: /^Client Dupont/ });
+    // L'extrait remplace le compteur, le mot trouvé surligné.
+    expect(dupont.querySelector('mark').textContent).toBe('Claire');
+    expect(dupont.textContent).not.toContain('Aucune conversation');
+    expect(within(nav).queryByRole('button', { name: /^Interne/ })).toBeNull();
+  });
+
   it('sur téléphone, la fiche remplace la liste : un tag l’ouvre, « Mes tags » y ramène', async () => {
     await setup();
     await fiche('Client Dupont');
@@ -511,16 +575,234 @@ describe('TagsPanel — la liste et la fiche', () => {
   });
 });
 
+describe('TagsPanel — ce que l’IA doit savoir', () => {
+  const ATLAS = 'Rénovation du siège. Cliente : Claire Martin.';
+  const contextField = () => screen.getByRole('textbox', { name: 'Que doit savoir l’IA ?' });
+
+  beforeEach(() => {
+    api.fetchTags.mockResolvedValue(
+      ok({ tags: [{ ...TAG, context: ATLAS }, TAG2], colors: COLORS, max: 20, contextMax: 200 }),
+    );
+  });
+
+  it('montre le texte du tag, l’enregistre en quittant le champ, et le dit', async () => {
+    api.saveTagContextRequest.mockResolvedValue(
+      ok({ tag: { id: 't-1', context: `${ATLAS} PAC = pompe à chaleur.` } }),
+    );
+    await setup();
+    await fiche('Client Dupont');
+    const field = contextField();
+    expect(field.value).toBe(ATLAS);
+    // La borne servie par l'API, et le compteur qui la rappelle.
+    expect(field.getAttribute('maxlength')).toBe('200');
+    expect(screen.getByText(`${ATLAS.length} / 200`)).toBeTruthy();
+
+    await userEvent.type(field, ' PAC = pompe à chaleur.');
+    await fireEvent.blur(field);
+    expect(api.saveTagContextRequest).toHaveBeenCalledWith(
+      't-1',
+      `${ATLAS} PAC = pompe à chaleur.`,
+    );
+    expect(await screen.findByText('Enregistré')).toBeTruthy();
+  });
+
+  it('quitter le champ sans rien changer n’écrit rien — espaces de bord compris', async () => {
+    await setup();
+    await fiche('Client Dupont');
+    await userEvent.type(contextField(), '   ');
+    await fireEvent.blur(contextField());
+    expect(api.saveTagContextRequest).not.toHaveBeenCalled();
+  });
+
+  it('un refus du serveur s’affiche dans la fiche, texte conservé', async () => {
+    api.saveTagContextRequest.mockResolvedValue(ko(400, 'context_too_long', { max: 200 }));
+    await setup();
+    await fiche('Client Dupont');
+    await userEvent.type(contextField(), ' Encore.');
+    await fireEvent.blur(contextField());
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'Texte trop long (200 caractères maximum).',
+    );
+    expect(contextField().value).toBe(`${ATLAS} Encore.`);
+  });
+
+  it('chaque tag a son texte : changer de fiche ne mélange pas les brouillons', async () => {
+    await setup();
+    await fiche('Client Dupont');
+    const rows = screen.getByRole('navigation', { name: 'Mes tags' });
+    await userEvent.click(within(rows).getByRole('button', { name: /^Interne/ }));
+    await fiche('Interne');
+    expect(contextField().value).toBe('');
+    await userEvent.click(within(rows).getByRole('button', { name: /^Client Dupont/ }));
+    await fiche('Client Dupont');
+    expect(contextField().value).toBe(ATLAS);
+  });
+
+  it('« Lu par » ne nomme que ce que le compte utilise', async () => {
+    await setup();
+    await fiche('Client Dupont');
+    expect(screen.getByText('Compte rendu')).toBeTruthy();
+    expect(screen.getByText('Transcription')).toBeTruthy();
+    expect(screen.queryByText('Infographie')).toBeNull();
+    expect(screen.queryByText('Aide IA')).toBeNull();
+  });
+});
+
+describe('TagsPanel — fiche : tout s’enregistre aussitôt', () => {
+  const PNG = 'data:image/png;base64,iVBORw0KGgoAAAA';
+
+  beforeEach(() => {
+    logoUtil.prepare.mockReset();
+    api.fetchTags.mockResolvedValue(
+      ok({ tags: [TAG, TAG2], colors: COLORS, shapes: SHAPES, max: 20 }),
+    );
+  });
+
+  it('rangement et envoi sont repliés : la réponse se lit, « Modifier » déplie', async () => {
+    await setup();
+    await screen.findByRole('heading', { name: 'Client Dupont' });
+    expect(screen.queryByRole('radio', { name: /^Avec les autres comptes rendus/ })).toBeNull();
+    expect(screen.getByText('Avec les autres comptes rendus')).toBeTruthy();
+    const toggle = screen.getByRole('button', {
+      name: 'Modifier : Où ranger ses comptes rendus ?',
+    });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    await userEvent.click(toggle);
+    expect(screen.getByRole('radio', { name: /^Avec les autres comptes rendus/ })).toBeTruthy();
+    expect(
+      screen
+        .getByRole('button', { name: 'Fermer : Où ranger ses comptes rendus ?' })
+        .getAttribute('aria-expanded'),
+    ).toBe('true');
+  });
+
+  it('le nom se modifie sur place : Entrée enregistre le corps COMPLET', async () => {
+    api.saveTag.mockResolvedValue(ok({ tag: { ...TAG, label: 'Client Dupont SA' } }));
+    await setup();
+    await screen.findByRole('heading', { name: 'Client Dupont' });
+    await userEvent.click(screen.getByRole('button', { name: 'Renommer' }));
+    const input = screen.getByRole('textbox', { name: 'Nom' });
+    await userEvent.clear(input);
+    await userEvent.type(input, 'Client Dupont SA{Enter}');
+    expect(api.saveTag).toHaveBeenCalledWith({
+      id: 't-1',
+      label: 'Client Dupont SA',
+      color: 'red',
+      shape: 'circle',
+    });
+    expect(await screen.findByRole('heading', { name: 'Client Dupont SA' })).toBeTruthy();
+  });
+
+  it('Échap annule le nouveau nom ; un refus s’affiche sous le titre', async () => {
+    api.saveTag.mockResolvedValue(ko(409, 'duplicate_label'));
+    await setup();
+    await screen.findByRole('heading', { name: 'Client Dupont' });
+    await userEvent.click(screen.getByRole('button', { name: 'Renommer' }));
+    await userEvent.type(screen.getByRole('textbox', { name: 'Nom' }), ' bis{Escape}');
+    expect(api.saveTag).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: 'Renommer' }));
+    const input = screen.getByRole('textbox', { name: 'Nom' });
+    await userEvent.clear(input);
+    await userEvent.type(input, 'Interne{Enter}');
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'Vous avez déjà un tag portant ce nom.',
+    );
+    expect(screen.getByRole('heading', { name: 'Client Dupont' })).toBeTruthy();
+  });
+
+  it('couleur et forme en un clic, enregistrées aussitôt', async () => {
+    api.saveTag.mockResolvedValue(ok({ tag: { ...TAG, color: 'blue' } }));
+    await setup();
+    await screen.findByRole('heading', { name: 'Client Dupont' });
+    await userEvent.click(screen.getByRole('button', { name: 'Couleur et forme' }));
+    const dialog = screen.getByRole('dialog', { name: 'Couleur et forme' });
+    expect(within(dialog).getByRole('radio', { name: 'Rouge' }).getAttribute('aria-checked')).toBe(
+      'true',
+    );
+    await userEvent.click(within(dialog).getByRole('radio', { name: 'Bleu' }));
+    expect(api.saveTag).toHaveBeenCalledWith({
+      id: 't-1',
+      label: 'Client Dupont',
+      color: 'blue',
+      shape: 'circle',
+    });
+    // La fenêtre se referme sur le choix.
+    expect(screen.queryByRole('dialog', { name: 'Couleur et forme' })).toBeNull();
+  });
+
+  it('un logo déposé est préparé, envoyé, et montré', async () => {
+    logoUtil.prepare.mockResolvedValue(PNG);
+    api.saveTagLogoRequest.mockResolvedValue(
+      ok({ tag: { id: 't-1', logoAt: '2026-11-18T10:00:00Z' } }),
+    );
+    await setup();
+    await screen.findByRole('heading', { name: 'Client Dupont' });
+    const file = new File(['x'], 'logo.png', { type: 'image/png' });
+    await userEvent.upload(screen.getByLabelText('Déposer un logo'), file);
+    expect(logoUtil.prepare).toHaveBeenCalledWith(file);
+    expect(api.saveTagLogoRequest).toHaveBeenCalledWith('t-1', PNG);
+    const img = await screen.findByAltText('Logo du tag « Client Dupont »');
+    expect(img.getAttribute('src')).toBe(PNG);
+    expect(screen.getByRole('button', { name: 'Remplacer…' })).toBeTruthy();
+  });
+
+  it('une image refusée dit pourquoi, rien n’est envoyé', async () => {
+    logoUtil.prepare.mockRejectedValue(Object.assign(new Error('x'), { code: 'logo_invalid' }));
+    await setup();
+    await screen.findByRole('heading', { name: 'Client Dupont' });
+    await userEvent.upload(
+      screen.getByLabelText('Déposer un logo'),
+      new File(['x'], 'logo.png', { type: 'image/png' }),
+    );
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'Ce fichier n’est pas une image',
+    );
+    expect(api.saveTagLogoRequest).not.toHaveBeenCalled();
+  });
+
+  it('un tag à logo le montre dans la liste et la fiche ; « Retirer » le retire', async () => {
+    api.fetchTags.mockResolvedValue(
+      ok({
+        tags: [{ ...TAG, logoAt: '2026-11-18T10:00:00Z' }, TAG2],
+        colors: COLORS,
+        shapes: SHAPES,
+        max: 20,
+      }),
+    );
+    api.fetchTagLogo.mockResolvedValue(ok({ id: 't-1', dataUrl: PNG }));
+    api.deleteTagLogoRequest.mockResolvedValue(ok({ tag: { id: 't-1', logoAt: null } }));
+    await setup();
+    await screen.findByRole('heading', { name: 'Client Dupont' });
+    const nav = screen.getByRole('navigation', { name: 'Mes tags' });
+    await waitFor(() =>
+      expect(
+        within(nav)
+          .getByRole('button', { name: /^Client Dupont/ })
+          .querySelector('img'),
+      ).not.toBeNull(),
+    );
+    expect(api.fetchTagLogo).toHaveBeenCalledTimes(1);
+    await userEvent.click(screen.getByRole('button', { name: 'Retirer' }));
+    expect(api.deleteTagLogoRequest).toHaveBeenCalledWith('t-1');
+    await waitFor(() => expect(screen.getByLabelText('Déposer un logo')).toBeTruthy());
+    expect(
+      within(nav)
+        .getByRole('button', { name: /^Client Dupont/ })
+        .querySelector('img'),
+    ).toBeNull();
+  });
+});
+
 describe('TagsPanel — modification', () => {
   beforeEach(() => {
     api.fetchTags.mockResolvedValue(ok({ tags: [TAG], colors: COLORS, max: 20 }));
   });
 
-  it('« Nom et apparence » pré-remplit le formulaire et envoie l’id existant', async () => {
+  it('« Motifs et couleur libre… » ouvre le formulaire complet, pré-rempli, avec l’id existant', async () => {
     api.saveTag.mockResolvedValue(ok({ tag: { ...TAG, label: 'Dupont SA' } }));
     await setup();
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Nom et apparence' }));
+    await openForm();
     const input = screen.getByRole('textbox');
     expect(input.value).toBe('Client Dupont');
 
@@ -549,7 +831,7 @@ describe('TagsPanel — modification', () => {
     api.saveTag.mockResolvedValue(ok({ tag: { ...TAG, color: 'hue-120-40', shape: 'heart' } }));
     await setup();
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Nom et apparence' }));
+    await openForm();
     expect(screen.getByRole('radio', { name: 'Cœur' }).getAttribute('aria-checked')).toBe('true');
     // Le repli s'ouvre seul : la couleur choisie est une couleur libre.
     expect(screen.getByRole('radio', { name: 'Couleur libre' }).getAttribute('aria-checked')).toBe(
@@ -573,7 +855,7 @@ describe('TagsPanel — modification', () => {
     );
     api.saveTag.mockResolvedValue(ok({ tag: { ...TAG, color: 'hue-120' } }));
     await setup();
-    await userEvent.click(await screen.findByRole('button', { name: 'Nom et apparence' }));
+    await openForm();
     expect(screen.getByRole('slider', { name: 'Clarté' }).value).toBe(
       String(TAG_HUE_LIGHTNESS.default),
     );
@@ -589,17 +871,18 @@ describe('TagsPanel — modification', () => {
   it('un tag d’avant les formes s’ouvre en rond', async () => {
     api.fetchTags.mockResolvedValue(ok({ tags: [TAG], colors: COLORS, shapes: SHAPES, max: 20 }));
     await setup();
-    await userEvent.click(await screen.findByRole('button', { name: 'Nom et apparence' }));
+    await openForm();
     expect(screen.getByRole('radio', { name: 'Rond' }).getAttribute('aria-checked')).toBe('true');
   });
 
   it('« Annuler » referme sans rien envoyer, et rend la fiche', async () => {
     await setup();
-    await userEvent.click(await screen.findByRole('button', { name: 'Nom et apparence' }));
+    await openForm();
     await userEvent.click(screen.getByRole('button', { name: 'Annuler' }));
 
     expect(api.saveTag).not.toHaveBeenCalled();
-    expect(screen.queryByRole('textbox')).toBeNull();
+    // Le champ du NOM a disparu ; celui du contexte est de la fiche revenue.
+    expect(screen.queryByRole('textbox', { name: 'Nom' })).toBeNull();
     expect(await fiche('Client Dupont')).toBeTruthy();
   });
 });
@@ -1032,9 +1315,9 @@ describe('TagsPanel — réglages communs', () => {
   it('renvoie vers « Entreposer » et « Envoi d’email » pour ce qui sert aussi aux conversations sans tag', async () => {
     await openCommon();
     await userEvent.click(screen.getByRole('button', { name: 'Modifier dans Entreposer' }));
-    expect(get(panelNav).active).toBe('action-storage');
+    expect(get(panelNav)).toMatchObject({ active: 'actions', sub: 'storage' });
     await userEvent.click(screen.getByRole('button', { name: 'Modifier dans Envoi d’email' }));
-    expect(get(panelNav).active).toBe('action-mail');
+    expect(get(panelNav)).toMatchObject({ active: 'actions', sub: 'mail' });
   });
 
   it('dit ce que « destinataires habituels » désigne', async () => {

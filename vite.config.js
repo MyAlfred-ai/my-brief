@@ -91,4 +91,25 @@ export default defineConfig({
     }),
   ],
   base: '/',
+  build: {
+    rollupOptions: {
+      output: {
+        // L'éditeur (TipTap, ProseMirror, linkify) est chargé à la demande
+        // (src/components/lazy/) et partagé par le compte rendu, les réglages
+        // et l'administration. Dans SON fichier : son empreinte ne change
+        // qu'avec la version de ces bibliothèques, pas à chaque déploiement —
+        // le navigateur le garde en cache d'une version à l'autre.
+        manualChunks(id) {
+          if (
+            /node_modules\/(@tiptap|prosemirror-|linkifyjs|orderedmap|rope-sequence|w3c-keyname)/.test(
+              id,
+            )
+          ) {
+            return 'editor-vendor';
+          }
+          return undefined;
+        },
+      },
+    },
+  },
 });

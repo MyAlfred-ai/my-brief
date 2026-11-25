@@ -11,7 +11,7 @@
  * jamais sauvegardée, version inconnue) — l'indicateur doit retomber, sans
  * signaler d'échec à l'utilisateur.
  */
-import { post } from './apiClient.js';
+import { get, post } from './apiClient.js';
 
 /** @typedef {'idle'|'saved'|'error'} SaveOutcome */
 
@@ -138,4 +138,30 @@ export async function requestMeetingTitle(meetingId, notesActions = null) {
     return 'error';
   }
   return res.data?.titlePending ? 'saved' : 'idle';
+}
+
+// ── Lectures de l'historique ────────────────────────────────────────────────
+// `_t` + Cache-Control : l'historique doit refléter l'écriture qui vient
+// d'avoir lieu, jamais une copie servie par un cache intermédiaire.
+const fresh = () => ({ headers: { 'Cache-Control': 'no-cache' } });
+
+/**
+ * La liste des réunions, SANS leur contenu lourd (transcription, HTML des
+ * comptes rendus) : `fetchHistoryItem` le donne à l'ouverture d'une réunion.
+ * Réponse brute du client HTTP ({ ok, status, data }).
+ */
+export const fetchHistoryList = () => get(`/history?view=list&_t=${Date.now()}`, fresh());
+
+/** Une réunion complète, ou null (absente, réseau). */
+export async function fetchHistoryItem(meetingId) {
+  const id = encodeURIComponent(meetingId);
+  const res = await get(`/history/item?meetingId=${id}&_t=${Date.now()}`, fresh());
+  return res.ok && res.data && typeof res.data === 'object' ? res.data : null;
+}
+
+/** { title, titlePending } d'une réunion, ou null (absente, réseau, API d'avant la route). */
+export async function fetchMeetingStatus(meetingId) {
+  const id = encodeURIComponent(meetingId);
+  const res = await get(`/history/status?meetingId=${id}&_t=${Date.now()}`, fresh());
+  return res.ok && typeof res.data?.titlePending === 'boolean' ? res.data : null;
 }

@@ -5,8 +5,8 @@ sidebar:
   order: 2
 ---
 
-**Administration → Configuration**, carte **Corrections automatiques de la transcription**, juste sous
-le vocabulaire de l'organisation.
+**Administration → Organisation → Entreprise**, tuile **Corrections**, à côté du
+vocabulaire : un clic déplie **Corrections automatiques de la transcription**.
 
 ## Avant de commencer
 
@@ -24,8 +24,10 @@ serait remplacé partout — même là où il était juste.
    avant même d'enregistrer.
 5. Cliquez **Enregistrer**, en bas de la page.
 
-Le badge de la carte passe à **1 correction**, **2 corrections**…, avec le nom de la personne qui les a
-enregistrées. Pour en retirer une, cliquez la corbeille au bout de sa ligne, puis **Enregistrer**.
+La tuile passe à **1 correction**, **2 corrections**…, et montre les premières — « Klobex → Globex » ; le
+détail donne le nom de la personne qui les a enregistrées. Une ligne incomplète ou en double fait
+porter **À corriger** à la tuile. Pour retirer une correction, cliquez la corbeille au bout de sa ligne,
+puis **Enregistrer**.
 
 ## Comment le remplacement se fait
 
@@ -48,6 +50,10 @@ enregistrées. Pour en retirer une, cliquez la corbeille au bout de sa ligne, pu
   myBrief.
 - Le compte rendu est rédigé à partir de la transcription corrigée.
 - **50 corrections au plus**, dix écritures fautives par correction.
+- **Chaque compte a aussi sa propre liste**, « Mots remplacés » (Réglages → Pendant la réunion), qui ne vaut
+  que pour ses réunions et se remplit depuis ses notes. Elle s'ajoute à celle-ci sans la modifier ; sur
+  un même mot, c'est le mot juste du compte qui s'applique à ses réunions. Un remplacement que vous avez
+  déjà déclaré ici n'y est pas recopié.
 - Ce n'est pas le vocabulaire de l'organisation : le vocabulaire aide l'IA à rédiger juste le compte
   rendu, les corrections réécrivent la transcription elle-même. Les deux se complètent — voir
   [Renseigner le vocabulaire de l'organisation](renseigner-le-vocabulaire-de-l-organisation.md).

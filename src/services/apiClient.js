@@ -103,7 +103,9 @@ export const post = (path, body, opts = {}) => request(path, { ...opts, method: 
 /**
  * Réponse BRUTE, réservée aux trois endpoints qui inspectent le corps verbatim
  * pour distinguer « crédit IA épuisé » d'une panne quelconque : /tempkey,
- * /actions et /resume. `inspectAiServiceError` a besoin d'un vrai `Response`
+ * /actions et /resume — et à la voix de l'Aide IA (/ai-help/speech), qui rend
+ * de l'audio, ramené au contrat par services/aiHelpApi.js.
+ * `inspectAiServiceError` a besoin d'un vrai `Response`
  * (il le clone pour lire le corps sans le consommer) — le contrat
  * {ok,status,data} ne peut pas le rendre.
  *

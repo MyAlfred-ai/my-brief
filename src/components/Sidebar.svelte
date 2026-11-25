@@ -13,21 +13,22 @@
   import { activePanel, panelNav, selectPanelSection } from '../stores/panels.js';
   import TagChip from './TagChip.svelte';
   import CreditAvatar from './ui/CreditAvatar.svelte';
-  import AccountMenu from './AccountMenu.svelte';
+  import AccountActions from './AccountActions.svelte';
   import WhatsNewBadge from './WhatsNewBadge.svelte';
   import TagPicker from './TagPicker.svelte';
+  import { searchTags } from '../utils/tagSearch.js';
   import ConfigAlertDot from './ui/ConfigAlertDot.svelte';
   import { configChecks, refreshConfigChecks } from '../stores/configChecks.js';
   import { quota, quotaNow } from '../stores/quota.js';
   import { formatMinutes, periodMonths } from '../utils/quotaFormat.js';
-  import { summaryAlert } from '../utils/configAlerts.js';
+  import { summaryAlert, mergeAlerts } from '../utils/configAlerts.js';
   import { accountView } from '../utils/userIdentity.js';
   import {
     isRecordingStore as isRecording,
     isPausedStore as isPaused,
     liveMeetingIdStore,
   } from '../stores/recording.js';
-  import logoUrl from '../logo.png';
+  import logoUrl from '../logo.webp';
   import { groupHistory } from '../utils/historyGroups.js';
   // Apparence réglée dans l'administration : logo et phrase d'accueil
   // personnalisés — les valeurs intégrées restent le repli.
@@ -36,18 +37,18 @@
   import IconSearch from '~icons/solar/magnifer-linear';
   import IconChevron from '~icons/solar/alt-arrow-right-linear';
   import IconChevronLeft from '~icons/solar/alt-arrow-left-linear';
-  import IconChevronUp from '~icons/solar/alt-arrow-up-linear';
   import IconChevronDown from '~icons/solar/alt-arrow-down-linear';
   import IconPen from '~icons/solar/pen-linear';
   import IconTrash from '~icons/solar/trash-bin-trash-linear';
-  import IconSettings from '~icons/solar/settings-linear';
   import IconTag from '~icons/solar/tag-linear';
   import IconHome from '~icons/solar/home-2-linear';
   import IconExternal from '~icons/solar/square-arrow-right-up-linear';
   import SparkleIcon from './icons/SparkleIcon.svelte';
   import { isDrawerWidth } from '../stores/sidebar.js';
+  import SettingsSearchField from './settings/SettingsSearchField.svelte';
+  import SettingsSearchResults from './settings/SettingsSearchResults.svelte';
+  import { settingsQuery } from '../stores/settingsSearch.js';
   import { generatingMeetingIds } from '../stores/summaryGeneration.js';
-  import { portal } from '../utils/portal.js';
   import { fill } from '../utils/i18nFormat.js';
   export let onNewMeeting = () => {};
   export let onSelectHistory = () => {};
@@ -56,12 +57,12 @@
   export let screen = 'welcome';
   export let isOpen = true;
   export let onToggle = () => {};
-  // Menu profil (remplace le hamburger) : callback unique par action
-  export let onMenuAction = (_id) => {}; // 'config' | 'templates' | 'import' | 'admin' | 'stats' | 'home' | 'welcome' | 'password' | 'logout'
-  export let onSetLanguage = (_lang) => {};
+  // Aiguillage unique des gestes de la colonne : 'config' | 'admin' (les deux
+  // boutons de la carte du compte), 'tags', 'home', 'welcome', 'logout'.
+  export let onMenuAction = (_id) => {};
   // Dérivés du store auth (plus de props) : rôle admin lu du serveur, nom,
   // initiales, photo et fournisseur de connexion (utils/userIdentity.js — la
-  // même lecture que la barre d'app mobile et le menu de compte).
+  // même lecture que la barre d'app mobile et la carte du compte).
   $: me = accountView($auth.user, $uiText.account.signedInWith);
   $: isAdminUser = me.isAdmin;
   $: userName = me.name;
@@ -76,7 +77,7 @@
   $: checksTrigger = checksKey && `${checksKey}|${$activePanel || ''}`;
   $: if (checksTrigger) refreshConfigChecks({ admin: isAdminUser });
   $: checkTexts = $uiText.configChecks;
-  // Roue crantée et bouclier : un récapitulatif du périmètre qu'ils ouvrent.
+  // « Réglages » et « Admin » : un récapitulatif du périmètre que chacun ouvre.
   $: configAlert = summaryAlert($configChecks.account, checkTexts, {
     title: checkTexts.configTitle,
   });
@@ -84,13 +85,13 @@
     ? summaryAlert($configChecks.organization, checkTexts, { title: checkTexts.adminTitle })
     : null;
 
-  // ── Capsule de compte ───────────────────────────────────────────────────
+  // ── Carte du compte ─────────────────────────────────────────────────────
   // Sous le nom, ce qu'il reste du crédit de temps du mois — la carte « Temps
   // de réunion » qui occupait le bas de la colonne s'y est résumée, l'anneau
   // de l'avatar la dessine. Le reste seul : avec le mois, la ligne se coupait
-  // dès la largeur par défaut ; le mois est dans « Ce mois-ci » et dans
-  // l'infobulle. Sans quota, l'adresse : la capsule dit au moins QUEL compte
-  // est ouvert.
+  // dès la largeur par défaut ; le mois est dans l'infobulle, le détail dans
+  // « Usage & crédits ». Sans quota, l'adresse : la carte dit au moins QUEL
+  // compte est ouvert.
   $: quotaTexts = $uiText.quota;
   $: quotaMonths = periodMonths($quota.period, $currentLanguageStore);
   $: creditOut = $quotaNow.limited && $quotaNow.tone === 'out';
@@ -259,41 +260,17 @@
   }
 
   /**
-   * Un seul popover : le NOM ouvre le menu de compte (qui je suis, mot de
-   * passe, déconnexion). Les écrans de réglages, eux, sont dans la colonne
-   * quand le panneau est ouvert — la roue crantée l'ouvre directement, elle
-   * n'a plus de menu à elle.
+   * Geste de la colonne (boutons de la carte du compte, « Se déconnecter ») :
+   * c'est App qui aiguille. Plus de popover derrière le nom : l'identité, la
+   * langue et le mot de passe sont la page « Mon profil » des réglages, la
+   * sortie ferme leur colonne.
    */
-  let profileMenuOpen = false;
-  let capsuleEl;
-  let profileMenuStyle = '';
-  /**
-   * Le menu s'ouvre au-dessus de la capsule, mais HORS de la colonne
-   * (téléporté dans <body>, position fixe) : la colonne coupe ce qui déborde
-   * (`overflow: hidden`), et « Ce mois-ci » veut plus que ses 220 px minimum.
-   */
-  function toggleProfileMenu() {
-    if (!profileMenuOpen && capsuleEl) {
-      const r = capsuleEl.getBoundingClientRect();
-      profileMenuStyle = [
-        `left: ${Math.round(r.left)}px`,
-        `bottom: ${Math.round(window.innerHeight - r.top + 8)}px`,
-        `max-height: ${Math.round(r.top - 16)}px`,
-      ].join('; ');
-    }
-    profileMenuOpen = !profileMenuOpen;
-  }
-  function closeUserMenus() {
-    profileMenuOpen = false;
-  }
-
   function menuAction(id) {
-    closeUserMenus();
     onMenuAction(id);
   }
 
   // ── Mode réglages ─────────────────────────────────────────────────────────
-  // Un panneau à sections est ouvert (« Ma configuration », Administration) :
+  // Un panneau à sections est ouvert (« Réglages », Administration) :
   // ses sections s'affichent ICI, à la place de l'historique — une seule
   // colonne de navigation, au même endroit quel que soit l'écran. « Nouvelle
   // réunion » et la ligne profil restent visibles : en sortir ne demande pas
@@ -301,20 +278,119 @@
   // stores/panels.js ; la garde sur `owner` couvre la transition config ⇄
   // admin, où l'ancien panneau n'est pas encore démonté.
   $: settingsNav = $activePanel && $panelNav.owner === $activePanel ? $panelNav : null;
-  // Les entrées LIEN (« Aide ») sortent de la liste d'onglets : un lien n'est
-  // pas un onglet, et un lecteur d'écran en compterait un de trop. Leur
-  // intertitre suit la même règle, en reprenant là où les onglets s'arrêtent.
-  $: navSections = settingsNav ? settingsNav.items.filter((item) => !item.href) : [];
-  $: navLinks = settingsNav ? settingsNav.items.filter((item) => item.href) : [];
-  $: navLinkGroups = navLinks.map((link, i) => {
-    const prev = i ? navLinks[i - 1] : navSections[navSections.length - 1];
-    return link.group && link.group !== prev?.group ? link.group : '';
+  // Les entrées LIEN (« Aide ») et GESTE (« Se déconnecter ») sortent de la
+  // liste d'onglets : ni l'un ni l'autre n'est un onglet, et un lecteur
+  // d'écran en compterait de trop. Leur intertitre suit la même règle, en
+  // reprenant là où les onglets s'arrêtent ; sans groupe, un filet les sépare.
+  $: navSections = settingsNav
+    ? settingsNav.items.filter((item) => !item.href && !item.action)
+    : [];
+  $: navExtras = settingsNav ? settingsNav.items.filter((item) => item.href || item.action) : [];
+  $: navExtraGroups = navExtras.map((entry, i) => {
+    const prev = i ? navExtras[i - 1] : navSections[navSections.length - 1];
+    return entry.group && entry.group !== prev?.group ? entry.group : '';
   });
+
+  // Sections rangées par groupe, dans l'ordre de la liste — un groupe s'ouvre
+  // quand la valeur CHANGE (cf. stores/panels.js). Deux rendus pour la même
+  // structure : des intertitres (Réglages), ou des RUBRIQUES qu'on replie
+  // (Administration, `collapsible`) — son icône sur la rubrique, ses pages en
+  // retrait dessous, comme dans MIA.
+  $: navCollapsible = !!settingsNav?.collapsible;
+  $: navGroups = navSections.reduce((groups, item) => {
+    const key = item.groupId || item.group || '';
+    const last = groups[groups.length - 1];
+    if (last && last.key === key) last.items.push(item);
+    else groups.push({ key, label: item.group || '', icon: item.groupIcon, items: [item] });
+    return groups;
+  }, []);
+  // Une section SANS groupe en fin de liste (« Outils » des réglages) descend
+  // en pied de colonne : le filet passe au-dessus d'elle, et les liens la
+  // suivent sans rupture. Sous « Ma bibliothèque » sans rien pour l'en
+  // détacher, elle aurait eu l'air d'en faire partie.
+  $: navFoot = !navCollapsible && navGroups.length > 1 && !navGroups[navGroups.length - 1].key;
+  // Rubrique repliée : sa pastille réunit celles de ses pages, qu'on ne voit
+  // plus. Dépliée, chaque page porte la sienne — la doubler ferait du bruit.
+  $: navGroupAlerts = Object.fromEntries(
+    navGroups.map((group) => [group.key, mergeAlerts(group.items.map((item) => item.alert))]),
+  );
+
+  // Le pli est mémorisé par appareil : on replie ce dont on ne se sert pas.
+  const NAV_FOLDS_KEY = 'mybrief_nav_folds';
+  let foldedRubrics = (() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem(NAV_FOLDS_KEY) || '[]');
+      return new Set(Array.isArray(stored) ? stored : []);
+    } catch {
+      return new Set();
+    }
+  })();
+  function setFolds(next) {
+    foldedRubrics = next;
+    try {
+      localStorage.setItem(NAV_FOLDS_KEY, JSON.stringify([...next]));
+    } catch {}
+  }
+  function toggleRubric(key) {
+    const next = new Set(foldedRubrics);
+    if (!next.delete(key)) next.add(key);
+    setFolds(next);
+  }
+  // Arriver sur une page déplie SA rubrique (ouverture du panneau, lien d'un
+  // autre écran, pastille) : la page affichée ne peut pas être introuvable
+  // dans la colonne. Une fois sur la page, la replier reste permis — d'où la
+  // mémoire de la dernière page dépliée, sans laquelle le pli se rouvrirait
+  // sous le doigt.
+  let unfoldedFor = '';
+  $: if (!navCollapsible) unfoldedFor = '';
+  $: if (navCollapsible && settingsNav.active !== unfoldedFor) {
+    unfoldedFor = settingsNav.active;
+    const rubric = navGroups.find((group) => group.items.some((item) => item.id === unfoldedFor));
+    if (rubric && foldedRubrics.has(rubric.key)) {
+      const next = new Set(foldedRubrics);
+      next.delete(rubric.key);
+      setFolds(next);
+    }
+  }
 
   function pickSection(id) {
     selectPanelSection(id);
     // Tiroir (téléphone, tablette) : la section choisie s'affiche DERRIÈRE —
     // même règle que l'historique et le menu profil, il se referme.
+    if (isDrawerWidth(window.innerWidth) && isOpen) onToggle();
+  }
+
+  // ── Recherche dans les réglages ──────────────────────────────────────────
+  // En mode réglages, la pilule sous « Nouvelle réunion » cherche un réglage
+  // au lieu d'une réunion, et ses résultats prennent la place des sections
+  // (stores/settingsSearch.js). Ctrl K (⌘ K) y mène de partout : il ouvre
+  // « Réglages » au besoin, et déplie le rail replié.
+  const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
+  const searchShortcut = isMac ? '⌘ K' : 'Ctrl K';
+  let settingsField;
+  let wantSearchFocus = false;
+  $: if (wantSearchFocus && settingsField && settingsNav && isOpen) {
+    wantSearchFocus = false;
+    tick().then(() => settingsField?.focus());
+  }
+  function openSettingsSearch() {
+    if (!isOpen) onToggle();
+    wantSearchFocus = true;
+  }
+  async function onSearchShortcut(event) {
+    if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return;
+    if (event.key?.toLowerCase() !== 'k' || event.defaultPrevented) return;
+    event.preventDefault();
+    if (!settingsNav) {
+      // App referme le tiroir en ouvrant un panneau : on attend qu'il l'ait
+      // fait (isOpen à jour) avant de le rouvrir sur la recherche.
+      onMenuAction('config');
+      await tick();
+    }
+    openSettingsSearch();
+  }
+  /** Un résultat choisi : dans le tiroir, la page s'affiche derrière. */
+  function afterSettingPick() {
     if (isDrawerWidth(window.innerWidth) && isOpen) onToggle();
   }
 
@@ -379,6 +455,17 @@
    * actif reste donc visible même sur l'écran le plus étroit.
    */
   let tagMenuOpen = false;
+  /**
+   * Recherche du menu de filtre, dès sept tags — le seuil de « Mes tags » :
+   * en dessous, le menu se lit d'un coup d'œil. Même règle que le sélecteur
+   * (utils/tagSearch.js) : un nom, ou ce que cite le contexte d'un tag.
+   */
+  const TAG_FILTER_SEARCH_FROM = 7;
+  let tagFilterQuery = '';
+  $: if (!tagMenuOpen) tagFilterQuery = '';
+  $: filterTags = tagFilterQuery.trim()
+    ? searchTags($tags, tagFilterQuery).map((r) => r.tag)
+    : $tags;
 
   /** Recliquer la valeur déjà active revient à « Tous » — même geste qu'avant. */
   function pickTagFilter(value) {
@@ -467,11 +554,11 @@
   </div>
 
   <!-- Nouvelle Réunion + Search : deux pills connectées (Side Inner Container).
-       Mode réglages : la recherche (qui fouille l'historique) n'a rien à
-       chercher — « Nouvelle réunion » reste, en pill complète. -->
+       Mode réglages : la recherche fouille les réglages au lieu de
+       l'historique — même place, même geste. -->
   <div class="sb-pillstack">
     {#if screen !== 'recording'}
-      <button class="sb-new-btn" class:sb-new-btn-solo={settingsNav} on:click={onNewMeeting}>
+      <button class="sb-new-btn" on:click={onNewMeeting}>
         <span class="sb-new-icon">
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
             <path
@@ -485,7 +572,14 @@
         <span class="sb-new-label">{$uiText.sidebar.newMeeting}</span>
       </button>
     {/if}
-    {#if !settingsNav}
+    {#if settingsNav}
+      <SettingsSearchField
+        bind:this={settingsField}
+        idPrefix="sb-settings-search"
+        shortcut={searchShortcut}
+        onPicked={afterSettingPick}
+      />
+    {:else}
       <div class="sb-search">
         <IconSearch width="14" height="14" class="sb-search-icon" />
         <input
@@ -536,76 +630,162 @@
         <span class="sb-nav-label">{$uiText.sidebar.home}</span>
       </button>
       <div class="sb-nav-head">{settingsNav.title}</div>
-      <div
-        class="sb-nav-items"
-        role="tablist"
-        aria-orientation="vertical"
-        aria-label={settingsNav.title}
+      <!-- Rail replié : la pilule de recherche est masquée, une loupe la
+           remplace — elle déplie la colonne et donne le focus au champ. -->
+      <button
+        class="sb-nav-item sb-nav-search"
+        title="{$uiText.settingsSearch.open} ({searchShortcut})"
+        aria-label={$uiText.settingsSearch.open}
+        on:click={openSettingsSearch}
       >
-        {#each navSections as item, i (item.id)}
-          <!-- Intertitre à chaque CHANGEMENT de groupe : l'ordre des entrées
-               reste la seule source de vérité, aucun groupe ne peut être vide
-               ni orphelin. -->
-          {#if item.group && item.group !== navSections[i - 1]?.group}
-            <div class="sb-nav-group">{item.group}</div>
-          {/if}
-          <button
-            class="sb-nav-item"
-            class:sb-nav-item-active={settingsNav.active === item.id}
-            class:sb-nav-item-alert={!!item.alert}
-            role="tab"
-            aria-selected={settingsNav.active === item.id}
-            title={item.alert ? undefined : item.label}
-            on:click={() => pickSection(item.id)}
-          >
-            <span class="sb-nav-icon" aria-hidden="true">
-              <svelte:component this={item.icon} width="16" height="16" />
-            </span>
-            <span class="sb-nav-text">
-              <span class="sb-nav-label">{item.label}</span>
-              <!-- Écran tactile, pas de survol pour ouvrir la bulle : la
-                   phrase la plus grave s'écrit sous le libellé. Masquée aux
-                   lecteurs d'écran, qui l'ont déjà en description. -->
-              {#if item.alert}
-                <span class="sb-nav-alert-text" aria-hidden="true">{item.alert.items[0].text}</span>
-              {/if}
-            </span>
-            {#if item.alert}
-              <!-- Rail replié : plus de libellé à l'écran, la bulle le porte. -->
-              <ConfigAlertDot
-                level={item.alert.level}
-                items={item.alert.items}
-                title={isOpen ? '' : item.label}
-                placement={isOpen ? 'inline' : 'corner'}
-              />
+        <span class="sb-nav-icon" aria-hidden="true">
+          <IconSearch width="16" height="16" />
+        </span>
+      </button>
+      {#if isOpen && $settingsQuery.trim()}
+        <!-- Une recherche en cours : ses résultats à la place des sections
+             (pas sur le rail replié, trop étroit : les icônes y restent). -->
+        <SettingsSearchResults idPrefix="sb-settings-search" onPicked={afterSettingPick} />
+      {:else}
+        <!-- Réglages : une liste d'onglets sous des intertitres. Administration
+           (`collapsible`) : des rubriques qu'on replie — plus une liste
+           d'onglets au sens de l'ARIA (un bouton de rubrique n'est pas un
+           onglet), la page ouverte se dit par `aria-current`. -->
+        <div
+          class="sb-nav-items"
+          role={navCollapsible ? undefined : 'tablist'}
+          aria-orientation={navCollapsible ? undefined : 'vertical'}
+          aria-label={navCollapsible ? undefined : settingsNav.title}
+        >
+          {#each navGroups as group, groupIndex (group.key)}
+            <!-- Une entrée SANS rubrique (le tableau de bord de l'administration)
+               reste une entrée simple, avec son icône, au-dessus des rubriques. -->
+            {@const rubric = navCollapsible && !!group.key}
+            {@const folded = rubric && foldedRubrics.has(group.key)}
+            {#if rubric}
+              <button
+                class="sb-nav-rubric"
+                aria-expanded={!folded}
+                aria-controls="sb-rubric-{group.key}"
+                on:click={() => toggleRubric(group.key)}
+              >
+                <span class="sb-nav-icon" aria-hidden="true">
+                  <svelte:component this={group.icon} width="16" height="16" />
+                </span>
+                <span class="sb-nav-label">{group.label}</span>
+                {#if folded && navGroupAlerts[group.key]}
+                  <ConfigAlertDot
+                    level={navGroupAlerts[group.key].level}
+                    items={navGroupAlerts[group.key].items}
+                  />
+                {/if}
+                <IconChevronDown width="13" height="13" class="sb-nav-chevron" aria-hidden="true" />
+              </button>
+            {:else if group.label}
+              <!-- Intertitre à chaque CHANGEMENT de groupe : l'ordre des entrées
+                 reste la seule source de vérité, aucun groupe ne peut être
+                 vide ni orphelin. -->
+              <div class="sb-nav-group">{group.label}</div>
+            {:else if navFoot && groupIndex === navGroups.length - 1}
+              <!-- Pied de colonne : le filet, puis la section sans groupe. -->
+              <div class="sb-nav-rule" role="presentation"></div>
             {/if}
-          </button>
-        {/each}
-      </div>
-      {#if navLinks.length}
-        <div class="sb-nav-items sb-nav-links">
-          {#each navLinks as link, i (link.id)}
-            {#if navLinkGroups[i]}
-              <div class="sb-nav-group">{navLinkGroups[i]}</div>
-            {/if}
-            <a
-              class="sb-nav-item sb-nav-link"
-              href={link.href}
-              target="_blank"
-              rel="noopener noreferrer"
-              title={link.label}
-              aria-label="{link.label} ({$uiText.ariaLabels.newTab})"
+            <!-- `role="none"` hors rubriques : l'enveloppe ne s'interpose pas
+               entre la liste d'onglets et ses onglets. -->
+            <div
+              id={rubric ? `sb-rubric-${group.key}` : undefined}
+              class="sb-nav-sub"
+              class:sb-nav-sub-rubric={rubric}
+              class:sb-nav-sub-folded={folded}
+              role={rubric ? 'group' : 'none'}
+              aria-label={rubric ? group.label : undefined}
             >
-              <span class="sb-nav-icon" aria-hidden="true">
-                <svelte:component this={link.icon} width="16" height="16" />
-              </span>
-              <span class="sb-nav-label">{link.label}</span>
-              <span class="sb-nav-ext" aria-hidden="true">
-                <IconExternal width="13" height="13" />
-              </span>
-            </a>
+              {#each group.items as item (item.id)}
+                <button
+                  class="sb-nav-item"
+                  class:sb-nav-item-active={settingsNav.active === item.id}
+                  class:sb-nav-item-alert={!!item.alert}
+                  role={navCollapsible ? undefined : 'tab'}
+                  aria-selected={navCollapsible ? undefined : settingsNav.active === item.id}
+                  aria-current={navCollapsible && settingsNav.active === item.id
+                    ? 'page'
+                    : undefined}
+                  title={item.alert ? undefined : item.label}
+                  on:click={() => pickSection(item.id)}
+                >
+                  <span class="sb-nav-icon" aria-hidden="true">
+                    <svelte:component this={item.icon} width="16" height="16" />
+                  </span>
+                  <span class="sb-nav-text">
+                    <span class="sb-nav-label">{item.label}</span>
+                    <!-- Écran tactile, pas de survol pour ouvrir la bulle : la
+                       phrase la plus grave s'écrit sous le libellé. Masquée
+                       aux lecteurs d'écran, qui l'ont déjà en description. -->
+                    {#if item.alert}
+                      <span class="sb-nav-alert-text" aria-hidden="true"
+                        >{item.alert.items[0].text}</span
+                      >
+                    {/if}
+                  </span>
+                  {#if item.alert}
+                    <!-- Rail replié : plus de libellé à l'écran, la bulle le porte. -->
+                    <ConfigAlertDot
+                      level={item.alert.level}
+                      items={item.alert.items}
+                      title={isOpen ? '' : item.label}
+                      placement={isOpen ? 'inline' : 'corner'}
+                    />
+                  {/if}
+                </button>
+              {/each}
+            </div>
           {/each}
         </div>
+        {#if navExtras.length}
+          <!-- Liens (nouvel onglet) et gestes (« Se déconnecter »), hors de la
+             liste d'onglets. Sans groupe, un filet les sépare des sections. -->
+          <div
+            class="sb-nav-items sb-nav-links"
+            class:sb-nav-links-ruled={!navExtras[0].group && !navFoot}
+          >
+            {#each navExtras as entry, i (entry.id)}
+              {#if navExtraGroups[i]}
+                <div class="sb-nav-group">{navExtraGroups[i]}</div>
+              {/if}
+              {#if entry.href}
+                <a
+                  class="sb-nav-item sb-nav-link"
+                  href={entry.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={entry.label}
+                  aria-label="{entry.label} ({$uiText.ariaLabels.newTab})"
+                >
+                  <span class="sb-nav-icon" aria-hidden="true">
+                    <svelte:component this={entry.icon} width="16" height="16" />
+                  </span>
+                  <span class="sb-nav-label">{entry.label}</span>
+                  <span class="sb-nav-ext" aria-hidden="true">
+                    <IconExternal width="13" height="13" />
+                  </span>
+                </a>
+              {:else}
+                <button
+                  class="sb-nav-item"
+                  class:sb-nav-danger={entry.danger}
+                  title={entry.label}
+                  aria-label={entry.label}
+                  on:click={() => menuAction(entry.action)}
+                >
+                  <span class="sb-nav-icon" aria-hidden="true">
+                    <svelte:component this={entry.icon} width="16" height="16" />
+                  </span>
+                  <span class="sb-nav-label">{entry.label}</span>
+                </button>
+              {/if}
+            {/each}
+          </div>
+        {/if}
       {/if}
     </nav>
   {:else}
@@ -637,6 +817,18 @@
 
         {#if tagMenuOpen}
           <div class="sb-tagmenu" on:click|stopPropagation role="menu">
+            {#if $tags.length >= TAG_FILTER_SEARCH_FROM}
+              <label class="sb-tagmenu-search">
+                <IconSearch width="14" height="14" aria-hidden="true" />
+                <input
+                  type="search"
+                  bind:value={tagFilterQuery}
+                  placeholder={$uiText.sidebar.tagSearch}
+                  aria-label={$uiText.sidebar.tagSearch}
+                  autocomplete="off"
+                />
+              </label>
+            {/if}
             <button
               class="sb-tagmenu-item"
               class:sb-tagmenu-on={!activeTagFilter}
@@ -647,7 +839,7 @@
               <span class="sb-tagmenu-label">{$uiText.sidebar.filterAll}</span>
               <span class="sb-tagmenu-count">{searchScoped.length}</span>
             </button>
-            {#each $tags as tag (tag.id)}
+            {#each filterTags as tag (tag.id)}
               <button
                 class="sb-tagmenu-item"
                 class:sb-tagmenu-on={activeTagFilter === tag.id}
@@ -658,6 +850,8 @@
                 <TagChip {tag} />
                 <span class="sb-tagmenu-count">{tagCounts.get(tag.id) || 0}</span>
               </button>
+            {:else}
+              <span class="sb-tagmenu-empty">{$uiText.sidebar.tagNoMatch}</span>
             {/each}
             <div class="sb-tagmenu-sep"></div>
             <button
@@ -813,38 +1007,15 @@
     </div>
   {/if}
 
-  <!-- Capsule de compte (bas de la colonne) : l'avatar cerclé du crédit de
-       temps, le nom, ce qu'il reste du mois — elle ouvre le menu de compte —,
-       et la roue crantée, à un clic. Elle remplace la carte « Temps de
-       réunion » et la rangée d'icônes muettes (drapeau, statistiques, roue,
-       bouclier) : la langue, les statistiques et l'administration sont
-       dans le menu. Sur téléphone (≤ 768 px), masquée : la barre d'app
-       (MobileAppBar) porte l'avatar, le tiroir ne garde que la navigation. -->
+  <!-- Carte du compte (bas de la colonne) : l'avatar cerclé du crédit de
+       temps, le nom, ce qu'il reste du mois — puis les deux boutons qui mènent
+       aux deux espaces, « Réglages » et « Admin » (AccountActions). La carte
+       elle-même ne s'ouvre pas : ce qu'elle déroulait (identité, langue, mot
+       de passe, « Ce mois-ci ») est devenu des pages des réglages. Sur
+       téléphone (≤ 768 px), masquée : la barre d'app (MobileAppBar) porte
+       l'avatar et les mêmes boutons, le tiroir ne garde que la navigation. -->
   <div class="sb-user">
-    {#if profileMenuOpen}
-      <!-- Menu de COMPTE (AccountMenu, partagé avec la barre d'app mobile).
-           Les écrans de réglages sont dans la colonne de gauche — ils ne se
-           cherchent pas derrière un nom. -->
-      <div
-        use:portal
-        class="sb-profile-menu"
-        style={profileMenuStyle}
-        on:click|stopPropagation
-        role="menu"
-      >
-        <AccountMenu onAction={menuAction} {onSetLanguage} {adminAlert} />
-      </div>
-    {/if}
-
-    <button
-      bind:this={capsuleEl}
-      class="sb-user-details"
-      class:sb-user-details-open={profileMenuOpen}
-      on:click|stopPropagation={toggleProfileMenu}
-      aria-haspopup="menu"
-      aria-expanded={profileMenuOpen}
-      title={adminAlert ? undefined : capsuleTitle}
-    >
+    <div class="sb-user-details" title={capsuleTitle}>
       <CreditAvatar
         initials={me.initials}
         picture={me.picture}
@@ -858,28 +1029,8 @@
           <span class="sb-user-line" class:sb-user-line-out={creditOut}>{capsuleLine}</span>
         {/if}
       </span>
-      <IconChevronUp width="14" height="14" class="sb-user-caret" aria-hidden="true" />
-      <!-- L'administration est dans le menu : sa pastille se voit d'ici, sans
-           l'ouvrir. -->
-      {#if adminAlert}
-        <ConfigAlertDot {...adminAlert} placement="corner" />
-      {/if}
-    </button>
-    <!-- Configuration : pour TOUS les comptes. Ouvre le panneau DIRECTEMENT,
-         sans menu déroulant — la colonne de gauche liste déjà ses écrans, un
-         popover qui les répète ferait doublon. -->
-    <button
-      class="sb-user-settings"
-      class:sb-user-settings-on={$activePanel === 'config'}
-      on:click={() => menuAction('config')}
-      aria-label={$uiText.buttons.configuration}
-      title={configAlert ? undefined : $uiText.buttons.configuration}
-    >
-      <IconSettings width="18" height="18" />
-      {#if configAlert}
-        <ConfigAlertDot {...configAlert} placement="corner" />
-      {/if}
-    </button>
+    </div>
+    <AccountActions onAction={menuAction} {configAlert} {adminAlert} compact={!isOpen} />
   </div>
 
   <!-- « Quoi de neuf ? » et le numéro de version, sur téléphone seulement, à
@@ -907,20 +1058,16 @@
 </aside>
 
 <svelte:window
-  on:resize={() => {
-    if (profileMenuOpen) closeUserMenus();
-  }}
   on:click={() => {
     if (menuOpen) closeMenu();
-    if (profileMenuOpen) closeUserMenus();
     if (tagMenuOpen) tagMenuOpen = false;
   }}
   on:keydown={(e) => {
     if (e.key === 'Escape') {
       if (menuOpen) closeMenu();
-      if (profileMenuOpen) closeUserMenus();
       if (tagMenuOpen) tagMenuOpen = false;
     }
+    onSearchShortcut(e);
   }}
 />
 
@@ -1022,6 +1169,34 @@
     padding: 0;
     justify-content: center;
   }
+  /* Rubriques : sur le rail, toutes leurs pages restent là, en icônes — le
+     bouton de rubrique n'est plus qu'un filet, comme un intertitre. */
+  .sb-closed .sb-nav-rubric {
+    min-height: 0;
+    width: 22px;
+    height: 1px;
+    padding: 0;
+    margin: 8px auto;
+    border: none;
+    border-radius: 0;
+    background: var(--mb-border-default);
+    overflow: hidden;
+    pointer-events: none;
+  }
+  .sb-closed .sb-nav-rubric > :global(*) {
+    display: none;
+  }
+  .sb-closed .sb-nav-sub-rubric {
+    margin: 0;
+    padding: 0;
+    border: none;
+    align-items: center;
+  }
+  .sb-closed .sb-nav-links-ruled {
+    border-top: none;
+    margin-top: 0;
+    padding-top: 0;
+  }
 
   .sb-closed .sb-header {
     position: relative;
@@ -1084,9 +1259,13 @@
     }
   }
 
-  /* Rail replié : la capsule se réduit à l'avatar cerclé, la roue au-dessus. */
+  /* Rail replié : la carte se réduit à l'avatar cerclé, les deux boutons en
+     icônes au-dessus. */
   .sb-closed .sb-user {
     margin: auto 0 18px;
+    padding: 0;
+    border: none;
+    background: transparent;
     flex-direction: column-reverse;
     align-items: center;
     gap: 8px;
@@ -1095,12 +1274,9 @@
   .sb-closed .sb-user-details {
     flex: none;
     padding: 2px;
-    border-color: transparent;
-    background: transparent;
   }
 
-  .sb-closed .sb-user-text,
-  .sb-closed .sb-user-details :global(.sb-user-caret) {
+  .sb-closed .sb-user-text {
     display: none;
   }
 
@@ -1318,9 +1494,14 @@
     background: var(--mb-orange-20);
   }
 
-  /* Mode réglages : plus de recherche dessous — la pill redevient complète. */
-  .sb-new-btn-solo {
-    border-radius: var(--mb-radius-pill);
+  /* Loupe de la recherche des réglages : sur le rail replié seulement — colonne
+     ouverte, la pilule sous « Nouvelle réunion » la porte. */
+  .sb:not(.sb-closed) .sb-nav-search {
+    display: none;
+  }
+  .sb-closed .sb-nav-search {
+    align-self: center;
+    margin-bottom: 4px;
   }
 
   /* ── Mode réglages : sections du panneau ouvert ── */
@@ -1370,9 +1551,37 @@
   .sb-nav-links {
     margin-top: 1px;
   }
+  /* Sans intertitre (« Aide », « Se déconnecter ») : un filet les détache des
+     sections, comme le séparateur du menu « Mon compte » de MIA. */
+  .sb-nav-links-ruled {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--mb-border-subtle);
+  }
+  /* Le même filet, quand une section sans groupe ouvre le pied de colonne :
+     il passe au-dessus d'elle, au même pas que celui des liens. */
+  .sb-nav-rule {
+    flex-shrink: 0;
+    height: 1px;
+    margin: 9px 0;
+    background: var(--mb-border-subtle);
+  }
+  .sb-closed .sb-nav-rule {
+    width: 22px;
+    margin: 8px auto;
+    background: var(--mb-border-default);
+  }
   .sb-nav-link {
     box-sizing: border-box;
     text-decoration: none;
+  }
+  /* « Se déconnecter » : le rouge des gestes qui mettent fin à quelque chose. */
+  .sb-nav-danger,
+  .sb-nav-danger .sb-nav-icon {
+    color: var(--danger-strong);
+  }
+  .sb-nav-danger:hover {
+    background: var(--danger-bg);
   }
   /* La flèche annonce le nouvel onglet ; rail replié, l'icône seule suffit. */
   .sb-nav-ext {
@@ -1401,6 +1610,63 @@
     background: var(--mb-border-default);
     overflow: hidden;
     text-indent: -999px;
+  }
+  /* Enveloppe d'un groupe : invisible sous un intertitre (les onglets restent
+     les enfants directs de la liste), en retrait sous une rubrique. */
+  .sb-nav-sub {
+    display: contents;
+  }
+  .sb-nav-sub-rubric {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    margin: 0 0 4px 18px;
+    padding-left: 8px;
+    border-left: 1px solid var(--mb-border-default);
+  }
+  .sb:not(.sb-closed) .sb-nav-sub-folded {
+    display: none;
+  }
+  /* L'icône est sur la rubrique : ses pages n'en portent pas, colonne ouverte. */
+  .sb:not(.sb-closed) .sb-nav-sub-rubric .sb-nav-icon {
+    display: none;
+  }
+  /* Rubrique repliable (Administration) : une rangée comme les autres, son
+     chevron à droite. */
+  .sb-nav-rubric {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    min-height: 34px;
+    margin-top: 2px;
+    padding: 0 10px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: none;
+    color: #000;
+    font-family: inherit;
+    font-size: 13.5px;
+    font-weight: 500;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .sb-nav-rubric:hover {
+    background: rgb(var(--brand-rgb) / 0.06);
+  }
+  .sb-nav-rubric :global(.sb-nav-chevron) {
+    flex-shrink: 0;
+    color: var(--mb-text-muted);
+    transition: transform 0.15s;
+  }
+  .sb-nav-rubric[aria-expanded='false'] :global(.sb-nav-chevron) {
+    transform: rotate(-90deg);
+  }
+  @media (pointer: coarse) {
+    .sb:not(.sb-closed) .sb-nav-rubric {
+      min-height: 44px;
+    }
   }
   .sb-nav-item {
     /* Repère de la pastille « coin » sur le rail replié. */
@@ -1742,12 +2008,15 @@
     color: var(--mb-orange);
   }
 
-  /* Pastille de tag devant le titre : largeur fixe pour que les titres restent
-     alignés d'une ligne à l'autre, taguée ou non. */
+  /* Pastille de tag devant le titre : largeur fixe, et 6 px avant le titre —
+     l'écart pastille-libellé de TagChip, et de l'aperçu « Dans l'historique »
+     du formulaire de tag (TagForm). Collée, elle se lisait comme une lettre
+     du titre. */
   .sb-item-tag {
     display: inline-flex;
     align-items: center;
     width: 12px;
+    margin-right: 6px;
     flex-shrink: 0;
   }
 
@@ -1849,6 +2118,51 @@
     to {
       opacity: 1;
       transform: scale(1) translateY(0);
+    }
+  }
+  .sb-tagmenu-search {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    gap: 7px;
+    height: 34px;
+    margin-bottom: 4px;
+    padding: 0 10px;
+    border: 1px solid var(--line-strong);
+    border-radius: 8px;
+    color: var(--ink-faint);
+    cursor: text;
+  }
+  .sb-tagmenu-search:focus-within {
+    border-color: var(--brand);
+    box-shadow: 0 0 0 3px var(--brand-soft-15);
+  }
+  .sb-tagmenu-search input {
+    flex: 1;
+    min-width: 0;
+    padding: 0;
+    border: none;
+    outline: none;
+    background: transparent;
+    font-family: inherit;
+    font-size: 13px;
+    color: var(--ink);
+  }
+  .sb-tagmenu-search input::-webkit-search-cancel-button {
+    -webkit-appearance: none;
+    appearance: none;
+  }
+  .sb-tagmenu-empty {
+    padding: 8px 10px;
+    font-size: 12px;
+    color: var(--ink-faint);
+  }
+  @media (pointer: coarse) {
+    .sb-tagmenu-search {
+      height: 40px;
+    }
+    .sb-tagmenu-search input {
+      font-size: 16px;
     }
   }
   .sb-tagmenu-item {
@@ -2042,40 +2356,26 @@
     }
   }
 
-  /* ── Capsule de compte (bas de la colonne) ── */
+  /* ── Carte du compte (bas de la colonne) ── */
   .sb-user {
-    position: relative;
     display: flex;
-    align-items: center;
-    gap: 6px;
+    flex-direction: column;
+    gap: 8px;
     margin: auto 12px 14px;
+    padding: 8px;
+    border: 1px solid var(--mb-border-card);
+    border-radius: 14px;
+    background: var(--mb-bg-surface);
     flex-shrink: 0;
   }
 
+  /* L'identité se lit, elle ne se clique pas : les deux boutons sont dessous. */
   .sb-user-details {
-    /* Repère de la pastille de l'administration, sur le coin de la capsule. */
-    position: relative;
-    --cad-corner-offset: -3px;
-    flex: 1;
     display: flex;
     align-items: center;
     gap: 9px;
     min-width: 0;
-    padding: 5px 9px 5px 5px;
-    border: 1px solid var(--mb-border-card);
-    border-radius: 14px;
-    background: var(--mb-bg-surface);
-    font-family: inherit;
-    text-align: left;
-    cursor: pointer;
-    transition:
-      background 0.15s,
-      border-color 0.15s;
-  }
-
-  .sb-user-details:hover,
-  .sb-user-details-open {
-    background: var(--mb-bg-warm);
+    padding: 0 2px;
   }
 
   .sb-user-text {
@@ -2109,70 +2409,9 @@
     font-weight: 500;
   }
 
-  .sb-user-details :global(.sb-user-caret) {
-    flex-shrink: 0;
-    color: var(--ink-faint);
-    transition: transform 0.2s;
-  }
-  .sb-user-details-open :global(.sb-user-caret) {
-    transform: rotate(180deg);
-  }
-
-  /* ── Menu de compte (au-dessus de la capsule, téléporté dans <body>) ──
-     Plus large que la colonne au besoin : « Ce mois-ci » aligne trois chiffres,
-     qui ne tiennent pas dans les 220 px d'une colonne réduite. Position et
-     hauteur maximale posées à l'ouverture (toggleProfileMenu). Au-dessus de la
-     barre en tiroir des tablettes (8700), sous les modales (9999). */
-  .sb-profile-menu {
-    position: fixed;
-    width: 320px;
-    max-width: calc(100vw - 24px);
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-    box-sizing: border-box;
-    background: #fff;
-    border: 1px solid var(--mb-border-card);
-    border-radius: 14px;
-    box-shadow:
-      var(--mb-shadow-card),
-      0 18px 44px -12px rgb(var(--brand-rgb) / 0.22);
-    padding: 6px;
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-    z-index: 9000;
-    font-family: 'Lexend', sans-serif;
-  }
-
-  .sb-user-settings {
-    /* Repère de la pastille posée sur son coin. */
-    position: relative;
-    width: 40px;
-    height: 40px;
-    border: none;
-    background: transparent;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--ink-faint);
-    border-radius: 12px;
-    flex-shrink: 0;
-    --cad-corner-offset: 7px;
-    transition:
-      background 0.15s,
-      color 0.15s;
-  }
-
-  .sb-user-settings:hover,
-  .sb-user-settings-on {
-    background: var(--mb-orange-10);
-    color: var(--mb-orange);
-  }
-
-  /* Téléphone : compte, langue, réglages et administration sont dans la barre
-     d'app (MobileAppBar), le tiroir ne garde que la navigation. APRÈS la
-     règle de base de .sb-user : à spécificité égale, l'ordre décide. */
+  /* Téléphone : la carte du compte s'ouvre depuis l'avatar de la barre d'app
+     (MobileAppBar), le tiroir ne garde que la navigation. APRÈS la règle de
+     base de .sb-user : à spécificité égale, l'ordre décide. */
   @media (max-width: 768px) {
     .sb-user {
       display: none;

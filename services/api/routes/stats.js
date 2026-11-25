@@ -1,5 +1,5 @@
 /**
- * « Mes statistiques » du compte courant : son usage sur la période choisie et
+ * « Usage & crédits » du compte courant : son usage sur la période choisie et
  * son crédit de temps du mois (src/components/StatsPanel.svelte).
  *
  * Le calcul vit dans lib/personalStats.js, partagé avec la vue qu'un

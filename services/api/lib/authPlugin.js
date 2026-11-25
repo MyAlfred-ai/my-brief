@@ -9,7 +9,7 @@
  */
 import { resolveIdentity } from './auth/resolve.js';
 import { clearSessionCookie } from './auth/cookies.js';
-import { fail } from './errors.js';
+import { fail, unauthenticated } from './errors.js';
 
 /**
  * Routes accessibles à un compte qui doit changer son mot de passe : la sonde
@@ -17,6 +17,33 @@ import { fail } from './errors.js';
  * change-password lui-même, sans quoi le verrou serait indéboulonnable).
  */
 const GATE_EXEMPT_PATHS = new Set(['/api/ping', '/api/init']);
+
+/**
+ * Seules routes à qui un inconnu peut envoyer un corps : se connecter,
+ * récupérer son mot de passe, se déconnecter, signaler une coupure. Chacune
+ * porte un `bodyLimit` de quelques Ko.
+ *
+ * Toutes les autres exigent une identité (ARCHITECTURE.md §3.2) : leur corps
+ * — jusqu'à 32 Mo, une transcription de 8 h — n'est lu qu'une fois l'identité
+ * établie. Avant, `requireEmail` refusait DANS le handler, donc après la
+ * lecture : une poignée de requêtes anonymes de 32 Mo suffisait à épuiser la
+ * mémoire du conteneur (256 Mo). test/anonymousBody.test.js tient la liste.
+ */
+export const ANONYMOUS_BODY_PATHS = new Set([
+  '/api/auth/login',
+  '/api/auth/forgot-password',
+  '/api/auth/reset-password',
+  '/api/auth/logout',
+  '/api/logout',
+  '/api/client-event',
+]);
+
+/** Corps de connexion et de récupération : quelques champs courts. */
+export const AUTH_BODY_LIMIT = 16 * 1024;
+/** Déconnexion : aucun champ attendu. */
+export const LOGOUT_BODY_LIMIT = 1024;
+
+const NO_BODY_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 function pathOf(req) {
   const url = req.routeOptions?.url;
@@ -57,5 +84,15 @@ export default function authPlugin(api) {
     if (path.startsWith('/api/auth')) return;
     if (GATE_EXEMPT_PATHS.has(path)) return;
     return fail(reply, 428, 'password_change_required');
+  });
+
+  // Corps anonyme : refusé AVANT d'être lu (onRequest précède l'analyse du
+  // corps). Même réponse que `requireEmail` dans le handler — le client
+  // légitime ne voit aucune différence, sauf un 401 au lieu d'un 400 de
+  // validation quand il n'a, de toute façon, pas de session.
+  api.addHook('onRequest', async (req, reply) => {
+    if (req.user?.email || NO_BODY_METHODS.has(req.method)) return;
+    if (ANONYMOUS_BODY_PATHS.has(pathOf(req))) return;
+    return unauthenticated(reply);
   });
 }

@@ -74,6 +74,6 @@ formule pas elle-même d'évaluation de la personne reçue.
 
 | Ce qui arrive | Quoi faire |
 |---|---|
-| Votre template personnel n'apparaît pas | La liste se recharge quand vous fermez **Ma configuration** : fermez-la, puis rouvrez la carte. |
+| Votre template personnel n'apparaît pas | La liste se recharge quand vous fermez **Réglages** : fermez-le, puis rouvrez la carte. |
 | Le compte rendu ne contient pas les actions | Le template choisi n'a pas la pastille **📋 Actions** dans sa mise en forme : prenez un template fourni — tous la contiennent —, ou ajoutez-la au vôtre. |
 | Le format ne convient à aucune de vos réunions | Créez le vôtre : [Créer son template](creer-son-template.md). |

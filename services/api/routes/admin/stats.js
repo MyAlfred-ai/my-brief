@@ -225,7 +225,7 @@ export default function adminStatsRoutes(app) {
   });
 
   /**
-   * La page « Mes statistiques » d'un collègue, telle qu'il la voit lui-même.
+   * La page « Usage & crédits » d'un collègue, telle qu'il la voit lui-même.
    */
   app.post('/stats/account', { schema: { body: adminAccountStatsBody } }, async (req, reply) => {
     if (!requireAdmin(req, reply)) return;

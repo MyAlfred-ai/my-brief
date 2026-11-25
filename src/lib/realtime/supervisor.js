@@ -84,6 +84,11 @@ export function createRealtimeSupervisor({
   async function reconnect(planned = false) {
     if (reconnectInFlight || !isActive()) return;
     reconnectInFlight = true;
+    // Une tentative demandée de l'extérieur (réseau revenu, retour au premier
+    // plan) remplace le retry en attente : sans ce retrait, il repartait 5 s
+    // après le succès et consommait une clé éphémère pour rien.
+    clearTimeout(retryTimer);
+    retryTimer = null;
     setState(planned ? 'rotating' : 'backing-off');
     onState('reconnecting');
     if (!planned && !dropNotified) {

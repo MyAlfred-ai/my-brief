@@ -15,6 +15,11 @@
    * getDisplayMedia. Le rappel sous les boutons dit les deux choix qui comptent
    * dans cette fenêtre — l'onglet (ou tout l'écran) et la case de l'audio.
    *
+   * Sous le titre, le consentement : c'est le dernier écran avant que
+   * l'enregistrement démarre, le moment de rappeler que l'accord de tous les
+   * participants est obligatoire. Une ligne, sans case à cocher ni bouton :
+   * on la lit en choisissant, elle ne coûte pas un clic de plus.
+   *
    * « Annuler », discret sous le rappel, renonce à démarrer : startRecording
    * relâche le micro déjà ouvert et n'inscrit aucune réunion. Le fond et Échap
    * valent « Annuler » — fermer une fenêtre ne doit pas lancer d'enregistrement.
@@ -59,6 +64,13 @@
 <div class="mtm-backdrop" on:click|self={onCancel}>
   <div class="mtm" role="dialog" aria-modal="true" aria-labelledby="mtm-title">
     <h2 class="mtm-title" id="mtm-title">{$uiText.meetingType.title}</h2>
+
+    <p class="mtm-consent">
+      <span class="mtm-consent-dot" aria-hidden="true"></span><strong
+        >{$uiText.meetingType.consentTitle}</strong
+      >
+      {$uiText.meetingType.consent}
+    </p>
 
     <div class="mtm-options">
       <button
@@ -120,6 +132,34 @@
     font-weight: 700;
     color: var(--ink);
     text-align: center;
+  }
+
+  /* Collée au titre (8 px au lieu du gap de 18) : elle se lit avec la question.
+     Le point rouge est celui d'un voyant « REC », hors marque (--alert-error). */
+  .mtm-consent {
+    margin: -10px 0 0;
+    padding: 0 8px;
+    font-size: 13.5px;
+    line-height: 1.5;
+    color: var(--ink-soft);
+    text-align: center;
+    text-wrap: balance;
+  }
+  .mtm-consent strong {
+    font-weight: 600;
+    color: var(--ink);
+  }
+  /* Dans le flot du texte centré, devant le premier mot — en case flex à
+     part, il restait collé au bord gauche quand la phrase passe à la ligne. */
+  .mtm-consent-dot {
+    display: inline-block;
+    margin-right: 9px;
+    vertical-align: 1px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--alert-error);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--alert-error) 16%, transparent);
   }
 
   .mtm-options {

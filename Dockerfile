@@ -20,7 +20,7 @@ RUN printf 'VITE_API_BASE_URL=%s\nVITE_AUTH_BASE_URL=%s\nVITE_AUTH_SIGNIN_URL=%s
     > .env.production.local
 RUN npm run build
 
-FROM nginx:1.27-alpine AS runtime
+FROM nginx:1.29-alpine AS runtime
 WORKDIR /usr/share/nginx/html
 # Cache-Control explicite (revalidation HTML/SW, immutable sur /assets) :
 # évite que le navigateur serve une version périmée après déploiement.

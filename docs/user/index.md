@@ -38,7 +38,7 @@ suspend tout ; c'est aussi de là qu'on termine.
 **[tag](fonctionnalites/tags/index.md)**, la réunion se retrouve dans
 l'**[historique](fonctionnalites/historique/index.md)**, et son compte rendu part par les
 **[actions après réunion](fonctionnalites/actions/index.md)**. Vos réglages vivent dans
-**[Ma configuration](fonctionnalites/configuration/index.md)**.
+**[Réglages](fonctionnalites/configuration/index.md)**.
 
 ```mermaid
 flowchart TB
@@ -69,7 +69,8 @@ flowchart TB
 | **Visio** | L'étiquette des répliques captées par le partage d'écran, à renommer au nom des participants |
 | **Compte relié** | Le compte Google ou Microsoft qui envoie vos mails et dépose vos fichiers |
 | **myBrain** | Le cerveau partagé de votre organisation : s'il est relié, vos réunions l'alimentent, après validation — voir [L'envoi des réunions à myBrain](fonctionnalites/mybrain/index.md) |
+| **Aide IA** | Une IA qui suit la réunion en cours et intervient par écrit, si votre groupe y a droit — voir [L'Aide IA en réunion](fonctionnalites/aide-ia/index.md) |
 
-L'interface existe en **français et en anglais**. Dans myBrief, **Ma configuration → Aide** ouvre
+L'interface existe en **français et en anglais**. Dans myBrief, **Réglages → Aide** ouvre
 cette documentation dans un nouvel onglet, et le numéro de version, en bas à droite — sur téléphone,
 en bas du menu —, ouvre **Quoi de neuf ?**.

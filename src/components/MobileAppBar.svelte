@@ -4,12 +4,13 @@
    * l'historique) puis le logo ; à droite le « + » (nouvelle réunion) et
    * l'avatar, cerclé du crédit de temps du mois (ui/CreditAvatar.svelte).
    *
-   * L'avatar ouvre le menu de compte, qui porte tout ce qui touche au compte :
-   * « Ce mois-ci », Configuration, Administration (administrateurs), la langue,
-   * la sortie. La roue crantée et le bouclier avaient leur icône dans la barre :
-   * trois icônes de 44 px à côté du « + » serraient le nom dès 360 px, et le
-   * menu de compte en vaut désormais le détour. Le tiroir, lui, ne garde que la
-   * navigation (sa capsule de compte est masquée ≤ 768 px, Sidebar.svelte).
+   * L'avatar ouvre la carte du compte (AccountMenu) : qui je suis, « Ce
+   * mois-ci », puis les deux boutons « Réglages » et « Admin » (administrateurs)
+   * — les mêmes que sur la carte du bas de la Sidebar, masquée ≤ 768 px. La
+   * langue, le mot de passe et la sortie n'y sont plus : ce sont des pages et
+   * la dernière ligne des réglages. La roue crantée et le bouclier avaient leur
+   * icône dans la barre : trois icônes de 44 px à côté du « + » serraient le
+   * nom dès 360 px. Le tiroir, lui, ne garde que la navigation.
    *
    * Le logo et son nom ramènent à l'écran d'accueil (action `welcome`) — le
    * réflexe de n'importe quel site, et le même geste que le logo de la Sidebar
@@ -20,8 +21,8 @@
    * plafond `max-lines` (cf. eslint.config.js) et ne peut plus grossir d'une
    * ligne. Le parent possède l'ouverture du drawer, la barre ne fait que la
    * basculer ; toutes les autres actions remontent par `onMenuAction`, le
-   * même aiguillage que celles de la Sidebar. Seul état propre : le menu de
-   * compte ouvert ou non.
+   * même aiguillage que celles de la Sidebar. Seul état propre : la carte du
+   * compte ouverte ou non.
    *
    * Le « + » : sur téléphone, « Démarrer » n'existe que dans le dock, et le
    * dock s'efface dès qu'une réunion rangée ou résumée est ouverte — il ne
@@ -34,12 +35,11 @@
    * Montée sur tout écran, affichée ≤ 768 px seulement : son CSS vit dans
    * style.css (.mobile-appbar) avec l'échelle de z-index mobile.
    *
-   * Pastilles de configuration (stores/configChecks.js) : sur les lignes
-   * Configuration et Administration du menu, et réunies sur l'avatar pour se
-   * voir menu fermé. Lues dans le store : App.svelte n'a pas à les
-   * transmettre.
+   * Pastilles de configuration (stores/configChecks.js) : sur les boutons
+   * « Réglages » et « Admin » de la carte, et réunies sur l'avatar pour se voir
+   * carte fermée. Lues dans le store : App.svelte n'a pas à les transmettre.
    */
-  import logoUrl from '../logo.png';
+  import logoUrl from '../logo.webp';
   import IconMenu from '~icons/solar/hamburger-menu-linear';
   import AccountMenu from './AccountMenu.svelte';
   import CreditAvatar from './ui/CreditAvatar.svelte';
@@ -52,9 +52,8 @@
 
   export let menuOpen = false;
   export let onToggleMenu = () => {};
-  /** 'welcome' | 'stats' | 'config' | 'admin' | 'password' | 'logout' — cf. App. */
+  /** 'welcome' | 'stats' | 'config' | 'admin' — cf. App. */
   export let onMenuAction = (_id) => {};
-  export let onSetLanguage = (_lang) => {};
   /** Une réunion peut démarrer : aucune en cours, micro pas en cours d'accès. */
   export let canStart = false;
   export let startLabel = 'Nouvelle réunion';
@@ -136,7 +135,7 @@
       class="mobile-appbar-icon mobile-appbar-avatar"
       on:click|stopPropagation={() => (accountOpen = !accountOpen)}
       aria-label={$uiText.account.menuLabel}
-      aria-haspopup="menu"
+      aria-haspopup="dialog"
       aria-expanded={accountOpen}
     >
       <CreditAvatar
@@ -154,17 +153,13 @@
   {#if accountOpen}
     <!-- Sous la barre, aligné à droite : la barre (position: fixed) est le
          bloc conteneur. -->
-    <div class="mobile-appbar-account-menu" role="menu" on:click|stopPropagation>
-      <AccountMenu
-        onAction={act}
-        onSetLanguage={(lang) => {
-          accountOpen = false;
-          onSetLanguage(lang);
-        }}
-        withConfig
-        {configAlert}
-        {adminAlert}
-      />
+    <div
+      class="mobile-appbar-account-menu"
+      role="dialog"
+      aria-label={$uiText.account.menuLabel}
+      on:click|stopPropagation
+    >
+      <AccountMenu onAction={act} {configAlert} {adminAlert} />
     </div>
   {/if}
 </header>

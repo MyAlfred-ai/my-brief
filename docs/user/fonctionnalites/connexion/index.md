@@ -9,7 +9,7 @@ Deux connexions différentes, qui ne se remplacent pas :
 
 1. **Se connecter à myBrief** : prouver qui vous êtes, par mot de passe, par Google ou par Microsoft.
 2. **Relier votre compte Google ou Microsoft** : autoriser myBrief à envoyer des mails et déposer des
-   fichiers en votre nom. C'est la section **Connexion** de **Ma configuration**.
+   fichiers en votre nom. C'est la page **Comptes connectés** de **Réglages**.
 
 ## À quoi ça sert
 
@@ -21,7 +21,7 @@ comptes rendus de votre propre boîte mail, et les range dans votre Drive ou vot
 | | Se connecter | Relier un compte |
 |---|---|---|
 | **Question** | Qui êtes-vous ? | Au nom de quel compte myBrief peut-il agir ? |
-| **Où** | La page de connexion | **Ma configuration → Connexion** |
+| **Où** | La page de connexion | **Réglages → Comptes connectés** |
 | **Quand** | À chaque session | Une fois ; le compte reste relié |
 | **Obligatoire** | Oui | Non — seulement pour **Envoyer par mail** depuis votre boîte et pour **Entreposer** |
 
@@ -61,7 +61,7 @@ Votre administrateur décide des modes de connexion proposés, des domaines auto
 ## Exemples
 
 **Une organisation sous Microsoft 365.** Vous cliquez **Continuer avec Microsoft** : votre compte est
-créé à la première connexion. Dans **Ma configuration → Connexion**, vous reliez le même compte : vos
+créé à la première connexion. Dans **Réglages → Comptes connectés**, vous reliez le même compte : vos
 comptes rendus partent de votre Outlook et se rangent dans votre OneDrive.
 
 **Un compte créé par l'administrateur.** Vous recevez un mot de passe provisoire ; à la première
@@ -73,4 +73,4 @@ votre ordinateur, sert aussitôt pour les envois.
 ## Voir aussi
 
 - [Les actions après réunion](../actions/index.md) — ce que permet un compte relié
-- [Ma configuration](../configuration/index.md) — tous vos réglages
+- [Réglages](../configuration/index.md) — tous vos réglages

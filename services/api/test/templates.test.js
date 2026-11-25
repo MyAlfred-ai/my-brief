@@ -32,11 +32,12 @@ describe('templates globaux', () => {
     // `orgContext` voyage avec les templates : le navigateur assemble le prompt
     // de résumé et a besoin des deux au même moment (cf. routes/templates.js).
     // Les corrections automatiques de la transcription aussi : le navigateur
-    // les applique au direct.
+    // les applique au direct — celles de l'organisation et celles du compte.
     expect(res.json()).toEqual({
       templates: [{ value: 'standard', icon: '📄', labels: { fr: 'Standard' }, prompt: 'p' }],
       orgContext: '',
       transcriptCorrections: [],
+      userTranscriptCorrections: { rules: [], learn: true },
     });
   });
 

@@ -1,6 +1,6 @@
 /**
  * Navigation dans le stockage du compte relié — ce qui alimente la fenêtre de
- * sélection de dossier de « Ma configuration ».
+ * sélection de dossier de « Réglages ».
  *
  * ── Pourquoi ces routes existent côté serveur ──────────────────────────────
  * Le jeton d'accès au Drive ne descend JAMAIS dans le navigateur. Google et

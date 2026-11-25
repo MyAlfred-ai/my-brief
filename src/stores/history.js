@@ -11,8 +11,14 @@
  * recherche active faisait ouvrir — et supprimer — une autre réunion que celle
  * cliquée. Toute API de ce module prend donc un meetingId.
  *
- * Le FETCH de /history reste dans App.svelte (il passe par handleHttpError et
- * la récupération d'authentification, unifiées en Phase 8) : il écrit ici.
+ * LISTE ALLÉGÉE — /history?view=list ne transporte plus le contenu lourd de
+ * chaque réunion (transcription, HTML des comptes rendus) : il était relu pour
+ * TOUTES les réunions à chaque rafraîchissement, et douze fois de suite après
+ * chaque résumé. Le contenu arrive pour la réunion qu'on ouvre
+ * (`historyItemWithContent`) et, en parallèle de la liste, pour celle qui est
+ * ouverte au moment d'un rafraîchissement (`loadHistoryList`). Un élément qui le porte est marqué
+ * `[WITH_CONTENT]` ; seuls ses champs lourds viennent du serveur, le reste
+ * (notes et actions en cours d'envoi, titre renommé) reste celui de la liste.
  *
  * Deux mémoires locales compensent le décalage backend :
  *   - titleOverrides : titres renommés, réappliqués après chaque refetch
@@ -23,6 +29,7 @@
  */
 import { writable, derived, get } from 'svelte/store';
 import { post } from '../services/apiClient.js';
+import { fetchHistoryList, fetchHistoryItem, fetchMeetingStatus } from '../services/meetingsApi.js';
 import { resolveHistoryTitle } from '../utils/historyTitle.js';
 
 const TITLE_OVERRIDES_KEY = 'mybrief_title_overrides';
@@ -49,6 +56,80 @@ export function meetingIdOf(item) {
 }
 
 export const historyItems = writable([]);
+
+/** Marque d'un élément qui porte son contenu complet (absent de la liste allégée). */
+export const WITH_CONTENT = Symbol('withContent');
+/** Ce que la liste allégée ne transporte pas. */
+const CONTENT_FIELDS = ['transcription', 'resume', 'versions'];
+
+/** L'élément de liste, complété des seuls champs lourds de la réunion complète. */
+function withContent(item, full) {
+  const out = { ...item, [WITH_CONTENT]: true };
+  for (const field of CONTENT_FIELDS) out[field] = full[field];
+  return out;
+}
+
+/** Le tableau d'une réponse /history, quelle que soit sa forme historique ; null sinon. */
+function itemsOf(data) {
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.items)) return data.items;
+  return data ? [data] : null;
+}
+
+/**
+ * La liste allégée, et EN PARALLÈLE le contenu des réunions à l'écran
+ * (`displayedIds`) — l'élément qu'on rafraîchit sous les yeux de
+ * l'utilisateur garde ainsi tout ce qu'il avait, d'un seul coup.
+ *
+ * @param {(string|null|undefined)[]} displayedIds
+ * @returns {Promise<{items?: object[], status?: number, authRedirect?: boolean, invalid?: boolean}>}
+ */
+export async function loadHistoryList(
+  displayedIds,
+  { fetchList = fetchHistoryList, fetchItem = fetchHistoryItem } = {},
+) {
+  const ids = [...new Set(displayedIds.filter(Boolean).map(String))];
+  const [res, fulls] = await Promise.all([
+    fetchList(),
+    Promise.all(ids.map((id) => fetchItem(id))),
+  ]);
+  if (res.data?.error === 'auth_redirect') return { authRedirect: true };
+  if (!res.ok) return { status: res.status };
+  const items = itemsOf(res.data);
+  if (!items) return { invalid: true };
+  const byId = new Map(ids.map((id, i) => [id, fulls[i]]));
+  return {
+    items: items.map((it) => {
+      const full = byId.get(meetingIdOf(it));
+      return full ? withContent(it, full) : it;
+    }),
+  };
+}
+
+let openTicket = 0;
+
+/**
+ * La réunion à OUVRIR, contenu compris — lu sur le serveur s'il manque, puis
+ * gardé dans la liste (une réouverture ne relit rien).
+ *
+ * @returns {Promise<object|null|false>} l'élément ; null s'il est introuvable
+ *   ou illisible ; false si une autre ouverture a été demandée entre-temps (la
+ *   dernière gagne : deux clics rapides n'affichent jamais la première).
+ */
+export async function historyItemWithContent(meetingId, { fetchItem = fetchHistoryItem } = {}) {
+  const ticket = ++openTicket;
+  const id = String(meetingId);
+  const find = () => get(historyItems).find((it) => meetingIdOf(it) === id) || null;
+  const item = find();
+  if (!item || item[WITH_CONTENT]) return item;
+  const full = await fetchItem(id);
+  if (ticket !== openTicket) return false;
+  const current = find();
+  if (!full || !current) return null;
+  const merged = withContent(current, full);
+  historyItems.update((list) => list.map((it) => (it === current ? merged : it)));
+  return merged;
+}
 export const isLoadingHistory = writable(true);
 export const historyError = writable('');
 
@@ -179,27 +260,32 @@ export async function deleteMeeting(meetingId) {
  * — titre généré comme génération en échec —, ce qui borne l'attente sans faire
  * dépendre la boucle du libellé de repli.
  *
+ * L'attente interroge /history/status (`probe`, quelques octets) et ne relit
+ * la liste qu'une fois le titre prêt : deux relectures au lieu de douze. Statut
+ * illisible (réseau, API d'avant la route) : la liste à chaque tour, comme
+ * avant.
+ *
  * @param {string} meetingId
  * @param {() => Promise<void>} refetch - recharge /history dans le store
- * @param {{maxAttempts?: number, intervalMs?: number}} [opts]
+ * @param {{maxAttempts?: number, intervalMs?: number, probe?: (id: string) => Promise<{titlePending: boolean}|null>}} [opts]
  */
 export async function pollHistoryUntilMeetingReady(
   meetingId,
   refetch,
-  { maxAttempts = 12, intervalMs = 1500 } = {},
+  { maxAttempts = 12, intervalMs = 1500, probe = fetchMeetingStatus } = {},
 ) {
-  if (!meetingId) {
-    await refetch();
-    return;
-  }
+  await refetch();
+  if (!meetingId) return;
   const target = String(meetingId);
-  const isReady = (item) => meetingIdOf(item) === target && !item?.titlePending;
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    await refetch();
-    const items = get(historyItems);
-    if (Array.isArray(items) && items.some(isReady)) return;
-    if (attempt < maxAttempts - 1) {
-      await new Promise((resolve) => setTimeout(resolve, intervalMs));
-    }
+  const isReady = () =>
+    (get(historyItems) || []).some((it) => meetingIdOf(it) === target && !it?.titlePending);
+  let listIsFresh = true;
+  for (let attempt = 1; attempt < maxAttempts && !isReady(); attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    const status = await probe(target);
+    listIsFresh = !status || !status.titlePending;
+    if (listIsFresh) await refetch();
   }
+  // Abandon sur un titre toujours en cours : la liste du dernier état.
+  if (!listIsFresh) await refetch();
 }

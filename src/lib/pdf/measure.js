@@ -22,6 +22,7 @@ import {
   isEmojiCluster,
   markerText,
   onWhite,
+  parseLinearGradient,
   parseRgb,
   stripIgnorable,
   wordsOf,
@@ -507,12 +508,31 @@ function rasterize(text, info, rect, ctx) {
  * `<img>` du résumé (rare : collage dans l'éditeur). Redessinée au plus au
  * double de sa taille affichée ; une image d'une autre origine, que le canvas
  * refuse d'exporter, est ignorée plutôt que de faire échouer le document.
+ *
+ * Un logo (`data-pdf-logo`) arrive déjà en PNG à la bonne résolution
+ * (cf. logo.js) : il passe tel quel, transparence comprise — un JPEG sur fond
+ * blanc baverait autour des lettres.
  */
 function collectImages(ctx, items) {
   for (const img of ctx.container.querySelectorAll('img')) {
     if (!img.complete || !img.naturalWidth) continue;
     const rect = img.getBoundingClientRect();
     if (!rect.width || !rect.height) continue;
+    const top = rect.top - ctx.origin.top;
+    const placed = {
+      kind: 'image',
+      alias: null,
+      x: rect.left - ctx.origin.left,
+      y: top,
+      width: rect.width,
+      height: rect.height,
+      top,
+      bottom: rect.bottom - ctx.origin.top,
+    };
+    if (img.hasAttribute('data-pdf-logo') && /^data:image\/png;base64,/.test(img.src)) {
+      items.push({ ...placed, data: img.src, format: 'PNG' });
+      continue;
+    }
     try {
       const scale = Math.min(2, img.naturalWidth / rect.width);
       const canvas = document.createElement('canvas');
@@ -522,19 +542,7 @@ function collectImages(ctx, items) {
       c2d.fillStyle = '#ffffff';
       c2d.fillRect(0, 0, canvas.width, canvas.height);
       c2d.drawImage(img, 0, 0, canvas.width, canvas.height);
-      const top = rect.top - ctx.origin.top;
-      items.push({
-        kind: 'image',
-        data: canvas.toDataURL('image/jpeg', 0.85),
-        format: 'JPEG',
-        alias: null,
-        x: rect.left - ctx.origin.left,
-        y: top,
-        width: rect.width,
-        height: rect.height,
-        top,
-        bottom: rect.bottom - ctx.origin.top,
-      });
+      items.push({ ...placed, data: canvas.toDataURL('image/jpeg', 0.85), format: 'JPEG' });
     } catch {
       // canvas « tainted » : image d'une autre origine sans CORS.
     }
@@ -550,15 +558,19 @@ const SIDES = ['Top', 'Right', 'Bottom', 'Left'];
  * ou basse, `<hr>`) est une « règle » : la pagination le traite comme une
  * ligne, qui ne se coupe pas. Un fond ou une bordure verticale se découpe
  * d'une page à l'autre.
+ *
+ * Un fond en dégradé linéaire (cf. parseLinearGradient) remplace la couleur
+ * de fond : le PDF le peint en bandes, à la place de l'aplat.
  */
 function collectBoxes(ctx, items) {
   const { container, origin } = ctx;
   for (const el of [container, ...container.querySelectorAll('*')]) {
     const cs = getComputedStyle(el);
     if (cs.display === 'none' || cs.visibility !== 'visible') continue;
-    const background = colorOf(cs.backgroundColor, ctx);
+    const gradient = parseLinearGradient(cs.backgroundImage);
+    const background = gradient ? null : colorOf(cs.backgroundColor, ctx);
     const paintsBackground =
-      background && !(el === container && background.every((c) => c === 255));
+      !!gradient || (background && !(el === container && background.every((c) => c === 255)));
     const borders = SIDES.map((side) => ({
       side,
       width: parseFloat(cs[`border${side}Width`]) || 0,
@@ -575,7 +587,11 @@ function collectBoxes(ctx, items) {
         width: r.width,
         height: r.height,
       };
-      if (paintsBackground) items.push(fill(box, background, 'fill'));
+      if (gradient) {
+        // Couleurs rapportées à la boîte ENTIÈRE : coupée par un saut de
+        // page, chaque morceau garde sa part du dégradé.
+        items.push({ ...fill(box, gradient.stops[0].color, 'fill'), gradient, span: { ...box } });
+      } else if (paintsBackground) items.push(fill(box, background, 'fill'));
       for (const { side, width, color } of borders) {
         if (side === 'Top') items.push(fill({ ...box, height: width }, color, 'rule'));
         if (side === 'Bottom')

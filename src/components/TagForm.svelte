@@ -697,10 +697,12 @@
     font-size: 12px;
     color: var(--ink-muted);
   }
+  /* Même écart que l'historique de la barre latérale (.sb-item-tag) : l'aperçu
+     montre la ligne telle qu'elle s'affichera. */
   .tgf-preview-row {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 6px;
     padding: 9px 12px;
     border: 1px solid var(--line);
     border-radius: 11px;

@@ -63,7 +63,7 @@ en reprend le son.
 
 ## 2. Le choisir dans myBrief
 
-1. Ouvrez myBrief dans Firefox ou Safari, puis **Ma configuration → Réglages audio**. Si la fenêtre
+1. Ouvrez myBrief dans Firefox ou Safari, puis **Réglages → Pendant la réunion → Micro et son**. Si la fenêtre
    **Navigateur partiellement compatible** s'affiche, son bouton **Régler le son de l'ordinateur** y
    mène directement.
 2. Si les noms des périphériques n'apparaissent pas, cliquez **Autoriser le microphone** et acceptez.
@@ -108,9 +108,9 @@ partiellement compatible** ne s'affiche plus dans ce navigateur.
 |---|---|
 | **Tester le son** répond « Aucun son reçu. » | Le son de l'ordinateur ne passe pas par le périphérique. Sur Mac, la sortie doit être le **Périphérique à sorties multiples** ; sur Windows, **CABLE Input**. Vérifiez aussi qu'un son jouait pendant le test. |
 | Vous n'entendez plus rien | Sur Mac, la sortie est **BlackHole 2ch** seul : choisissez le **Périphérique à sorties multiples**. Sur Windows, cochez **Écouter ce périphérique** sur **CABLE Output**. |
-| « … est introuvable sur cet ordinateur » dans **Réglages audio** | Le périphérique a été désinstallé ou débranché : réinstallez-le, ou choisissez-en un autre. |
+| « … est introuvable sur cet ordinateur » dans **Réglages → Pendant la réunion → Micro et son** | Le périphérique a été désinstallé ou débranché : réinstallez-le, ou choisissez-en un autre. |
 | « Son de l'ordinateur introuvable, capture micro uniquement » au démarrage | Même cause : la réunion continue avec votre micro seul. |
 | « Son de l'ordinateur indisponible, capture micro uniquement » au démarrage | Le navigateur n'a pas pu ouvrir le périphérique : autorisez l'accès au micro pour myBrief, puis démarrez une nouvelle réunion. |
-| « Le son de l'ordinateur est réglé sur le micro, capture micro uniquement » | Le même appareil est choisi comme micro et comme son de l'ordinateur : changez l'un des deux dans **Réglages audio**. |
+| « Le son de l'ordinateur est réglé sur le micro, capture micro uniquement » | Le même appareil est choisi comme micro et comme son de l'ordinateur : changez l'un des deux dans **Réglages → Pendant la réunion → Micro et son**. |
 | La carte **Son de l'ordinateur** n'apparaît pas | Vous êtes dans Chrome ou Edge, qui partagent le son eux-mêmes : suivez [Enregistrer une réunion en visio](enregistrer-une-reunion-en-visio.md). |
 | Des petits mots, « oui », « d'accord », apparaissent deux fois | Vos haut-parleurs renvoient le son dans le micro : prenez un casque. |

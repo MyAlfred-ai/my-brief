@@ -1,14 +1,15 @@
 /**
  * Onglet « Groupes » — cartes, glisser-déposer, création, membres, suppression.
  *
- * Ce qui casserait sans ces tests : une corbeille proposée sur le groupe par
- * défaut (le serveur refuse, mais le geste ne doit pas exister) ; un « Retirer »
- * actif sur un compte dont le groupe par défaut est le seul groupe (le serveur
- * le remettrait aussitôt, l'écran mentirait) ; une création qui ne mène pas
- * aux membres du groupe créé ; une confirmation de suppression qui ne nomme
- * pas le groupe où les membres retombent ; une carte qui accepte le dépôt
- * d'un compte déjà membre ; et un ajout impossible sans souris (la sélection
- * au clavier ou au doigt est le seul chemin sur téléphone).
+ * Ce qui casserait sans ces tests : une corbeille proposée sur un groupe fixe
+ * (le serveur refuse, mais le geste ne doit pas exister) ; un « Retirer »
+ * actif dans le groupe par défaut (le serveur y remettrait le compte aussitôt,
+ * l'écran mentirait) ; une création qui ne mène pas aux membres du groupe
+ * créé ; une confirmation de suppression qui ne nomme pas le groupe où les
+ * membres retombent ; une carte qui accepte le dépôt d'un compte déjà
+ * membre ; un dépôt qui laisse le compte compté dans son ancien groupe (un
+ * compte n'a qu'un groupe) ; et un ajout impossible sans souris (la
+ * sélection au clavier ou au doigt est le seul chemin sur téléphone).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
@@ -53,7 +54,7 @@ const DEFAULT = {
   color: 'slate',
   isDefault: true,
   infographicAllowed: true,
-  memberCount: 3,
+  memberCount: 2,
 };
 const SALES = {
   id: 'g-sales',
@@ -63,6 +64,17 @@ const SALES = {
   isDefault: false,
   meetingMinutesPerMonth: 120,
   memberCount: 1,
+};
+const ADMINS = {
+  id: 'admin',
+  name: 'Admin',
+  description: '',
+  color: 'violet',
+  isDefault: false,
+  isAdmin: true,
+  infographicAllowed: true,
+  meetingMinutesPerMonth: null,
+  memberCount: 0,
 };
 
 const user = (email, over = {}) => ({
@@ -85,22 +97,22 @@ let accounts;
 
 beforeEach(() => {
   vi.clearAllMocks();
-  catalogue = [DEFAULT, SALES];
+  catalogue = [DEFAULT, ADMINS, SALES];
   members = {
-    default: [
-      user('paul@exemple.fr'),
-      user('zoe@exemple.fr', { groupIds: ['default', 'g-sales'] }),
-    ],
-    'g-sales': [user('zoe@exemple.fr', { groupIds: ['default', 'g-sales'] })],
+    default: [user('paul@exemple.fr')],
+    'g-sales': [user('zoe@exemple.fr', { groupIds: ['g-sales'] })],
   };
-  found = [user('paul@exemple.fr'), user('zoe@exemple.fr', { groupIds: ['default', 'g-sales'] })];
-  accounts = [
-    user('paul@exemple.fr'),
-    user('zoe@exemple.fr', { groupIds: ['default', 'g-sales'] }),
-  ];
+  found = [user('paul@exemple.fr'), user('zoe@exemple.fr', { groupIds: ['g-sales'] })];
+  accounts = [user('paul@exemple.fr'), user('zoe@exemple.fr', { groupIds: ['g-sales'] })];
   listGroups.mockImplementation(async () => ({
     ok: true,
-    data: { groups: catalogue, colors: ['slate', 'blue', 'violet'], max: 50, defaultId: 'default' },
+    data: {
+      groups: catalogue,
+      colors: ['slate', 'blue', 'violet'],
+      max: 50,
+      defaultId: 'default',
+      adminId: 'admin',
+    },
   }));
   listUsers.mockImplementation(async ({ group, q } = {}) => {
     const users = group ? members[group] || [] : q ? found : accounts;
@@ -125,14 +137,19 @@ const fill = (template, values) =>
 const transfer = () => ({ setData: vi.fn(), effectAllowed: '', dropEffect: '' });
 
 describe('GroupsTab — cartes', () => {
-  it('une carte par groupe, le groupe par défaut marqué et sans corbeille', async () => {
+  it('une carte par groupe, les deux groupes fixes marqués et sans corbeille', async () => {
     render(GroupsTab);
     await screen.findByText('Commerciaux');
 
     const def = cardOf('Défaut');
     expect(within(def).getByText(t.defaultBadge)).toBeTruthy();
-    expect(within(def).getByText(t.membersMany.replace('{n}', '3'))).toBeTruthy();
+    expect(within(def).getByText(t.membersMany.replace('{n}', '2'))).toBeTruthy();
     expect(within(def).queryByRole('button', { name: `${t.deleteButton} : Défaut` })).toBeNull();
+
+    const admins = cardOf('Admin');
+    expect(within(admins).getByText(t.adminBadge)).toBeTruthy();
+    expect(within(admins).getByText(t.adminHint)).toBeTruthy();
+    expect(within(admins).queryByRole('button', { name: `${t.deleteButton} : Admin` })).toBeNull();
 
     const sales = cardOf('Commerciaux');
     expect(within(sales).getByText('Équipe de vente.')).toBeTruthy();
@@ -153,7 +170,7 @@ describe('GroupsTab — glisser-déposer', () => {
       data: { group: { ...SALES, memberCount: 1 + add.length }, added: add.length, removed: 0 },
     }));
 
-  it('glisser un compte sur une carte l ajoute au groupe, et la carte suit', async () => {
+  it('glisser un compte sur une carte l y déplace : la carte d arrivée et celle de départ suivent', async () => {
     salesGrows();
     render(GroupsTab);
     const paul = await personRow('paul@exemple.fr');
@@ -183,6 +200,10 @@ describe('GroupsTab — glisser-déposer', () => {
         .getAllByTitle(/^(paul|zoe)$/)[0]
         .getAttribute('title'),
     ).toBe('paul');
+    // Paul a quitté le groupe par défaut : sa carte perd un membre, et son visage.
+    const def = cardOf('Défaut');
+    expect(within(def).getByText(t.membersOne)).toBeTruthy();
+    expect(within(def).queryByTitle('paul')).toBeNull();
     // Plus rien en main : les cibles ont disparu.
     expect(screen.queryByText(t.dropAlready)).toBeNull();
   });
@@ -232,8 +253,9 @@ describe('GroupsTab — glisser-déposer', () => {
     paul.focus();
 
     await userEvent.keyboard('{Enter}');
+    // Défaut est déjà son groupe : la première cible est la carte suivante.
     const add = screen.getByRole('button', {
-      name: fill(t.dropAddTo, { name: 'paul', group: 'Commerciaux' }),
+      name: fill(t.dropAddTo, { name: 'paul', group: 'Admin' }),
     });
     await waitFor(() => expect(document.activeElement).toBe(add));
 
@@ -265,11 +287,12 @@ describe('GroupsTab — glisser-déposer', () => {
   it('les cartes montrent leurs membres, et le reste de l effectif du serveur', async () => {
     render(GroupsTab);
     await personRow('paul@exemple.fr');
-    // Défaut compte 3 membres au serveur, 2 sont chargés : 2 visages et « +1 ».
+    // Défaut compte 2 membres au serveur, 1 est chargé : 1 visage et « +1 ».
     const def = cardOf('Défaut');
     expect(within(def).getByTitle('paul').textContent).toBe('P');
-    expect(within(def).getByTitle('zoe').textContent).toBe('Z');
+    expect(within(def).queryByTitle('zoe')).toBeNull();
     expect(within(def).getByText('+1')).toBeTruthy();
+    expect(within(cardOf('Commerciaux')).getByTitle('zoe').textContent).toBe('Z');
   });
 
   it('la recherche filtre la colonne', async () => {
@@ -401,6 +424,8 @@ describe('GroupsTab — création', () => {
       meetingMinutesPerMonth: null,
       // Un groupe neuf naît sans droit : il se donne explicitement.
       infographicAllowed: false,
+      aiHelpAllowed: false,
+      aiHelpMyBrainAllowed: false,
     });
     // On crée un groupe pour y mettre des gens : la fiche des membres s'ouvre.
     await screen.findByText(t.noMembers);
@@ -437,20 +462,24 @@ describe('GroupsTab — membres', () => {
     await screen.findByText(t.noMembers);
   });
 
-  it('dans le groupe par défaut, un compte qui n a pas d autre groupe ne se retire pas', async () => {
+  it('on ne retire personne du groupe par défaut : le serveur l y remettrait', async () => {
     render(GroupsTab);
     await screen.findByText('Commerciaux');
     await userEvent.click(openMembersOf('Défaut'));
 
-    await screen.findByText('paul@exemple.fr');
-    // Paul n'est que dans Défaut : le serveur l'y remettrait, l'écran ne propose pas le geste.
-    expect(screen.getByRole('button', { name: `${t.remove} : paul@exemple.fr` }).disabled).toBe(
-      true,
-    );
-    // Zoé est aussi dans Commerciaux : elle peut quitter le groupe par défaut.
-    expect(screen.getByRole('button', { name: `${t.remove} : zoe@exemple.fr` }).disabled).toBe(
-      false,
-    );
+    const remove = await screen.findByRole('button', { name: `${t.remove} : paul@exemple.fr` });
+    expect(remove.disabled).toBe(true);
+    expect(remove.getAttribute('title')).toBe(t.removeOnlyDefaultHint);
+  });
+
+  it('ailleurs, « Retirer » annonce le retour dans le groupe par défaut', async () => {
+    render(GroupsTab);
+    await screen.findByText('Commerciaux');
+    await userEvent.click(openMembersOf('Commerciaux'));
+
+    const remove = await screen.findByRole('button', { name: `${t.remove} : zoe@exemple.fr` });
+    expect(remove.disabled).toBe(false);
+    expect(remove.getAttribute('title')).toBe(fill(t.removeLastHint, { default: 'Défaut' }));
   });
 
   it('la recherche écarte les membres déjà présents et ajoute le compte choisi', async () => {
@@ -464,9 +493,11 @@ describe('GroupsTab — membres', () => {
     await screen.findByText('zoe@exemple.fr');
 
     await userEvent.type(screen.getByLabelText(t.addMemberLabel), 'pau');
-    // Zoé est déjà membre : seul Paul est proposé.
+    // Zoé est déjà membre : seul Paul est proposé, avec le groupe qu'il quittera.
     const candidate = (await screen.findByText('paul@exemple.fr')).closest('.gm-candidate');
     expect(document.querySelectorAll('.gm-candidate')).toHaveLength(1);
+    expect(within(candidate).getByText(t.currentGroup)).toBeTruthy();
+    expect(within(candidate).getByText('Défaut')).toBeTruthy();
     await userEvent.click(within(candidate).getByRole('button'));
 
     expect(changeGroupMembers).toHaveBeenCalledWith('g-sales', { add: ['paul@exemple.fr'] });

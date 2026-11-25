@@ -47,20 +47,86 @@
  * Le filtrage des paramètres vit dans lib/openai.js, pas ici : un modèle qui
  * les refuse (gpt-4o, gpt-4o-mini, gpt-5-chat) ne doit rien casser s'il arrive
  * un jour dans cette liste ou par `OPENAI_MODEL_SUMMARY`.
+ *
+ * ── Ajoutés le 2026-10-29, SANS MESURE ──────────────────────────────────────
+ * Ni la génération 6 d'OpenAI ni Mistral n'ont passé le banc ci-dessus : pas de
+ * génération réelle (aucune clé de test Mistral, et pas d'appel au modèle pour
+ * vérifier). Identifiants et tarifs relevés le 2026-10-29 sur la grille
+ * d'OpenAI et le changelog de Mistral. La recopie du scaffold — ce qui a fait
+ * écarter gpt-5-mini — est à éprouver en recette AVANT de recommander l'un
+ * d'eux : le défaut reste gpt-5.4, le seul mesuré.
+ *
+ * - GPT-6, trois paliers : `astra` (le plus capable, 10 $/50 $ le million de
+ *   jetons), `sol` en version 6.1 (« proche d'Astra », cinq fois moins cher —
+ *   même prix que `gpt-6-sol`, plus récent) et `luna` (le plus léger, déjà le
+ *   modèle du titre et de la détection d'actions). Tous acceptent
+ *   `/chat/completions` et `reasoning_effort` ; Astra et 6.1 Sol n'acceptent
+ *   pas `none`, que le compte rendu ne demande jamais (cf. routes/meetings.js).
+ *   ⚠️ Ils ne reçoivent PAS `verbosity: 'high'` : la documentation de GPT-6
+ *   n'en dit rien (relue le 2026-10-29, cf. lib/openai.js), et un champ refusé
+ *   ferait échouer chaque compte rendu. Le levier qui allonge les comptes
+ *   rendus de la génération 5 leur manque : leur longueur est à mesurer.
+ * - Mistral, sur la clé de la carte « Fournisseurs d'IA » (la même que Voxtral) :
+ *   Large 4 en aperçu public, Medium 3.5, Large 3 et Small 4. Identifiants
+ *   versionnés, sauf Large 4 et Medium 3.5 que Mistral ne publie que sous ce nom.
+ *   Leur client (lib/mistral.js) n'envoie ni verbosité ni effort de
+ *   raisonnement : Large 3 ne connaît pas le second, et Mistral refuse un champ
+ *   inconnu.
  */
 
-/** Modèle utilisé tant qu'aucun autre n'est choisi. */
+/** Modèle utilisé tant qu'aucun autre n'est choisi — le seul mesuré (cf. ci-dessus). */
 export const DEFAULT_SUMMARY_MODEL = 'gpt-5.4';
 
+/**
+ * Fournisseur de chaque modèle accepté, dans l'ordre d'affichage de l'écran
+ * d'administration (du plus capable au plus léger, par fournisseur). Il décide
+ * de la clé qui paie et du client qui rédige (`summaryClient`).
+ * @type {Record<string, 'openai'|'mistral'>}
+ */
+export const SUMMARY_PROVIDERS = {
+  'gpt-6-astra': 'openai',
+  'gpt-6.1-sol': 'openai',
+  'gpt-5.6-sol': 'openai',
+  'gpt-5.4': 'openai',
+  'gpt-5.4-mini': 'openai',
+  'gpt-6-luna': 'openai',
+  'mistral-large-4': 'mistral',
+  'mistral-medium-3-5': 'mistral',
+  'mistral-large-2512': 'mistral',
+  'mistral-small-2603': 'mistral',
+};
+
 /** Identifiants acceptés, dans l'ordre d'affichage de l'écran d'administration. */
-export const SUMMARY_MODELS = ['gpt-5.6-sol', 'gpt-5.4', 'gpt-5.4-mini'];
+export const SUMMARY_MODELS = Object.keys(SUMMARY_PROVIDERS);
 
 /**
  * @param {string} id
  * @returns {boolean}
  */
 export function isSummaryModel(id) {
-  return SUMMARY_MODELS.includes(id);
+  return Object.hasOwn(SUMMARY_PROVIDERS, id || '');
+}
+
+/**
+ * Qui rédige avec `id`. Un modèle hors liste — imposé par `OPENAI_MODEL_SUMMARY`,
+ * la porte de sortie de l'administrateur système — part chez OpenAI, comme
+ * avant cette liste : la variable porte le nom d'OpenAI.
+ * @param {string} id
+ * @returns {'openai'|'mistral'}
+ */
+export function summaryProvider(id) {
+  return SUMMARY_PROVIDERS[id] || 'openai';
+}
+
+/**
+ * Le client qui rédige avec `model` — même contrat `chat()` chez tous : les
+ * routes l'appellent sans savoir qui répond.
+ * @param {{openai: object, speech: Record<string, object>}} app
+ * @param {string} model
+ */
+export function summaryClient(app, model) {
+  const provider = summaryProvider(model);
+  return provider === 'openai' ? app.openai : app.speech[provider];
 }
 
 /**

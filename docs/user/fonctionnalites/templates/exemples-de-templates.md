@@ -5,7 +5,7 @@ sidebar:
   order: 3
 ---
 
-Quatre templates prêts à recopier dans **Ma configuration → Mes templates** — voir
+Quatre templates prêts à recopier dans **Réglages → Mes templates** — voir
 [Créer son template](creer-son-template.md). Dans les mises en forme ci-dessous, les éléments entre
 crochets sont des **pastilles** : insérez-les avec les boutons **Blocs IA** et **Infos réunion**, ne
 les tapez pas.

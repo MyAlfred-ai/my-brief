@@ -36,7 +36,7 @@
 import {
   actionsPrompt,
   INFOGRAPHIC_PROMPT_MAX,
-  INFOGRAPHIC_WRITER_RULES,
+  INFOGRAPHIC_LAYOUT_RULES,
   TITLE_RULES,
 } from '../prompts.js';
 import { DEFAULT_ACTION_DETECTION } from '../actionDetectionSettings.js';
@@ -80,17 +80,13 @@ export const ASSUMPTIONS = Object.freeze({
   /** Liste d'actions en JSON + raisonnement « medium » (lib/actionDetection.js). */
   detectionOutputTokens: 500,
 
-  /** Matériaux de la maquette : bornés par lib/prompts.js, transcription tronquée comprise. */
+  /** Matériaux de l'infographie : bornés par lib/prompts.js, transcription tronquée comprise. */
   infographicSourceMaxChars: INFOGRAPHIC_PROMPT_MAX,
-  infographicRulesChars: INFOGRAPHIC_WRITER_RULES.length,
-  /** Prompt d'image écrit (~1 250 jetons) + raisonnement « medium ». */
-  infographicWriterOutputTokens: 3000,
-  /** Prompt d'image relu par le modèle qui dessine. */
-  infographicPromptChars: 5000,
+  infographicRulesChars: INFOGRAPHIC_LAYOUT_RULES.length,
   /**
-   * Jetons d'une page portrait en qualité haute, pour un modèle d'image que le
-   * catalogue ne caractérise pas : la valeur publiée pour gpt-image-1, la plus
-   * chère de ses aînées.
+   * Contenu de l'infographie en JSON (~1 000 jetons) + raisonnement « low ».
+   * Plus d'image dessinée depuis les gabarits (2026-11-17) : c'est le seul
+   * appel de l'infographie.
    */
-  imageTokensFallback: 6240,
+  infographicWriterOutputTokens: 2500,
 });

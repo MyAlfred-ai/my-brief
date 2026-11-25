@@ -5,7 +5,8 @@ sidebar:
   order: 3
 ---
 
-**Administration → Actions**, carte **Envoyer par mail**.
+**Administration → Capacités → Actions**, tuile **Envoyer par mail** : un clic la déplie. Fermée, elle
+rappelle le plafond — « 10 destinataires au plus ».
 
 ## Les réglages
 

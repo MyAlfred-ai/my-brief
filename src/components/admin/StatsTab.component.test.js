@@ -139,7 +139,7 @@ const payload = (over = {}) => ({
       measuredSpeechRate: false,
       summaryOutputTokens: 4000,
       detectionCallsPerHour: 360,
-      imageTokens: 5500,
+      infographicOutputTokens: 2500,
     },
     pricing: {
       checkedAt: '2026-09-25',

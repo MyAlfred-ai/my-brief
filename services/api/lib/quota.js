@@ -5,10 +5,10 @@
  * ── La règle ─────────────────────────────────────────────────────────────────
  * Chaque groupe porte `meetingMinutesPerMonth` (cf. lib/repositories/groups.js) :
  * des minutes PAR PERSONNE et PAR MOIS, ou `null` pour « illimité ». Un compte
- * hérite du quota le plus généreux de ses groupes : être ajouté à un groupe ne
- * retire jamais de minutes, et « illimité » l'emporte. L'alternative (le plus
- * restrictif, ou le premier groupe) rendait l'appartenance à un second groupe
- * imprévisible, pour l'utilisateur comme pour l'administrateur.
+ * n'appartient qu'à UN groupe, dont il reçoit le quota tel quel : changer
+ * quelqu'un de groupe, c'est changer son quota. (Du temps des groupes
+ * multiples, le plus généreux l'emportait ; la reprise qui les a ramenés à un
+ * seul a gardé celui-là, cf. `pickGroupId`.)
  *
  * ── Ce qui compte ────────────────────────────────────────────────────────────
  * La somme des `meetingDuration` (secondes au chronomètre, cf.
@@ -64,14 +64,20 @@
  * quota s'applique donc au DÉMARRAGE, jamais en cours de réunion : on ne coupe
  * pas la parole pour une minute de trop, la réunion entamée va au bout, et le
  * dépassement se voit le mois suivant. « Atteint » = moins d'une minute pleine
- * restante, ce qui fait coïncider le refus avec le « 0 min » de l'écran.
+ * restante, ce qui fait coïncider le refus avec le « 0 min » de l'écran. Atteint
+ * EN COURS de réunion, l'écran le dit (components/QuotaLiveAlert.svelte), et
+ * l'enregistrement continue.
  *
  * ── Où il s'applique ─────────────────────────────────────────────────────────
  * Sur les deux portes de la transcription (routes/ai.js) : /tempkey, le
- * démarrage d'une réunion en direct, et /record, l'import d'un fichier. Les
+ * démarrage d'une réunion en direct — pas les rotations de jeton de la réunion
+ * en cours —, et /record, l'import d'un fichier. Les
  * segments hors ligne de l'app mobile passent aussi par /record, mais SANS
  * quota : ils appartiennent à une réunion déjà commencée, vérifiée à son
- * démarrage, et les refuser perdrait ce qui a été dit. L'écran lit le même
+ * démarrage, et les refuser perdrait ce qui a été dit. Reprendre une réunion
+ * TERMINÉE est un démarrage : refusé quota atteint, puis ses minutes s'ajoutent
+ * à sa durée — au mois de sa date, pas de la reprise (prix accepté, cf.
+ * documentations/TRANSCRIPTION.md). L'écran lit le même
  * état (`GET /quota`, et /init) pour l'afficher et éviter le refus, mais le
  * serveur reste seul juge.
  */
@@ -158,8 +164,9 @@ export function currentPeriod(now = new Date(), timeZone = QUOTA_TIME_ZONE) {
 }
 
 /**
- * Le quota qui s'applique à un compte : le plus généreux de ses groupes,
- * « illimité » l'emportant. Sans groupe (jamais en pratique, cf. l'invariant de
+ * Le quota qui s'applique à un compte : celui de son groupe (la liste n'en
+ * porte qu'un, cf. `groupsOfUser` ; sur plusieurs, le plus généreux
+ * l'emporterait). Sans groupe (jamais en pratique, cf. l'invariant de
  * lib/repositories/groups.js) : illimité, faute de règle à appliquer.
  * @param {Array<object>} groups - documents `userGroups` du compte
  * @returns {{minutes: number|null, group: object|null}} le groupe qui donne le quota
@@ -252,7 +259,7 @@ export function buildQuotaStatus({ minutes, group, usedSeconds, period }) {
   };
 }
 
-// ── Le crédit au fil du mois (page « Mes statistiques ») ─────────────────────
+// ── Le crédit au fil du mois (page « Usage & crédits ») ─────────────────────
 
 /**
  * Avance sur le rythme régulier, en part du crédit, au-delà de laquelle l'écran
@@ -370,7 +377,7 @@ const TRACE_FIELDS = { _id: 0, meetingId: 1, lastConnecion: 1, meetingDuration: 
  * @param {{db: object, users: object, groups: object}} deps
  */
 export function createQuotaService({ db, users, groups }) {
-  /** Le compte (document chargé ou relu) et la limite que lui donnent ses groupes. */
+  /** Le compte (document chargé ou relu) et la limite que lui donne son groupe. */
   async function limitOf(identity) {
     const doc = identity?.doc || (identity?.email ? await users.findByEmail(identity.email) : null);
     const email = doc?.email || identity?.email || '';
@@ -416,7 +423,7 @@ export function createQuotaService({ db, users, groups }) {
     },
 
     /**
-     * Le crédit du mois tel que le montre « Mes statistiques » : l'état de
+     * Le crédit du mois tel que le montre « Usage & crédits » : l'état de
      * `statusFor`, plus le détail qu'il ne lit pas — la consommation jour par
      * jour, le rythme, le jour d'épuisement, la part des réunions supprimées
      * (elle explique l'écart avec le temps enregistré de l'historique).

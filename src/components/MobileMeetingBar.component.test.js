@@ -11,6 +11,7 @@ import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 
 const MobileMeetingBar = (await import('./MobileMeetingBar.svelte')).default;
+const { aiHelp } = await import('../stores/aiHelp.js');
 
 describe('MobileMeetingBar', () => {
   it('en enregistrement : Notes, Actions, Pause et Terminer, chacun nommé et relié', async () => {
@@ -59,6 +60,32 @@ describe('MobileMeetingBar', () => {
     await rerender({ actionsCount: 3, hasNotes: true });
     expect(container.querySelector('.mmb-count').textContent).toBe('3');
     expect(container.querySelector('.mmb-dot')).toBeTruthy();
+  });
+
+  it('avec l’Aide IA : une cinquième commande, qui porte le MOT D’APPEL tant qu’il déclenche quelque chose', async () => {
+    const ALL = { project: true, qa: true, agenda: true, ideas: true };
+    const on = { available: true, enabled: true, allowed: ALL, domains: ALL, wakeWord: 'Alfred' };
+    aiHelp.update((s) => ({ ...s, ...on }));
+    const { container } = render(MobileMeetingBar);
+    const label = () => container.querySelector('.mmb-label-wake').textContent.trim();
+
+    // Le mot d'appel à l'écran, « Aide IA » et le mode d'emploi pour le lecteur d'écran.
+    expect(label()).toBe('« Alfred »');
+    expect(
+      screen.getByRole('button', {
+        name: 'Aide IA. Pour lui parler, commencez votre phrase par « Alfred »',
+      }),
+    ).toBeTruthy();
+
+    // Questions coupées : il déclenche encore les gestes — le mot d'appel reste.
+    aiHelp.update((s) => ({ ...s, domains: { ...ALL, qa: false } }));
+    await Promise.resolve();
+    expect(label()).toBe('« Alfred »');
+    // Aide IA éteinte : il ne déclenche rien — « Aide IA ».
+    aiHelp.update((s) => ({ ...s, domains: ALL, enabled: false }));
+    await vi.waitFor(() => expect(screen.getByRole('button', { name: 'Aide IA' })).toBeTruthy());
+
+    aiHelp.update((s) => ({ ...s, available: false, enabled: false }));
   });
 
   it('sans analyser, l’onde ondule quand même (barres CSS) — MyBrief écoute', () => {

@@ -2,96 +2,35 @@
 
 ### services/api/app.js
 
-- **Rôle du fichier**
-  - Construit et configure l’instance Fastify de l’API principale (`mybrief-api`), de façon indépendante de l’environnement (pour test, portabilité et injection de dépendances).
-  - Définit les limites (payloads JSON, multipart) dimensionnées sur les usages réels (transcriptions longues, audio).
-  - Regroupe et enregistre tous les plugins/routes API, et centre la configuration (dependencies injection).
-
-- **Fonctions/constantes exportées**
-  - `BODY_LIMIT`
-    - Limite maximale du corps des requêtes HTTP : `32 Mo`.
-  - `FILE_LIMIT`
-    - Taille maximale (octets) d’un fichier envoyé en multipart : `25 Mo`.
-  - `FIELD_LIMIT`
-    - Limite (octets) pour la taille d’un champ multipart, alignée sur `MAX_CONTENT` (action documents).
-  - `buildApp({ ...deps })`
-    - **Paramètres** : objet de dépendances :
-      - `db` (Mongo Client, obligatoire)
-      - `openai` (client OpenAI, obligatoire)
-      - `mailer` (optionnel, faux par défaut / en mode test)
-      - Moyens de surcharger d’autres dépendances : `verifyApiKey`, `gmailSend`, `graphSend`, `gmailRevoke`, `driveStore`, `driveBrowser`, `config`, etc.
-      - `logger` (désactivé par défaut)
-    - **Retour** : instance Fastify entièrement configurée (routes, plugins, décorateurs…).
-    - **Effets de bord notables** :
-      - Les dépendances sont ajoutées comme décorateurs sur l’instance Fastify pour un accès global dans les routes/plugins.
-      - Configuration des routes sous `/api`, et de certains endpoints hors `/api` (`/oauth2/*`, `/auth/mobile/*`).
-      - Enregistre un gestionnaire d'erreur unifié via `slugErrorHandler`.
-      - Multiplie les points d’injection/fakes pour que les tests ne fassent jamais d’accès réseau réel.
-
-- **Points d’attention & edge cases**
-  - **bodyLimit/multipart limits** : par défaut Fastify coupe les corps > 1Mo sans signaler l’erreur ; ici porté à 32Mo/25Mo pour éviter toute troncature silencieuse sur des payloads légitimes.
-  - **Injection/décoration de dépendances** : TOUTE dépendance externe (OpenAI, stockage drive, envoi mail, …) est décorée/injectable, notamment pour permettre des mocks/espions en tests unitaires.
-  - **Sécurité/trustProxy** : paramètre `trustProxy` activé, nécessaire dans l’architecture Docker+proxy pour que le rate-limit et l’IP source soient corrects (sinon DoS possible par blocage global).
-  - **Synchronisation des limites** : l’alignement `FIELD_LIMIT`/`MAX_CONTENT` est essentiel : il faut changer les deux ensemble pour éviter des situations où les gros contenus passent en JSON mais sont refusés en multipart.
-  - **Plug-ins “hors /api”** : certaines routes d’auth/OAuth ne passent pas par l’`authPlugin`, par nécessité opérationnelle (entra relay, mobile, etc.).
-  - **Dépendances critiques** :
-    - `lib/config.js`, `lib/errors.js`, `lib/crypto/secretBox.js` — tout changement dans leur comportement impacte toute l’API.
-    - Décorateurs construisant des accès Mongo (`createXRepo`) : dépendant du schéma et des TTL de config.
-  - **Composabilité/testabilité** : Le fichier est fait pour ne jamais toucher directement l’environnement ou lancer le serveur : possibilité d’utiliser `.inject()` sur l’instance retournée pour tout test unitaire ou d’intégration.
-  - **Désactivation des mails** : sans dépendance explicite fournie (`mailer`), toute tentative d’envoi mail lèvera l’erreur `'mailer_disabled'` (pas de no-op silencieux).
+- Construit et configure l’application Fastify de l’API, avec ses dépendances injectables pour permettre les tests via `app.inject()` sans accès réseau ni processus serveur.
+- **Exports :**
+  - `BODY_LIMIT` — plafond des requêtes JSON : 32 Mio.
+  - `FILE_LIMIT` — plafond d’un fichier multipart : 25 Mio.
+  - `FIELD_LIMIT` — plafond d’un champ multipart, aligné sur `MAX_CONTENT`.
+  - `buildApp(deps)` — reçoit notamment `db` et `openai` (requis), ainsi que des dépendances optionnelles injectables (`mailer`, clients et sondes externes, `config`, `logger`). Retourne une `FastifyInstance`. Effets notables : crée les dépôts et services, enregistre multipart, le gestionnaire d’erreurs et les routes ; les routes `/api` sont précédées du plugin d’authentification, contrairement aux callbacks OAuth2 et mobile hors `/api`.
+- **Points d’attention :**
+  - Le mailer désactivé par défaut fait échouer l’envoi avec `mailer_disabled`.
+  - `trustProxy: true` suppose que l’API n’est accessible qu’à travers le proxy de confiance.
+  - Les limites multipart portent sur un fichier et les champs ; `FIELD_LIMIT` suit `MAX_CONTENT` pour éviter toute divergence.
+  - Les dépendances par défaut peuvent appeler des services externes (OpenAI, fournisseurs de transcription, Google, Drive, myBrain, sources de tarifs) ou utiliser `ffmpeg` ; les injecter en test pour éviter réseau et dépendances système.
+  - Dépend de Fastify, `@fastify/multipart`, des modules `./routes/*` et `./lib/*`, ainsi que d’une base compatible avec les dépôts Mongo.
 
 ### services/api/lib/actions/document.js
 
-- **Rôle du fichier**
-  - Centralise la validation et la normalisation des documents soumis à l’API (transcriptions, résumés), via JSON ou multipart/form-data.
-  - Garantit l’unicité des règles de validation entre plusieurs points d’entrée (ajv et flux multipart).
-  - Fournit des bornes (tailles, formats) réutilisables dans toute l’application.
-
-- **Fonctions et constantes exportées**
-  - `MAX_CONTENT` : Taille maximale du champ `content` (2 Mo).
-  - `TITLE_MAX` : Longueur maximale du titre (300 caractères).
-  - `DOCUMENT_KINDS` : Liste des types de documents acceptés (`transcription`, `summary`).
-  - `DOCUMENT_LANGS` : Langues acceptées (`fr`, `en`).
-  - `MEETING_ID_MAX` : Longueur maximale pour un ID de réunion (UUID) : 64 caractères.
-  - `actionDocumentSchema` : Schéma de validation JSON ajv des documents.
-  - `jsonOnlyBody` : Sous-schéma OpenAPI : applique `actionDocumentSchema` uniquement pour les requêtes JSON.
-  - `safeFilename(name, fallback)`
-    - **Paramètres** :  
-      - `name` : Nom de fichier à nettoyer.  
-      - `fallback` : Valeur de repli si le nom est vide (`document` par défaut).
-    - **Retour** : Chaîne nettoyée, sans caractères interdits pour les systèmes de fichiers, max. 200 caractères.  
-    - **Effets de bord** : Aucun.
-    - **Remarques** : Évite les noms masqués ou risquant la traversée de répertoire (`..`).
-  - `normalizeDocument(raw)`
-    - **Paramètres** :  
-      - `raw` : Objet brut possiblement partiel (voir schéma plus haut).
-    - **Retour** :  
-      - `{ document }` normalisé, prêt à l’usage,  
-      - ou `{ error: 'invalid_kind'|'invalid_content' }` selon l’erreur rencontrée.
-    - **Effets de bord** : Aucun (ne modifie pas l’entrée).
-    - **Remarques** : Unifie la validation pour tous les points d’entrée, bornes ré-appliquées ; distingue la cause des erreurs.
-  - `readMultipartDocument(req)`
-    - **Paramètres** :  
-      - `req` : Requête HTTP Fastify avec support multipart (ex : via @fastify/multipart).
-    - **Retour** :  
-      - Promise résolue avec :
-        - `{document, approved, file}` si succès,
-        - ou `{error}` en cas d’échec (ex : fichier manquant, trop volumineux...).
-    - **Effets de bord** : Lit le flux fichier, conversion en Buffer, appelle `normalizeDocument` sur champs multipart ; pourrait throw hors erreur prévue.
-    - **Remarques** : Les destinataires/dossiers ne doivent en aucun cas être lus/écrits ici.
-
-- **Points d’attention & edge cases**
-  - **Multipart** : ajv ne peut pas valider les requêtes multipart ; la validation se fait en JS pur avec `normalizeDocument`.
-  - **Validation stricte** : Les propriétés additionnelles sont interdites (`additionalProperties: false` dans le schéma) ; le backend doit veiller à ne pas enrichir le document d’autres champs dans ce module.
-  - **Sécurité des noms de fichiers** : Seuls certains caractères sont filtrés dans les noms de fichiers (ne supprime pas espace, tiret, etc. pour conservation des noms lisibles/utiles).
-  - **Limites coordonnées** : Il faut veiller à garder en cohérence la limite de taille côté JSON (MAX_CONTENT) et du middleware multipart (`fieldSize` dans app.js).  
-  - **Effets de flux** : En multipart, le fichier DOIT être consommé pour ne pas bloquer la requête, même si la validation échoue ensuite.
-  - **Dépendances** :
-    - `@fastify/multipart` : pour le traitement des fichiers uploadés.
-    - Toute incohérence du schéma/constantes impactera potentiellement plusieurs couches de validation.
-  - **meetingId** : N’est pas une destination, mais une référence (cf. `lib/actions/resolve.js`). Risque limité si forgé, car scope utilisateur vérifié en aval.  
-  - **langue par défaut** : Si non spécifiée ou non valide, la langue par défaut est `'fr'`.  
-  - **Longueur de titre/contenu** : Sont systématiquement tronqués si dépassement (pas
+- Centralise la validation et la normalisation des documents d’action reçus en JSON ou multipart, ainsi que l’assainissement du nom de fichier.
+- Exports :
+  - `MAX_CONTENT`, `TITLE_MAX`, `DOCUMENT_KINDS`, `DOCUMENT_LANGS`, `MEETING_ID_MAX` : constantes de limites et de valeurs autorisées, réutilisées par le schéma et la normalisation.
+  - `actionDocumentSchema` : schéma JSON Ajv ; exige `kind` et `content`, interdit les propriétés supplémentaires.
+  - `jsonOnlyBody` : configuration Fastify limitant l’application du schéma aux requêtes `application/json`, afin de ne pas valider le flux multipart avec Ajv.
+  - `safeFilename(name, fallback = 'document')` : retourne un nom débarrassé des caractères interdits, des points initiaux et limité à 200 caractères ; effet notable : convertit `name` en chaîne et renvoie `fallback` si le résultat est vide.
+  - `normalizeDocument(raw = {})` : retourne `{ document }` normalisé ou `{ error }` (`invalid_kind` ou `invalid_content`). Tronque `title` et `meetingId` ; utilise `fr` par défaut pour `lang`. N’effectue pas de validation Ajv.
+  - `readMultipartDocument(req)` : retourne une promesse contenant `{ document, approved, file }` ou `{ error }`. Lit et met en tampon le fichier, normalise les champs multipart et assainit `part.filename` ; propage les erreurs autres qu’un dépassement de taille.
+- Points d’attention :
+  - `MAX_CONTENT` vaut 2 Mio ; `app.js` doit aligner la limite multipart `fieldSize`. Un dépassement du fichier renvoie `attachment_too_large`.
+  - Le fichier doit être consommé avant la lecture des champs, conformément au comportement en flux de `@fastify/multipart`. L’absence de fichier renvoie `file_required`.
+  - `approved` est vrai uniquement si le champ vaut exactement `"true"` ; ce champ exprime un consentement, pas une destination.
+  - Les destinations ne sont pas lues dans cette fonction : elles proviennent des réglages persistés et sont résolues dans `lib/actions/resolve.js`. `meetingId` est une référence, à relire en base sous le scope du demandeur.
+  - Le fichier multipart est relayé sans traitement de son contenu ; son type MIME retombe sur `application/octet-stream` s’il est absent.
 
 ### services/api/lib/actions/execute.js
 
@@ -242,50 +181,18 @@
 
 ### services/api/lib/actions/resolve.js
 
-- **Rôle du fichier**  
-  Résout de façon centralisée et déterministe tous les paramètres d'une action (destinataires, dossiers, modèles, etc.), en appliquant les priorités (utilisateur > organisation > valeur par défaut) et en tenant compte des "tags" associés à un dossier (pour le classement).
-
-- **Fonctions exportées**
-  - `todayPart(now = new Date())`
-    - **Paramètres** : `now` (Date, optionnel)
-    - **Retour** : `string` (format AAAA-MM-JJ, heure locale)
-    - **Effets de bord** : Aucun
-  - `templateVars({ document, account })`
-    - **Paramètres** : objet `{ document: object, account: string }`
-    - **Retour** : objet `{ titre, date, type, compte }` utilisé pour alimenter les gabarits de mails/fichiers
-    - **Effets de bord** : Aucun
-  - `resolveActionContext(app, { user, document, ignorePersonal? })`
-    - **Paramètres** :
-      - `app` : instance Fastify
-      - `{ user, document, ignorePersonal? }` :
-        - `user` : objet utilisateur (doit avoir `email`)
-        - `document` : objet document (doit avoir au moins `kind`, `lang`, peut avoir `meetingId`, `title`)
-        - `ignorePersonal` : booléen optionnel (par défaut `false`) — pour simuler une action "sans réglages personnels" (utilisé par les admins)
-    - **Retour** : `{ toggles, recipients, subject, filename, folder, tag, requireApproval, policy, provider }`
-      - Chaque champ possède sa source (`user` | `admin` | `builtin`), pour la traçabilité.
-    - **Effets de bord** :  
-      - Accès base de données (lecture dans les collections `resume` pour l'extraction de tag, `tags` pour info de classification).
-      - Appelle des fonctions utilitaires dépendantes d'autres parties de l'API.
-
-- **Points d'attention**
-  - **Priorité stricte** des sources de configuration : utilisateur > organisation > défaut intégré ; à l’exception des "interrupteurs" (toggles) qui sont contrôlés uniquement côté administration.
-  - **Sécurité** :
-    - Le tag (classement/rangement) n’est jamais fourni par la requête, toujours relu en base avec contrôle de scope (évite l'accès à des dossiers tiers via un `tagId` contrefait).
-    - La destination d’un stockage combine dossier ET bibliothèque (drive). Un bug passé montre qu'il faut toujours vérifier les deux, pas seulement le chemin.
-  - **Edge cases** :
-    - Tag absent, supprimé, ou conversation non possédée ⇒ fallback sur dossier par défaut, sans erreur.
-    - Nom de tag : les `/` dans les labels de tag sont neutralisés pour éviter la création de chemins inattendus.
-    - Simuler l’absence de réglage utilisateur (`ignorePersonal`) désactive aussi l’approbation automatique de dépôt.
-  - **Dépendances** :
-    - `./recipients.js` (résolution des destinataires)
-    - `./templating.js` (rendu des modèles de mails/fichiers)
-    - `../ownerScope.js` (filtrage/scopage propriétaire pour l'accès DB)
-    - `../../routes/tags.js` (constante de nom de collection pour les tags)
-    - Appuie sa logique métier sur la structure et les valeurs d’administration (`app.settings.getActions()`).
-
-- **Particularités**
-  - Il s'agit de **l'unique point** de résolution des paramètres d'action, utilisé aussi bien par l’exécution normale que par le bouton « Tester » (tests réalistes).
-  - Structure de retour documentée et source de chaque paramètre, pour auditabilité et debugage dans l’interface admin.
+- Centralise la résolution du contexte d’une action : réglages personnels, organisation, valeurs intégrées et règles de tag. Appelé par `execute.js`, notamment pour que le bouton « Tester » utilise le même chemin que l’exécution réelle.
+- **Fonctions exportées :**
+  - `hasDestination(storage)` — indique si `storage` définit un chemin ou un `driveId` ; retourne un booléen. Préserve les destinations à la racine d’un Drive partagé (`folder: ''`, `driveId` renseigné).
+  - `todayPart(now = new Date())` — retourne la date locale au format `AAAA-MM-JJ` ; ne convertit pas en UTC.
+  - `templateVars({ document, account })` — retourne les variables des gabarits (`titre`, `date`, `type`, `compte`) ; langue inconnue ramenée au français, champs absents ramenés à une chaîne vide.
+  - `resolveActionContext(app, { user, document, ignorePersonal = false })` — retourne le contexte résolu (interrupteurs, destinataires, objet, nom de fichier, dossier, tag, approbation, politique et fournisseur). Effets de bord : lit les réglages, les paramètres utilisateur et, si un `meetingId` est présent, la conversation et son tag en base. `ignorePersonal` simule des réglages personnels absents et ignore le tag ; destiné au test administrateur.
+- **Résolution du dossier :** un dossier explicite associé au tag remplace celui du compte ; sinon, un sous-dossier peut être créé depuis le libellé du tag. Le `/` du libellé est remplacé par `-`. À défaut, priorité au personnel, puis à l’organisation, puis au dossier intégré ; chemin et Drive sont traités comme un couple.
+- **Points d’attention :**
+  - Les tags sont obtenus via `document.meetingId`, jamais depuis le corps de la requête ; conversation et tag sont recherchés sous le scope de `user.email`. Tag absent, supprimé ou inaccessible : pas d’échec, résolution sans tag.
+  - Les interrupteurs et la politique viennent de l’administration seule ; `requireApproval` est personnel.
+  - L’extension fournie au gabarit de nommage est indicative : l’extension réellement appliquée dépend du fichier transmis.
+  - Dépend de `recipients.js`, `templating.js`, `ownerScope.js`, de la collection `TAGS_COLLECTION` et des services `app.settings`, `app.userActions` et `app.db`.
 
 ### services/api/lib/actions/templating.js
 
@@ -354,36 +261,14 @@
 
 ### services/api/lib/actions/testDocument.js
 
-- **Rôle du fichier :**
-  - Genère un document de test destiné à vérifier la configuration du système d’envoi de documents (droits, accès, nommage, etc.) via la même chaîne d’exécution qu’une action réelle, sans recourir à des données de réunion réelles.
-  - Produit systématiquement un fichier `.txt` (jamais de PDF, car la génération PDF dépend d’outils spécifiques au navigateur).
-
-- **Fonctions exportées :**
-  - `buildTestDocument({ user, kind = 'summary', lang = 'fr', now = new Date() })`
-    - **Paramètres :**
-      - `user` (objet, requis) : doit contenir au moins la propriété `email`
-      - `kind` (`'transcription'` | `'summary'`, optionnel, défaut: `'summary'`)
-      - `lang` (code langue, `'fr'` ou `'en'`, optionnel, défaut: `'fr'`)
-      - `now` (objet `Date`, optionnel, défaut: `nouvelle date`)
-    - **Retour :**
-      - Objet contenant :
-        - `document` (formaté et normalisé comme pour un envoi réel)
-        - `file` :
-          - `filename` : `'mybrief-test.txt'`
-          - `content` : Buffer du contenu texte indiquant origine et date de dépôt
-          - `contentType` : `'text/plain; charset=utf-8'`
-    - **Effets de bord notables :**
-      - Aucun effet de bord direct, mais le fichier généré n’est pas supprimé après test (permet à l'utilisateur de vérifier la présence et la réussite du dépôt).
-
-- **Points d’attention :**
-  - **Dépendances :** utilise la fonction `normalizeDocument` du même dossier (`./document.js`), garantissant que la normalisation suit le même traitement que pour les documents réels.
-  - **Edge cases :**
-    - Paramètre `lang` : si la langue n’est pas supportée, français par défaut (`TEXTS.fr`)
-    - Le paramètre `kind` impacte le format (`'summary'` génère du HTML, `'transcription'` du texte brut)
-    - La propriété `user.email` doit être renseignée pour générer le document correctement
-  - **Design :**
-    - Le document est créé pour être visible par l’utilisateur dans la cible (non supprimé automatiquement)
-    - Le contenu et le nom du fichier servent de preuve technique du bon fonctionnement (dossier, droits, etc.), mais pas des capacités de rendu avancé (PDF non couvert)
+- Construit un document et un fichier texte factices pour tester la configuration d’envoi, sans données de réunion.
+- Fonction exportée :
+  - `buildTestDocument({ user, kind = 'summary', lang = 'fr', now = new Date() })` : retourne `{ document, file }`. `document` est produit par `normalizeDocument`; `file` contient `filename`, `content` (un `Buffer`) et `contentType`. Aucun envoi ni upload n’est effectué dans ce fichier.
+- Points d’attention :
+  - `user.email` et une date compatible avec `toISOString()` sont attendus.
+  - `kind === 'summary'` génère du HTML; toute autre valeur génère du texte brut. `lang` non pris en charge retombe sur le français.
+  - Le fichier s’appelle toujours `mybrief-test.txt` et n’est pas supprimé ici.
+  - Dépend de `normalizeDocument` (`./document.js`) et de l’API globale `Buffer`.
 
 ### services/api/lib/auth/cookies.js
 
@@ -605,79 +490,19 @@
 
 ### services/api/lib/auth/oauthFlow.js
 
-- **Rôle du fichier**
-  - Centralise la logique commune des flux OAuth 2.0 / OIDC (avec PKCE et contrôle anti-CSRF) utilisée pour :
-    - La connexion utilisateur (SSO)
-    - L'autorisation d'accès à un compte externe (ex : envoi d’emails tiers)
-  - Évite la duplication de code critique de sécurité entre les différents flux OAuth.
-  - Ne gère pas les cas de redirection ou le traitement métier du profil utilisateur.
-
-- **Fonctions exportées**
-
-  - `createStateCookie(app, name)`
-    - **Paramètres** :
-      - `app` : Instance Fastify.
-      - `name` : Nom du cookie de flux.
-    - **Retour** : `{ name, set(reply, state), clear(reply) }`
-      - Méthodes pour poser et nettoyer le cookie d’état CSRF d’un flux.
-    - **Effet de bord** : Pose/efface un cookie HTTP sur la réponse.
-    - **Point d’attention** : Le nom du cookie doit être spécifique par flux pour éviter les collisions si plusieurs flux sont actifs en parallèle.
-
-  - `endpointsFor(provider, conf)`
-    - **Paramètres** :
-      - `provider` : Déclaration du fournisseur OAuth (ex : Google, Microsoft).
-      - `conf` : Configuration du fournisseur (clientId, discoveryUrl…).
-    - **Retour** : Les endpoints OIDC extraits via discovery/fallback.
-    - **Dépendances** : Dépend de `getEndpoints`.
-
-  - `startOAuth(app, req, reply, opts)`
-    - **Paramètres** :
-      - `app` : Instance Fastify.
-      - `req` : Requête entrante.
-      - `reply` : Réponse HTTP.
-      - `opts` :
-        - `cookie`: Cookie d’état du flux (`{set}`)
-        - `flow`: Tag du flux
-        - `clientId`, `redirectUri`, `endpoints`, `scopes`
-        - `next?`: Redirection finale
-        - `meta?`: Métadonnées à stocker dans l’état
-        - `extraParams?`: Params additionnels pour l’URL d’auth
-    - **Retour** : `Promise<string>` URL de redirection vers l’IdP.
-    - **Effet de bord** : Génère et stocke le state anti-CSRF ; met le PKCE en base ; pose un cookie d’état.
-    - **Point d’attention** : Le code_verifier n’est jamais exposé au navigateur, seulement persisté côté serveur.
-
-  - `consumeState(app, req, reply, opts)`
-    - **Paramètres** :
-      - `app` : Instance Fastify.
-      - `req` : Requête entrante.
-      - `reply` : Réponse HTTP.
-      - `opts` :
-        - `cookie`: Cookie d’état du flux
-        - `flow`: Tag du flux à valider
-        - `state?`, `code?`: Valeurs reçues depuis l’URL de retour de l’IdP
-    - **Retour** : `Promise<{ok: true, pending}|{ok: false}>`
-      - Retourne le document d’état prêt pour l’échange si toutes les vérifications passent.
-    - **Effet de bord** : Supprime systématiquement le cookie d’état (mitigation CSRF).
-    - **Points d’attention** :
-      - Vérifie le triple contrôle (état dans l’URL, le cookie, la base) et la correspondance du `flow`.
-      - En cas d’échec du contrôle, le cookie est quand même supprimé.  
-      - Prise en charge d’anciens documents sans champ provider (suppose ‘google’ par défaut).
-
-  - `exchangeForProfile({ code, conf, pending, endpoints })`
-    - **Paramètres** :
-      - `code`: Code d’autorisation à échanger.
-      - `conf`: Credentials client (id, secret).
-      - `pending`: Document d’état (redirectUri, codeVerifier).
-      - `endpoints`: Endpoints OIDC.
-    - **Retour** : `Promise<{tokens, profile}>` (tokens OAuth + profil utilisateur)
-    - **Effet de bord** : Aucun.
-    - **Point d’attention** :
-      - Lève une erreur si l’échange code/token ou la récupération du profil échoue (doit être catch côté appelant).
-
-- **Points d’attention & Edge Cases**
-  - **Cookies** : Chaque flux doit avoir un nom de cookie unique pour éviter l’écrasement (ex : Google connect vs login).
-  - **Consommation d’état** : Un état consommé est détruit (anti-rejeu). Impossible de retraiter le même retour.
-  - **Provider anciens** : Si le document d’état n'a
+- **Rôle** : centralise les étapes communes des flux OAuth 2.0 / OIDC : cookie et contrôle du `state`, démarrage PKCE, résolution des endpoints et récupération du profil. Les appelants gardent la gestion des erreurs et le traitement du profil.
+- **Fonctions exportées** :
+  - `createStateCookie(app, name)` — retourne `{ name, set(reply, state), clear(reply) }`. Pose ou purge le cookie d’état, avec une durée liée à `app.oauthStates.ttlMs` et l’option `secure` de la configuration. Le cookie lie le flux au navigateur.
+  - `endpointsFor(provider, conf)` — retourne les endpoints résolus via la découverte du fournisseur, avec ses endpoints de repli.
+  - `startOAuth(app, req, reply, opts)` — retourne une `Promise<string>` contenant l’URL d’autorisation. Génère une paire PKCE, persiste le vérificateur et les données du flux dans `app.oauthStates`, pose le cookie et ajoute les paramètres supplémentaires à l’URL. Le `code_verifier` reste côté serveur.
+  - `consumeState(app, req, reply, opts)` — retourne une `Promise<{ ok: true, pending } | { ok: false }>` après vérification et consommation du `state`. Purge le cookie dans tous les cas ; exige la correspondance URL/cookie, un état non consommé, un code et le bon marqueur de flux. Les anciens états sans fournisseur sont considérés comme Google.
+  - `mergeIdentityClaims(userinfo, idClaims)` — retourne un profil fusionné. `userinfo` fait autorité ; seuls `preferred_username`, `upn` et `name` peuvent être complétés depuis l’id_token, et uniquement si les `sub` concordent.
+  - `exchangeForProfile({ code, conf, pending, endpoints })` — retourne une `Promise<{ tokens, profile }>` après échange du code puis lecture de `userinfo`, complétée par les claims admissibles de l’id_token. Lève en cas d’échec de l’IdP.
+- **Points d’attention** :
+  - Dépend de `cookies.js`, `oidcClient.js` et de `app.oauthStates` ; la durée et la sécurité du cookie dépendent de la configuration de l’application.
+  - Les cookies d’état sont propres à chaque flux, sauf exception de routage documentée dans les fournisseurs ; leur nom doit donc être choisi selon le flux.
+  - `consumeState` consomme l’état avant de vérifier le code et le fournisseur : en cas d’échec, il ne peut pas être réutilisé.
+  - La fusion refuse tout complément de l’id_token si son `sub` manque ou contredit celui de `userinfo` ; `email` et `email_verified` ne sont jamais repris de l’id_token.
 
 ### services/api/lib/auth/oauthState.js
 
@@ -732,48 +557,21 @@
 
 ### services/api/lib/auth/oidcClient.js
 
-- **Rôle du fichier :**
-  - Implémente un client générique OAuth 2.0 / OpenID Connect (OIDC) utilisé par l’API pour interagir avec des fournisseurs OIDC (sans code spécifique à un fournisseur).
-  - Centralise les opérations courantes OIDC : découverte des endpoints, PKCE, génération d’URL, échange de code contre token, récupération d’infos utilisateur.
-  - Externalise toute connaissance fournisseur vers `providers.js` (URL, scopes, claim email, etc.).
-
-- **Fonctions exportées :**
-  - `getEndpoints({ discoveryUrl, fallback?, fetchImpl? })`
-    - **Paramètres** : URL de découverte OIDC, fallback éventuel (endpoints), implémentation fetch alternative.
-    - **Retour** : Promise résolue avec `{ authorization_endpoint, token_endpoint, userinfo_endpoint }`.
-    - **Effet de bord** : met en cache les endpoints OIDC par URL pour accélérer les accès suivants.
-    - **Exceptions** : lève si la découverte échoue et pas de fallback fourni.
-  - `createPkcePair()`
-    - **Paramètres** : aucun.
-    - **Retour** : `{ verifier, challenge }` (chaîne aléatoire + hash : PKCE S256).
-    - **Effet de bord** : aucun.
-  - `buildAuthorizationUrl({ clientId, redirectUri, state, codeChallenge, endpoints, scopes?, loginHint? })`
-    - **Paramètres** : infos client, PKCE, endpoints, scopes optionnel, loginHint optionnel.
-    - **Retour** : URL (string) de l’endpoint d’autorisation OIDC.
-    - **Effet de bord** : aucun.
-  - `exchangeCode({ code, clientId, clientSecret, redirectUri, codeVerifier, endpoints, fetchImpl? })`
-    - **Paramètres** : code auth retourné, crédentials client OIDC, endpoints, codeVerifier PKCE, fetch alternative.
-    - **Retour** : Promise `{ access_token: … }` (et potentiellement autres data OIDC).
-    - **Effet de bord** : effectue un POST sur l’endpoint de token.
-    - **Exceptions** : lève en cas d’échec (message avec statut HTTP uniquement, pas le contenu).
-  - `fetchUserInfo({ accessToken, endpoints, fetchImpl? })`
-    - **Paramètres** : token d’accès, endpoints OIDC, fetch alternative.
-    - **Retour** : Promise avec claims OIDC (au moins `sub`, possiblement email, name, upn, etc.).
-    - **Effet de bord** : aucun.
-    - **Exceptions** : lève si l’appel échoue.
-  - `resetDiscoveryCache()`
-    - **Paramètres** : aucun.
-    - **Retour** : void.
-    - **Effet de bord** : vide le cache interne des endpoints (utile pour les tests).
-
-- **Points d’attention :**
-  - **Cache** : endpoints découverts mis en cache 24h, possibilité de reset.
-  - **Sécurité** : communication uniquement via TLS ; validation de l’identité via userinfo et access_token (pas de vérification JWT en local).
-  - **Timeouts** : tous les fetch sont coupés si pas de réponse sous 5s ou 10s selon contextes.
-  - **Fallback** : importante pour les cas où la découverte échoue (ex: endpoints dynamiques selon tenant).
-  - **Scopes et claims** : la gestion de la claim à utiliser pour l’email, etc., est déléguée à la configuration du fournisseur.
-  - **Dépendances** : nécessite l’API native `fetch` ou un polyfill, `node:crypto`, et le module global `AbortSignal`.
-  - **Edge cases** : gestion prudente des erreurs (ne jamais relayer de secrets dans les logs), certaines erreurs côté IdP peuvent écho le secret client.
+- **Rôle** : client OAuth 2.0 / OpenID Connect générique côté API. Gère la découverte des endpoints, PKCE, la construction de l’URL d’autorisation, l’échange du code et la récupération des informations utilisateur. Les spécificités des fournisseurs sont dans `providers.js`.
+- **Fonctions exportées** :
+  - `getEndpoints({ discoveryUrl, fallback = null, fetchImpl = fetch })` → `Promise<{ authorization_endpoint, token_endpoint, userinfo_endpoint }>` ; récupère les endpoints OIDC et les met en cache 24 h par URL. En cas d’échec, retourne `fallback` s’il est fourni, sinon lève une erreur.
+  - `createPkcePair()` → `{ verifier, challenge }` ; génère une paire PKCE S256.
+  - `buildAuthorizationUrl({ clientId, redirectUri, state, codeChallenge, endpoints, scopes = 'openid email profile', loginHint })` → URL d’autorisation ; ajoute notamment `prompt=select_account` et, si fourni, `login_hint`.
+  - `exchangeCode({ code, clientId, clientSecret, redirectUri, codeVerifier, endpoints, fetchImpl = fetch })` → `Promise` du JSON du token endpoint ; échange le code avec PKCE. En cas d’échec HTTP, l’erreur ne contient que le statut.
+  - `fetchUserInfo({ accessToken, endpoints, fetchImpl = fetch })` → `Promise` du JSON `userinfo` ; envoie l’access token comme bearer.
+  - `readIdTokenClaims(idToken, clientId)` → claims ou `{}` ; décode le payload de l’id_token et ne le retourne que si son audience inclut `clientId`. **Ne vérifie pas sa signature.**
+  - `resetDiscoveryCache()` → `undefined` ; vide le cache de découverte, principalement pour les tests.
+- **Points d’attention** :
+  - `getEndpoints` utilise un délai de 5 s pour la découverte ; les appels au token endpoint et à `userinfo` expirent après 10 s. `fetchImpl` peut être injecté pour les tests.
+  - Sans `discoveryUrl`, `getEndpoints` retourne le repli s’il existe, sinon lève `discovery_url_missing`. Si la découverte échoue et qu’aucun repli n’existe, l’erreur est propagée.
+  - `exchangeCode` et `fetchUserInfo` lèvent une erreur contenant le statut HTTP en cas de réponse non réussie.
+  - `readIdTokenClaims` ne valide ni signature ni autres claims : jeton absent, mal formé ou destiné à une autre audience → `{}`. Les informations principales d’identité sont récupérées via `userinfo`.
+  - Dépend de `node:crypto`, de `fetch`, `URL`, `URLSearchParams`, `AbortSignal` et `Buffer`.
 
 ### services/api/lib/auth/originCheck.js
 
@@ -811,110 +609,31 @@
 
 ### services/api/lib/auth/password.js
 
-- **Rôle du fichier :**
-  - Fournit les fonctions de gestion des mots de passe utilisateurs (hachage, vérification, génération, politique), en s'appuyant sur l'algorithme `scrypt` du module natif `node:crypto`.
-  - Centralise la politique de mot de passe, le filtrage des mots de passe interdits, et protège contre les attaques par timing (oracle d'existence).
-
-- **Fonctions exportées :**
-  - `hashPassword(password: string): Promise<string>`
-    - Hache un mot de passe avec `scrypt`, génère un sel aléatoire.
-    - Retourne une chaîne auto-descriptive au format : `scrypt$N=...,r=...,p=...$<sel>$<clé>`.
-    - **Effet de bord :** Consomme de l'entropie (génère du sel).
-  - `verifyPassword(password: string, stored: string): Promise<boolean>`
-    - Vérifie si un `password` correspond à un hash `stored` (auto-descriptif).
-    - Retourne `true` si l'authentification est bonne, `false` sinon (y compris si `stored` est corrompu).
-    - **Effet de bord :** Jamais d'exception lancée pour des données invalides.
-  - `dummyHash(): Promise<string>`
-    - Retourne un hash bidon, calculé une fois puis réutilisé. Sert à synchroniser la latence côté login quand l'utilisateur n'existe pas (protection contre l'énumération).
-  - `burnVerify(password: string): Promise<false>`
-    - Appelle une vérification de mot de passe sur un hash bidon pour brûler le même temps CPU qu'une vraie vérification, puis retourne `false`.
-  - `checkPasswordPolicy(password: string, ctx?: { email?: string }): {ok: true}|{ok: false, reason: string}`
-    - Valide la conformité du mot de passe à la politique locale :
-      - Non vide, longueur entre `MIN_PASSWORD_LENGTH` (10) et `MAX_PASSWORD_LENGTH` (200).
-      - Interdit les mots de passe trop courants (liste en dur).
-      - Interdit un mot de passe contenant l'email (si précisée).
-    - Retourne `{ok: true}` ou `{ok: false, reason}`.
-  - `generatePassword(bytes?: number = 12): string`
-    - Génère un mot de passe aléatoire, lisible, en base64url.
-    - **Effet de bord :** Consomme de l'entropie (`randomBytes`).
-
-- **Constantes exportées :**
-  - `SCRYPT_PARAMS` – Paramètres recommandés pour scrypt (N=16384, r=8, p=1, keylen=64, maxmem=64Mo).
-  - `MIN_PASSWORD_LENGTH` – Longueur minimale (10).
-  - `MAX_PASSWORD_LENGTH` – Longueur maximale (200).
-
-- **Points d'attention :**
-  - **Déploiement/dépendances :**
-    - Utilise `scrypt` de Node, pas de dépendance native externe, compatible toutes plateformes Node >= 10.
-    - Pas d’outil de build natif requis (avantage pour CI/CD & docker Alpine).
-  - **Hash auto-descriptif :**
-    - Les paramètres de scrypt sont inclus dans chaque hash (renouvelabilité de la politique sans invalider l’existant).
-  - **Gestion des erreurs :**
-    - `verifyPassword` ne lève jamais : un hash corrompu/ancien ne provoque pas d’exception en base, la connexion est juste refusée.
-  - **Sécurité/timing attacks :**
-    - Pour login d’utilisateur inexistant, dummyHash/burnVerify assurent une latence identique à une vérification réelle.
-  - **Edge cases :**
-    - Les saisies de mot de passe > 200 caractères sont rejetées (protection contre DoS via scrypt sur données énormes).
-    - Les emails courts ne sont pas pris en compte pour interdire un mot de passe contenant l’email (localPart < 3).
-    - La blacklist est indicative, pas une défense forte (l’entropie et la longueur sont prioritaires).
-    - Le bootstrap d’admin (hors politique) n’est PAS concerné par `checkPasswordPolicy`.
+- Implémente le hachage, la vérification et la politique des mots de passe, avec `scrypt` asynchrone de `node:crypto`.
+- Exports :
+  - `SCRYPT_PARAMS` — paramètres de `scrypt` (`N`, `r`, `p`, longueur de clé et mémoire maximale) ; constante exportée.
+  - `MIN_PASSWORD_LENGTH`, `MAX_PASSWORD_LENGTH` — limites de longueur : 10 et 200 caractères.
+  - `hashPassword(password)` — renvoie une `Promise<string>` contenant un hash auto-descriptif avec sel aléatoire. Peut rejeter si `scrypt` échoue.
+  - `verifyPassword(password, stored)` — renvoie une `Promise<boolean>` ; compare les clés avec `timingSafeEqual`. Renvoie `false` pour un hash invalide ou une erreur de vérification, sans rejeter.
+  - `dummyHash()` — renvoie une `Promise<string>` de hash factice, calculé une seule fois puis mis en cache, pour réduire les écarts de latence lorsque le compte est absent.
+  - `burnVerify(password)` — effectue une vérification contre le hash factice puis renvoie toujours `false`.
+  - `checkPasswordPolicy(password, { email } = {})` — renvoie `{ ok: true }` ou `{ ok: false, reason }` ; contrôle le type, la longueur, une liste de mots de passe courants et la présence de la partie locale de l’adresse e-mail.
+  - `generatePassword(bytes = 12)` — renvoie une chaîne aléatoire encodée en base64url.
+- Points d’attention :
+  - Le format stocké est `scrypt$N=…,r=…,p=…$<sel>$<clé>` ; les paramètres sont conservés avec le hash. La vérification utilise ceux du hash et la limite `maxmem` configurée.
+  - `checkPasswordPolicy` ne s’applique pas au compte de bootstrap ; la liste de mots de passe interdits est un garde-fou, pas une politique de composition.
+  - `parseHash` est interne ; un hash mal formé ou des paramètres invalides entraînent un échec fermé (`false` lors de la vérification).
+  - Dépend uniquement de `node:crypto` ; `scrypt` est asynchrone et utilise le threadpool de libuv.
 
 ### services/api/lib/auth/providers.js
 
-- **Rôle du fichier**
-  - Définit la configuration et la logique d’activation pour les fournisseurs d’identité OIDC supportés par l’API (ex. Google, Microsoft Entra ID).
-  - Centralise les spécificités (URLs, scopes, gestion des emails, codes d’erreur) pour un usage unique par le flux SSO (`routes/auth/ssoFlow.js`).
-
-- **Fonctions / exports**
-  - `PROVIDERS`
-    - Objet contenant la définition des providers "google" et "entra" :
-        - **Attributs principaux** :  
-          - `id` (string),  
-          - `label` (string),
-          - `callbackPath` (string),
-          - `startPath` (string),
-          - `scopes` (string),
-          - `discoveryUrlOf` (function, paramètres varient selon provider),
-          - `fallbackEndpoints` (object/null),
-          - `requireVerifiedEmail` (boolean),
-          - `emailOf(profile)` (function, extrait l’email du profil utilisateur),
-          - `errors` (mapping des codes d’erreur spécifiques).
-        - **Effets de bord** : aucun direct, pure data/config.
-    
-  - `PROVIDER_IDS`
-    - Tableau contenant la liste des IDs configurés dans `PROVIDERS`.
-    - Généré dynamiquement via `Object.keys(PROVIDERS)`.
-    - **Effet de bord :** aucun, pure valeur calculée.
-  
-  - `isProviderUsable(id, settings)`
-    - **Paramètres :**
-      - `id` (string) : identifiant du provider
-      - `settings` (object) : sous-arbre de configuration de l’application pour les providers (doit inclure clientId, clientSecret, etc.)
-    - **Retour :**
-      - `boolean` : true si le provider d’identité est utilisable (activé + configuration complète)
-    - **Effet de bord notable :** aucun, fonction pure.
-    - **Implémentation :**
-      - Vérifie existence du provider et la présence des valeurs `enabled`, `clientId`, `clientSecret` dans les settings.
-      - Pour Entra (pas de `fallbackEndpoints`), exige que l’URL de découverte soit présente.
-
-- **Points d’attention / Edge cases**
-  - **Entra** :
-    - Le chemin `/oauth2/callback` ne doit **jamais** être modifié sans accès admin Entra.
-    - L’URL de redirection et le couple clientId/secret sont hérités du plugin OIDC d’origine.
-    - Traefik doit filtrer l’accès à ce callback (middleware `noident`), sinon risque d’usurpation.
-    - Pas de fallback pour les endpoints Entra : l’URL de découverte dépend du tenant.
-    - `emailOf` doit gérer plusieurs emplacements possibles pour l’email (`email`, puis `preferred_username`, puis `upn`).
-  - **Google** :
-    - Fallback statique possible pour les endpoints en cas de panne réseau lors du bootstrap.
-    - Nécessite que l’email soit vérifié (`requireVerifiedEmail: true`), sinon refus.
-  - **Dépendances** :
-    - Utilisé par les flux d’authentification OIDC mutualisés (`routes/auth/ssoFlow.js`).
-    - Fortement couplé à `appSettings` pour les secrets et configurations runtime.
-  - **Edge cases** :
-    - Un provider activé mais mal configuré (manque clientId/clientSecret/etc.) est filtré par `isProviderUsable`.
-    - Un provider sans discovery URL valide (Entra) sera ignoré.
-
-- **Pas d’effets de bord directs ou d’accès I/O dans ce module.**
+- Registre des fournisseurs OIDC pris en charge par le flux commun `routes/auth/ssoFlow.js` : Google et Microsoft Entra ID. Définit leurs chemins, scopes, endpoints, règles d’adresse e-mail, photos et codes d’erreur.
+- `isProviderUsable(id, settings)` — paramètres : identifiant du fournisseur et document complet `appSettings`. Retourne `true` si le fournisseur existe, est activé et possède un `clientId`, un `clientSecret` et les informations de découverte nécessaires ; sinon `false`. Aucun effet de bord notable.
+- Points d’attention :
+  - Les callbacks sont spécifiques au fournisseur. Ne pas modifier `/oauth2/callback` pour Entra sans accès à l’administration Entra ; ce chemin hérité nécessite un routeur Traefik dédié avec le middleware `noident`.
+  - Google exige une adresse vérifiée et dispose d’endpoints de repli si la découverte échoue. Entra ne fournit pas `email_verified` : la découverte dépend du tenant et aucun endpoint de repli n’est défini.
+  - Entra peut fournir l’adresse via `email`, `preferred_username` ou `upn` ; les valeurs invalides et doublons (sans distinction de casse) sont filtrés. `isProviderUsable` considère toute URL de découverte non vide comme suffisante, sans la valider.
+  - Dépend de `EMAIL_RE` (`./emailPattern.js`) pour valider les adresses et de `pictureUrl` (`../identity.js`) pour normaliser la photo Google.
 
 ### services/api/lib/auth/rateLimit.js
 
@@ -957,96 +676,28 @@
     - Comparable au comportement du store par défaut de `@fastify/rate-limit` ou équivalent Redis, mais adapté au contrôle par clé métier (compte/utilisateur).
 
 ### services/api/lib/auth/resetTokens.js
-
-- **Rôle :**
-  - Gestion sécurisée des jetons de réinitialisation de mot de passe via la collection MongoDB `authResetToken`. Émission, consommation atomique, et purge des jetons, dont seul le hash SHA-256 est stocké.
-
-- **Fonctions exportées :**
-  - `RESET_COLLECTION`
-    - Nom de la collection utilisée : `'authResetToken'`.
-  - `createResetTokenStore(db, { ttlMs })`
-    - **Paramètres :**
-      - `db` : instance de la base MongoDB.
-      - `ttlMs` (optionnel) : durée de validité des jetons en ms (défaut : 30 min).
-    - **Retour** : objet avec trois méthodes :
-      - `issue({ emailLower, ip })`
-        - **Paramètres :**
-          - `emailLower` (string, obligatoire) : email cible.
-          - `ip` (string/null, optionnel) : IP d’émission.
-        - **Retour** : `{ token, expiresAt }` (token clair à transmettre à l’utilisateur, date d’expiration).
-        - **Effet de bord** : insertion du hash du token dans la collection.
-      - `consume(token)`
-        - **Paramètre** :
-          - `token` (string, obligatoire).
-        - **Retour** : `{ emailLower }` si succès, `null` sinon.
-        - **Effet de bord** : marque le token comme utilisé (champ `usedAt`) de façon atomique.
-      - `purgeFor(emailLower)`
-        - **Paramètre** :
-          - `emailLower` (string, obligatoire).
-        - **Retour** : `undefined` (Promise résolue après suppression).
-        - **Effet de bord** : suppression de tous les jetons liés à cet email.
-
-- **Points d’attention :**
-  - **Atomicité :** La consommation d’un jeton est atomique (update sur `usedAt: null`), évitant doubles utilisations concurrentes.
-  - **Sécurité :** Le token lu/écrit en clair n’est jamais persisté ; seul le hash est en base.
-  - **TTL réel :** Index TTL sur la collection, mais contrôle applicatif explicite car Mongo ne purge que périodiquement (~60s).
-  - **Dépendances :** Nécessite Node.js `crypto` (pour `randomBytes`, `createHash`), et MongoDB pour la persistence.
-  - **Edge cases :**
-    - Jetons sans valeur (`null/undefined`) : immédiatement rejetés.
-    - Jetons expirés ou déjà utilisés : consommés comme invalides (`null`).
-    - Appel de purgeFor sans email : fonction no-op.
+- Gère les jetons de réinitialisation de mot de passe dans la collection `authResetToken`. Le jeton est transmis en clair au demandeur, mais seul son SHA-256 est stocké.
+- Exporte `RESET_COLLECTION` : nom de la collection, `'authResetToken'`.
+- Exporte `createResetTokenStore(db, { ttlMs } = {})` : prend une base de données et une durée de validité optionnelle (30 minutes par défaut) ; retourne un store exposant `ttlMs` et les méthodes suivantes :
+  - `issue({ emailLower, ip = null })` : retourne une promesse `{ token, expiresAt }`. Génère un jeton aléatoire, stocke son hash, son adresse email, ses dates de création et d’expiration, ainsi que l’IP. Effet notable : écrit dans la collection.
+  - `consume(token)` : retourne une promesse `{ emailLower }` ou `null`. Marque atomiquement le jeton comme utilisé seulement s’il existe, n’a pas été utilisé et n’est pas expiré. Un jeton absent ou invalide retourne `null` ; les consommations concurrentes ne peuvent pas réussir toutes les deux.
+  - `purgeFor(emailLower)` : supprime tous les jetons associés à l’adresse ; ne fait rien si elle est absente. Retourne une promesse.
+- Points d’attention : dépend de `node:crypto` (`randomBytes`), de `hashToken` importé depuis `./sessions.js` et de l’API de collection MongoDB (`insertOne`, `findOneAndUpdate`, `deleteMany`). L’expiration est vérifiée à la consommation, car l’index TTL peut supprimer les documents avec retard.
 
 ### services/api/lib/auth/resolve.js
 
-- **Rôle du fichier**
-  - Point central de résolution de l'identité utilisateur pour chaque requête API.
-  - Fusionne l’authentification "native" (cookie de session) et OIDC (en-têtes HTTP injectés).
-  - Détermine la priorité et la fiabilité des sources d’identité (cookie vs en-têtes).
-  - Définit comment exposer le mode et le fournisseur d’authentification.
-
-- **Fonctions exportées**
-
-  - `authModeOf(user)`
-    - **Paramètres** : `user` (objet ou `null`) — identité retournée par `resolveIdentity()`.
-    - **Retour** : `'oidc' | 'password' | 'sso'` — type d’authentification actuel de l'utilisateur.
-    - **Effet de bord** : Aucun.
-    - **Notes** : Prend en compte la source et la présence d’un mot de passe pour distinguer les modes.
-  
-  - `authProviderOf(user)`
-    - **Paramètres** : `user` (objet ou `null`) — identité retournée par `resolveIdentity()`.
-    - **Retour** : `'oidc' | 'password' | 'google' | 'entra' | 'sso'` — fournisseur utilisé pour la session.
-    - **Effet de bord** : Aucun.
-    - **Notes** : Distingue finement OIDC et SSO Google/Microsoft selon la session et l'historique du compte.
-
-  - `resolveIdentity({ req, users, sessions })`
-    - **Paramètres** :
-      - `req`: Objet requête HTTP (doit contenir les en-têtes).
-      - `users`: Gestionnaire d’utilisateurs (implémente `.findByEmail(email)` et `.findByEmailLower(emailLower)`).
-      - `sessions`: Gestionnaire de sessions (implémente `.resolve(token)`, `.touch(session)`, `.destroyAllFor(emailLower)`).
-    - **Retour** : `Promise<{user: object|null, sessionInvalid: boolean}>`
-      - `user`: Objet identité ou `null` (anonyme/non authentifié).
-      - `sessionInvalid`: Booléen ; indique si le cookie doit être purgé client-side.
-    - **Effets de bord notables** :
-      - Rafraîchit la session native (`sessions.touch()`) si valide.
-      - Détruit les sessions si le compte a été supprimé ou désactivé (`sessions.destroyAllFor()`).
-    - **Notes** :
-      - Priorise le cookie de session, ignore les en-têtes si le chemin est explicitement "native".
-      - OIDC/ForwardAuth : identités issues uniquement des en-têtes HTTP.
-      - Évite d’authentifier à partir d’en-têtes falsifiables grâce au header marqueur `"x-mybrief-auth-path": "native"`.
-
-- **Points d’attention**
-
-  - **Ordre d’évaluation crucial** : Un seul chemin d’authentification est pris en compte selon le contexte et la protection du header central ; attention notamment en cas de déploiements/reverse proxies qui ne mettent pas ce header.
-  - **Effacement/fiabilité des en-têtes d'identité** : Dépend de middlewares externes (`noident`, OIDC/FwdAuth) qui doivent garantir l’état des en-têtes avant que cette logique ne s’exécute.
-  - **Statut session/cookie** : Retourne `sessionInvalid` quand le cookie ne correspond plus à un utilisateur valide (compte supprimé/désactivé).
-  - **Edge cases** :
-    - Sessions sans doc utilisateur associé (si supprimé ou jamais vu par `/init`).
-    - Sessions ouvertes avant capture du fournisseur (`sessionProvider` peut être null).
-    - Utilisateurs sans mot de passe (sso Google/Entra uniquement).
-  - **Dépendances** :
-    - `../identity.js` : Pour extraction d’identité des en-têtes.
-    - `./cookies.js` : Pour lecture du token de session via cookie.
-    - `./sessions.js` : Pour les vérifications/rafraîchissements/détructions de sessions actives.
+- Résout l’identité d’une requête en donnant priorité à la session native, puis aux en-têtes d’identité, sauf si le marqueur `x-mybrief-auth-path: native` interdit cette dernière voie.
+- Exports :
+  - `NATIVE_PATH_HEADER` — nom de l’en-tête qui force le mode natif.
+  - `authModeOf(user)` — retourne `oidc`, `password` ou `sso`, selon la source et le compte ; sans effet de bord.
+  - `authProviderOf(user)` — retourne `oidc`, `password`, `google`, `entra` ou `sso`. Utilise d’abord le fournisseur enregistré sur la session, puis les informations du compte ; sans effet de bord.
+  - `resolveIdentity({ req, users, sessions })` — retourne une promesse de `{ user, sessionInvalid }`. Résout une session ou une identité issue des en-têtes. Effets de bord : touche une session valide ; détruit toutes les sessions d’un compte supprimé ou désactivé.
+- Points d’attention :
+  - Le marqueur `native` fait ignorer les en-têtes d’identité, mais une session native valide reste prioritaire.
+  - Un cookie présent mais invalide, expiré ou associé à un compte supprimé/désactivé renvoie `sessionInvalid: true`, afin que le cookie soit purgé.
+  - Le Bearer mobile n’est pas lu ici : le ForwardAuth le consomme et fournit les en-têtes.
+  - Dépend de `identityFromHeaders`, `readSessionToken` et `SESSION_PROVIDERS`, ainsi que des méthodes `sessions.resolve`, `sessions.touch`, `sessions.destroyAllFor`, `users.findByEmailLower` et `users.findByEmail`.
+  - Sans document utilisateur, une identité par en-têtes reste de rôle `user` ; un compte désactivé est refusé.
 
 ### services/api/lib/auth/safeNext.js
 
@@ -1140,32 +791,15 @@
 
 ### services/api/lib/authPlugin.js
 
-- **Rôle du fichier :**
-  - Met en place le mécanisme d'authentification sur toutes les routes `/api` dans une instance Fastify.
-  - Affecte `req.user` à chaque requête, en ajoutant un verrou côté serveur obligeant le changement de mot de passe si nécessaire.
-
-- **Fonctions exportées :**
-  - **Export par défaut : `authPlugin(api)`**
-    - **Paramètres :**
-      - `api` : instance Fastify enrichie (doit exposer `.users`, `.sessions`, `.config.cookieSecure`)
-    - **Retour :** `void`
-    - **Effets de bord notables :**
-      - Ajoute les décorateurs `user` et `identityResolved` à chaque requête (`req`).
-      - Ajoute deux hooks `onRequest` :
-        - Résolution d'identité (définit `req.user`, purge le cookie de session si session invalide).
-        - Blocage de l'accès à toute l'API (hors `/api/auth` et chemins exemptés) si l'utilisateur doit changer son mot de passe, avec retour HTTP 428.
-  
-- **Points d'attention :**
-  - **Edge cases / comportements particuliers :**
-    - Exemption de certaines routes (`/api/ping`, `/api/init`, `/api/auth/*`) du verrou de changement de mot de passe.
-    - Utilisation d'un code HTTP 428 (et non 401/403) pour éviter la déconnexion automatique côté front.
-    - Nettoyage explicite du cookie de session lors d'une session invalide.
-    - L'ordre des hooks d'authPlugin est important pour que la résolution d'identité précède la vérification du verrou.
-  - **Dépendances :**
-    - `resolveIdentity` (résolution de l'utilisateur à partir de la requête)
-    - `clearSessionCookie` (suppression du cookie de session)
-    - `fail` (émission d'une erreur avec code HTTP)
-    - Le fichier n'utilise pas `fastify-plugin` pour simplifier l'intégration et limiter la portée des décorateurs/hooks au périmètre `/api`.
+- Configure l’authentification dans le périmètre Fastify `/api` : décore les requêtes avec `req.user` et ajoute deux hooks `onRequest`.
+- **Export : `authPlugin(api)`**
+  - Paramètre : `api`, l’instance Fastify configurée avec `users`, `sessions` et `config`.
+  - Retour : aucun résultat explicite.
+  - Effets de bord : décore `req.user`, résout l’identité à chaque requête et, si la session est invalide, efface le cookie de session. Bloque ensuite les comptes avec `mustChangePassword` par une réponse `428 password_change_required`, sauf sur `/api/auth…`, `/api/ping` et `/api/init`.
+- **Points d’attention :**
+  - `pathOf` privilégie `req.routeOptions.url`, sinon retire la query string de `req.url` pour déterminer les exceptions.
+  - Le verrou renvoie `428`, et non `401` ou `403`, afin d’éviter que le frontend traite la réponse comme une perte de session.
+  - Dépend de `resolveIdentity`, `clearSessionCookie` et `fail`, ainsi que des propriétés `api.users`, `api.sessions` et `api.config.cookieSecure`.
 
 ### services/api/lib/background.js
 
@@ -1198,181 +832,67 @@
 
 ### services/api/lib/bootstrap.js
 
-- **Rôle du fichier**
-  - Initialise et prépare la base de données lors du démarrage de l'API.
-  - Effectue la création/mise à jour d'index MongoDB, migrations de données, contrôle/mise en place de l’administration, backfill de champs historiques, etc.
-  - Toutes les opérations sont idempotentes : le script peut s’exécuter à chaque démarrage sans effet secondaire indésirable.
-  - Centralise la logique qui était autrefois dispersée (ex : index dans `server.js`).
-
-- **Fonctions exportées**
-
-  - `async function dedupeMailAccounts(db, log)`
-    - **Paramètres** : `db` (DB mongo), `log` (logger)
-    - **Retour** : `Promise<number>` (nombre de doublons supprimés)
-    - **Effets** : Supprime les doublons dans `userMailAccounts` avant création de l’index unique.
-    - **Remarques** : Empêche la création de l’index d’échouer (fail-fast).
-
-  - `async function migrateMailAccountsToConnections(db, log)`
-    - **Paramètres** : `db`, `log`
-    - **Retour** : `Promise<number>` (nombre de comptes migrés)
-    - **Effets** : Migre les anciennes connexions Google Mail vers la collection unifiée `userConnections`.
-    - **Remarques** : Ne modifie rien si la migration a déjà eu lieu.
-
-  - `async function migrateBusinessContextToOrgContext(db, log)`
-    - **Paramètres** : `db`, `log`
-    - **Retour** : `Promise<boolean>` (true si migration effectuée)
-    - **Effets** : Transfère le contexte métier vers `orgContext` si absent.
-    - **Remarques** : Ne s’exécute qu’une fois, migration non bloquante en cas d’erreur.
-
-  - `async function warnDuplicateEmails(db, log)`
-    - **Paramètres** : `db`, `log`
-    - **Retour** : `Promise<number>` (nombre de doublons détectés)
-    - **Effets** : Log les cas de doublons d’emails (même adresse ou même adresse à la casse près).
-    - **Remarques** : Laisse l’opérateur humain décider (aucune fusion automatique).
-
-  - `async function seedAdmin(db, { email, password, enabled }, log)`
-    - **Paramètres** : `db`, `{ email, password, enabled }`, `log`
-    - **Retour** : `Promise<object>` (contenant `created: boolean` et raison si pas créé)
-    - **Effets** : Crée ou complète un compte administrateur d’amorçage selon la situation (voir JSDoc).
-    - **Remarques** : Ne crée pas ce compte si la base contient déjà des comptes utilisateurs.
-
-  - `async function bootstrap(db, config, log, env)`
-    - **Paramètres** : `db` (mongo), `config` (struct voir JSDoc), `log` (logger), `env` (object env)
-    - **Retour** : `Promise<void>`
-    - **Effets** : Orchestration : exécute toutes les étapes d’amorçage & migration ci-dessus, ainsi que la promotion des administrateurs via emails ou domaines.
-    - **Remarques** : C’est la fonction principale à appeler lors du boot de l’API.
-
-- **Points d’attention**
-  - **Déclenchement des erreurs** :
-    - `ensureIndexes` est fail-fast : un échec sur un index fait échouer tout le bootstrap.
-    - La plupart des migrations/backfills loggent mais ne provoquent pas d'arrêt, sauf index.
-  - **Préexistence/doublons** :
-    - Certains backfills font les records un par un pour ne pas bloquer sur un doublon (ex : `backfillEmailLower`).
-    - Les cas de doublons d’adresses mails (même adresse, ou casse différente) sont signalés mais jamais corrigés automatiquement : nécessite une intervention manuelle.
-  - **Migration d’administrateurs** :
-    - Plusieurs stratégies sont gérées : compte d’amorçage (`seedAdmin`), promotion explicite par email (`ADMIN_EMAILS`), promotion par domaine (`ADMIN_EMAIL_DOMAINS`).
-    - Le compte d’amorçage est bloqué si la base n’est pas vierge.
-  - **Dépendances notables** :
-    - Nombreux imports internes : manipulation des users, settings, logs mails, scopes, etc.
-    - Dépend fortement de la structure de la base Mongo (collections, nomenclature des champs).
-    - Nécessite un niveau Mongo >= 4.2 pour certains backfills pipelines.
-  - **Idempotence** :
+- **Rôle** : prépare la base avant l’écoute de l’API. À chaque démarrage, crée les index et exécute des reprises de données idempotentes, initialise les réglages et prépare les comptes et groupes administrateurs.
+- **Fonctions exportées** :
+  - `bootstrap(db, config, log = noopLogger, env = {})` — `db` : base MongoDB ; `config` : configuration des comptes et domaines administrateurs ; `log` : logger facultatif ; `env` : variables d’environnement. Retourne une `Promise<void>`. Orchestre les opérations dans un ordre déterminé ; la création des index échoue en faisant remonter l’erreur.
+  - `dedupeMailAccounts(db, log)` — retourne une `Promise<number>` (documents supprimés) ; conserve la connexion mail la plus récente par `emailLower`, supprime les doublons et journalise sans bloquer en cas d’erreur.
+  - `migrateMailAccountsToConnections(db, log)` — retourne une `Promise<number>` (connexions reprises) ; copie les connexions mail historiques vers `userConnections`, sans supprimer la collection source. Erreurs non bloquantes.
+  - `migrateBusinessContextToOrgContext(db, log)` — retourne une `Promise<boolean>` indiquant si le contexte a été repris. Ne modifie pas `orgContext` s’il existe déjà ; erreurs non bloquantes.
+  - `resetDetectionSensitivity(db, log, value)` — retourne une `Promise<number>` (comptes modifiés). Applique une valeur autorisée une seule fois par valeur témoin, aux comptes ayant déjà une sensibilité ; valeur vide ou invalide : aucune modification.
+  - `removeAddresslessUsers(db, log)` — retourne une `Promise<number>` (comptes supprimés). Supprime les comptes sans adresse normalisable, sauf si cela viderait la collection `user` ; ne purge pas leurs données métier.
+  - `warnDuplicateEmails(db, log)` — retourne une `Promise<number>` (groupes d’adresses en doublon). Journalise les doublons sans les supprimer ; erreurs non bloquantes.
+  - `seedGroups(db, log)` — retourne une `Promise<{created, adminCreated, admins, reduced, backfilled}>`. Crée les groupes requis, réduit les appartenances multiples et inscrit les comptes sans groupe dans le groupe par défaut ; erreurs non bloquantes.
+  - `backfillEmailLower(db, log)` — retourne une `Promise<number>` (comptes mis à jour). Normalise les adresses historiques une par une ; les doublons ne bloquent pas les autres comptes.
+  - `seedAdmin(db, { email, password, enabled = true }, log = noopLogger)` — retourne une `Promise` avec le résultat (`created` ou `reason`). Crée le compte d’amorçage uniquement sur une base vierge, ou ajoute un mot de passe à un compte existant sans mot de passe ; mot de passe minimal : 12 caractères. Peut lever une erreur si le premier administrateur ne peut pas être créé.
+- **Autres exports** : `DETECTION_SENSITIVITY_RESET_KEY`, clé témoin stockée dans `appSettings`.
+- **Points d’attention** :
+  - `ensureIndexes` et plusieurs backfills sont privés au module. L’index unique partiel `user.emailLower` exclut les documents sans chaîne ; les collisions peuvent faire échouer le backfill d’un document. Une erreur de création d’index est fatale au démarrage.
+  - L’ordre de `bootstrap` est important : déduplication avant index unique, reprises avant migrations ou initialisations dépendantes, promotions avant préparation des groupes.
+  - Les reprises des durées et versions sont plafonnées à 500 documents par démarrage. Les durées sans source trouvée sont marquées `unknown`.
+  - Les migrations et initialisations s’appuient sur MongoDB (index TTL, agrégations et pipelines de mise à jour) et sur les modules importés : dépôts utilisateurs, groupes et réglages, authentification, quotas, actions et outils de migration.
 
 ### services/api/lib/config.js
 
-- **Rôle du fichier :**
-  - Centralise la lecture et la validation de la configuration applicative, basée sur les variables d’environnement.
-  - Permet l’injection de valeurs pour les tests sans manipuler `process.env`.
-  - Sert de source unique pour connaître les paramètres configurables en production.
-
-- **Fonctions exportées :**
-  - `loadConfig(env = process.env)`
-    - **Paramètre :**  
-      - `env` : objet (`Record<string, string|undefined>`) représentant les variables d’environnement (par défaut : `process.env`)
-    - **Retour :**  
-      - Objet de configuration structurée contenant : connexions Mongo, port, SMTP, rate-limits, paramètres session, options d’authentification, OpenAI, etc.
-    - **Effet de bord notable :**  
-      - Aucun (fonction pure, ne modifie pas d’état externe).
-
-- **Autres fonctions internes :**
-  - `bool(value, fallback)`
-    - **Usage :** Convertit une valeur d’environnement en booléen, avec prise en charge des alias courants ("0", "false", "no", "off").
-  - `int(value, fallback)`
-    - **Usage :** Convertit une valeur d’environnement en entier positif, sinon retourne la valeur de repli.
-
-- **Points d’attention :**
-  - **Edge cases :**
-    - La plupart des valeurs (notamment mongoUrl, smtp.host, openai.apiKey…) peuvent être vides ou non définies, ce qui désactive certains modules (ex : mailer désactivé si SMTP_HOST absent).
-    - Certains traitements appliquent des valeurs par défaut strictes (ex : ports, TTLs, modèles IA).
-    - Les modèles OpenAI définis dans l’environnement ne sont que des amorçages qui peuvent être écrasés à runtime dans l’application.
-    - Pour les tests, surcharger l’objet de config via `env` permet de simuler tous les cas de figures (mauvaise configuration, désactivation…).
-    - Les listes d’administrateurs (emails, domaines) acceptent des chaînes vides ou malformées (espaces, virgule à la fin).
-    - `mobile.jwtSecret` vide (<32 caractères) désactive totalement la feature d’auth mobile (réponse 503).
-  - **Dépendances/imports :**
-    - Aucune dépendance externe directe dans ce fichier ; utilisé et validé par d’autres modules (ex : `server.js`, `lib/mailer.js`, `lib/crypto/secretBox.js`, etc).
-    - La cohérence de certaines valeurs reste de la responsabilité du module appelant (ex : validation d’un mongoUrl valide).
-    - La structure et les noms de certains objets sont attendus ailleurs dans le codebase (`config.rateLimits.*`, `config.openai.models.*`).  
-  - **Remarque :**
-    - Modifications dans les clés d’environnement ou la structure retournée doivent être synchronisées à toutes les utilisations du repo.
+- Centralise la configuration de l’API à partir de l’environnement ; `loadConfig` accepte aussi un objet injecté, notamment pour les tests, sans modifier `process.env`.
+- Fonctions exportées :
+  - `bool(value, fallback)` — convertit une valeur en booléen : `undefined` ou chaîne vide renvoie `fallback` ; `0`, `false`, `no` et `off` (sans distinction de casse) renvoient `false` ; toute autre valeur renvoie `true`. Aucun effet de bord.
+  - `loadConfig(env = process.env)` — prend un objet d’environnement et renvoie un objet de configuration pour MongoDB, SMTP, limites de débit, sessions, authentification, mobile et OpenAI. Ne modifie pas l’environnement.
+- Points d’attention :
+  - Les valeurs numériques positives sont analysées par une fonction interne ; les valeurs absentes, invalides ou non positives prennent le défaut. `OPENAI_SUMMARY_TIMEOUT_MS` utilise toutefois `Number(...) || 300_000`.
+  - `feedbackUrl` et `docsUrl` n’acceptent que les URL commençant par `http://` ou `https://`. `appPublicUrl` retire les `/` finaux.
+  - `adminEmails` et `adminEmailDomains` sont séparés par des virgules et nettoyés ; les domaines sont aussi convertis en minuscules et privés d’un `@` initial.
+  - Une `CONNECTIONS_ENC_KEY` vide implique le stockage des jetons en clair. Un secret JWT mobile vide désactive les fonctionnalités mobiles concernées.
+  - Les limites de débit et `recordMaxInFlight` sont des constantes, non configurables par l’environnement ; elles peuvent être surchargées par `configOverride`.
+  - Dépend de `process.env` par défaut ; les valeurs produites sont consommées notamment par `server.js`, `lib/mailer.js`, `lib/crypto/secretBox.js` et les modules d’authentification et OpenAI.
 
 ### services/api/lib/connections/access.js
 
-- **Rôle du fichier**
-  - Centralise la logique d'accès au stockage utilisateur via fournisseur (Google Drive, OneDrive, etc.).
-  - Vérifie la connexion, les scopes OAuth, et récupère les identifiants nécessaires à l'accès au stockage selon le fournisseur choisi pour l'organisation.
-
-- **Fonction exportée**
-  - `resolveStorageAccess(app, { user, providerId, requireBrowse = false })`
-    - **Paramètres :**
-      - `app` : instance Fastify (contenant les connexions et settings)
-      - `user` : objet utilisateur (doit contenir `emailLower`)
-      - `providerId` : identifiant du fournisseur de stockage souhaité (ex. 'google', 'microsoft')
-      - `requireBrowse` (facultatif, booléen) : exige que la connexion ait des scopes de navigation/lecture (par défaut `false`)
-    - **Retour :**
-      - Promesse résolue par :
-        - `{ provider, providerId, connection, credentials }` : tous les éléments nécessaires pour interagir avec le stockage
-        - Ou `{ error, status, extra? }` : objet d’erreur détaillant le type de blocage détecté
-    - **Effets de bord notables :**
-      - Effectue des accès asynchrones à la base (connexions utilisateur, settings globaux)
-      - Peut révéler la liste des scopes acquis par un utilisateur pour un provider
-
-- **Points d'attention**
-  - **Gestion des cas d’erreur** : renvoie des erreurs spécifiques selon le point de blocage (`storage_not_configured`, `storage_not_connected`, `storage_scope_missing`, `browse_scope_missing`)
-  - **Scopes OAuth** : vérifie la présence des scopes nécessaires pour l’écriture et, optionnellement, pour la navigation du drive ; supporte plusieurs variantes de scopes pour compatibilité rétroactive
-  - **Dépendances** :
-    - `CONNECT_PROVIDERS` et `connectionCredentials` depuis `./providers.js` ; dépend des descriptions de providers et de leur configuration OAuth
-    - Nécessite que la méthode `app.connections.getByProvider` et `app.settings.get` soient disponibles et opérationnelles
-  - **Edge cases** :
-    - Connexion existante mais pas pour le bon provider → erreur
-    - Connexion sans tous les scopes requis (rétrocompatibilité scopes anciens/nouveaux) → erreur adaptée
-    - Renvoyé objet d’erreur si données manquantes ou invalides à n’importe quelle étape
+- Centralise la validation des prérequis d’accès au stockage : fournisseur configuré, connexion correspondante, scopes requis et identifiants OAuth du déploiement.
+- Exporte `resolveStorageAccess(app, { user, providerId, requireBrowse = false })` — fonction asynchrone.
+  - Retourne `{ provider, providerId, connection, credentials }` si l’accès est prêt, sinon `{ error, status, extra? }`.
+  - Effet de bord notable : lit la connexion via `app.connections.getByProvider(...)` et la configuration via `app.settings.get()` ; ne modifie pas de données.
+- Points d’attention :
+  - La connexion doit correspondre au `providerId` actif, pas à un autre fournisseur relié précédemment.
+  - Les erreurs distinguent stockage non configuré, connexion absente, scope d’écriture manquant et scope de navigation manquant ; elles ont toutes le statut `501`.
+  - La navigation n’est vérifiée que si `requireBrowse` est vrai et que `provider.browseScopes` est non vide. N’importe quel scope de cette liste suffit.
+  - Utilise `hasScope` et `hasAnyScope` de `./providers.js` pour tenir compte des formats de scopes, notamment ceux d’Entra ; dépend aussi de `CONNECT_PROVIDERS` et `connectionCredentials` du même module.
 
 ### services/api/lib/connections/browse.js
 
-- **Rôle du fichier :**
-  - Fournit une abstraction de navigation dans l’arborescence de stockage distant (Google Drive, Microsoft Graph) pour la sélection de dossiers.
-  - Présente un point d’entrée unique pour interroger/lister les dossiers, sans exposer les particularités des fournisseurs à l’extérieur.
-  - Retourne des chemins de dossiers (ex : « Clients/Acme ») et NON des identifiants, garantissant ainsi la compatibilité avec la logique historique du dépôt.
-
+- **Rôle :** fournit une interface unifiée de navigation dans les stockages Google Drive et Microsoft Graph. Les curseurs restent opaques côté client ; les chemins retournés sont compatibles avec `storage.folder`.
 - **Fonctions exportées :**
-  - `joinPath(segments:Array<string>): string`
-    - Joint proprement les segments d’un chemin en utilisant le séparateur « / ».
-    - Filtre les segments falsy ou vides.
-    - **Effet de bord :** Aucun.
-  - `createDriveBrowser(): {drives, list, pathOf, create}`
-    - Retourne un ensemble de fonctions asynchrones adaptées au fournisseur (`provider`: 'google' ou 'microsoft'), avec interface suivante :
-      - `drives({credentials, connection, fetchImpl})`
-        - Liste les espaces de stockage de l’utilisateur (Drives/racines).
-        - Pour Google, peut inclure ou non les Drives partagés selon les scopes consentis.
-        - **Retourne**: Promise<Array<{id, name, site?}>>
-        - **Effet de bord** : Renouvelle les tokens d’accès si nécessaire.
-      - `list({credentials, connection, driveId, cursor, search?, pageToken?, fetchImpl})`
-        - Liste les sous-dossiers depuis un point (cursor = id ou chemin selon provider).
-        - **Retourne**: Promise<{folders: Array<{name, cursor}>, nextPageToken?}>
-          - Exclut les dossiers dont le nom contient "/" (voir ci-dessous).
-        - **Effet de bord** : Renouvelle les tokens d’accès si nécessaire.
-      - `pathOf({credentials, connection, driveId, cursor, fetchImpl})`
-        - Retourne le chemin absolu pour un dossier cible, utile après recherche (notamment côté Google).
-        - **Retourne**: Promise<string>
-        - **Effet de bord :** Renouvelle les tokens d’accès si nécessaire.
-      - `create({credentials, connection, driveId, cursor, name, fetchImpl})`
-        - Crée un sous-dossier dans l’arborescence courante.
-        - **Retourne**: Promise<{name, cursor}>
-        - **Effet de bord** : Renouvelle les tokens d’accès si nécessaire, appel distant.
-    - **Effet de bord notables** : gestion des tokens d’accès (appel à `refreshGoogleAccessToken` et `refreshGraphAccessToken`).
-
-- **Points d’attention / Edge cases / Dépendances :**
-  - Les dossiers contenant un « / » dans leur nom sont systématiquement filtrés (voir la fonction `addressable`) car l’aller-retour via un chemin sera ambigu ou produira une structure différente.
-  - Différences de curseur :
-    - **Google** : le curseur est un identifiant opaque (id de dossier).
-    - **Microsoft Graph** : le curseur est un chemin (« / » séparé).
-  - Selon les scopes OAuth octroyés à la connexion, certains espaces de stockage peuvent être invisibles (par exemple, absence de Drives partagés Google ou sites SharePoint Microsoft).
-  - **Dépendances externes :**
-    - Accès à Google Drive : `./googleDrive.js`, `./googleTokens.js`
-    - Accès à Microsoft Graph : `./msGraph.js`, `./providers.js`
-  - L’interface attend que le `provider` soit validé en amont ; une absence d’implémentation lance une erreur explicite.
-  - Token d’accès toujours rafraîchi avant toute requête, ce qui peut augmenter la latence d’appel.
-  - **Usage historique du chemin** : toute l’application manipule des chemins utilisateur, le stockage et le cache restent donc indépendants de la source du chemin (navigation ou saisie manuelle).
+  - `joinPath(segments)` — assemble des segments en chemin, après conversion en chaînes et suppression des valeurs vides. Retourne une chaîne ; aucun effet de bord.
+  - `createDriveBrowser()` — crée une façade injectable exposant les méthodes ci-dessous. Aucun effet de bord à la création ; chaque appel délègue au fournisseur indiqué dans `provider`. Un fournisseur sans implémentation déclenche `storage_provider_unsupported_<provider>`.
+    - `drives({ provider, credentials, connection, fetchImpl })` — retourne les espaces de stockage disponibles. Google inclut « Mon Drive » et, si le scope requis est présent, les Drive partagés ; Microsoft délègue à Graph. Rafraîchit un jeton d’accès et effectue des appels réseau.
+    - `list({ provider, credentials, connection, driveId, cursor, search, pageToken, fetchImpl })` — retourne `{ folders, nextPageToken }`, avec des dossiers `{ name, cursor }`. Effectue des appels réseau ; les dossiers dont le nom contient `/` sont exclus car ils ne sont pas adressables par chemin.
+    - `pathOf({ provider, credentials, connection, driveId, cursor, fetchImpl })` — retourne le chemin d’un dossier. Pour Google, résout les segments via l’API ; pour Microsoft, le curseur est déjà le chemin. Peut rafraîchir un jeton et effectuer des appels réseau.
+    - `create({ provider, credentials, connection, driveId, cursor, name, fetchImpl })` — crée ou garantit l’existence d’un sous-dossier et retourne `{ name, cursor }`. Effet de bord : création possible dans le stockage distant ; rafraîchit un jeton.
+    - `probe({ provider, credentials, connection, targets, fetchImpl })` — retourne un verdict par destination (`unknown` en cas d’échec non lié à l’authentification). Rafraîchit un seul jeton puis sonde les chemins en parallèle, par groupes de quatre ; ne crée rien. Une `ConnectionAuthError` interrompt l’ensemble.
+- **Points d’attention :**
+  - Google utilise des curseurs d’identifiant ; Microsoft utilise des chemins. Pour Google, l’identifiant vide désigne « Mon Drive ».
+  - La recherche Microsoft porte sur tout le drive, indépendamment du curseur courant. Les résultats de recherche fournissent un curseur correspondant à leur chemin absolu.
+  - Les dépendances réseau et les rafraîchisseurs de jetons sont injectables via `fetchImpl`. La navigation dépend de `googleDrive`, `msGraph`, `googleTokens`, `providers` et `ConnectionAuthError`.
+  - Sans le scope Google des Drive partagés, `drives()` retourne uniquement « Mon Drive » ; ce n’est pas une erreur.
 
 ### services/api/lib/connections/errors.js
 
@@ -1397,75 +917,23 @@
 
 ### services/api/lib/connections/googleDrive.js
 
-- **Rôle du fichier** :
-  - Fournit les fonctions de connexion et d’interaction avec Google Drive pour déposer des documents depuis l’application, sans utiliser le SDK Google (utilisation directe des API REST pour plus de légèreté).
-  - Gère la navigation dans l’arborescence des Drives/partages, la création et la résolution de dossiers, et l’upload de fichiers via une session "resumable".
-
-- **Fonctions exportées** :
-
-  - `DEFAULT_FOLDER`
-    - **Description** : Nom du dossier par défaut ("myBrief") si aucun chemin n'est fourni.
-    - **Effet de bord** : Aucun.
-
-  - `folderSegments(folderPath)`
-    - **Paramètres** : `folderPath: string`
-    - **Retour** : `string[]` - segments du chemin ou [DEFAULT_FOLDER] si vide.
-    - **Effet de bord** : Aucun.
-    - **Remarque** : Jamais la racine du Drive.
-
-  - `listSharedDrives({ accessToken, fetchImpl, pageSize })`
-    - **Paramètres** :
-      - `accessToken: string`
-      - `fetchImpl: Function` (optionnel, défaut : fetch)
-      - `pageSize: number` (optionnel)
-    - **Retour** : `Promise<Array<{id, name, site}>>` — Drives partagés accessibles en écriture.
-    - **Effet de bord** : Aucun.
-    - **Remarque** : Exige `drive.readonly`. Ne retient que ceux où l’utilisateur peut déposer.
-
-  - `listFolders({ accessToken, driveId, parentId, search, pageToken, pageSize, fetchImpl })`
-    - **Paramètres** :
-      - Identifiants du Drive/dossier, critères de recherche, pagination, fetch personnalisé
-    - **Retour** : `Promise<{folders: Array<{id, name}>, nextPageToken: string}>`
-    - **Effet de bord** : Aucun.
-    - **Remarque** : N'affiche que les dossiers, selon le parent ou la recherche.
-
-  - `folderPathSegments({ accessToken, folderId, driveId, fetchImpl, maxDepth })`
-    - **Paramètres** : Identifiants de dossier/drive, fetch, profondeur maximale du path
-    - **Retour** : `Promise<string[]>` - segments du chemin depuis la racine
-    - **Effet de bord** : Aucun.
-
-  - `ensureChildFolder({ accessToken, driveId, parentId, name, fetchImpl })`
-    - **Paramètres** : Identifiants parent/drive, nom du dossier, fetch optionnel
-    - **Retour** : `Promise<{id, name, created: boolean}>`
-    - **Effet de bord** : Crée le dossier sous le parent s'il n’existe pas.
-
-  - `ensureFolderPath({ accessToken, folderPath, driveId, fetchImpl })`
-    - **Paramètres** : Chemin du dossier, fetch
-    - **Retour** : `Promise<string>` (id du dossier le plus profond, créé si besoin)
-    - **Effet de bord** : Crée chaque segment du path s’il n’existe pas.
-
-  - `uploadToFolder({ accessToken, folderId, filename, content, contentType, fetchImpl })`
-    - **Paramètres** : Id du dossier, nom de fichier, Buffer du contenu, type MIME, fetch
-    - **Retour** : `Promise<{id, name}>`
-    - **Effet de bord** : Upload le fichier dans le dossier via session "resumable".
-
-  - `storeOnDrive({ credentials, connection, folderPath, driveId, file, fetchImpl })`
-    - **Paramètres** :
-      - `credentials: {clientId, clientSecret}`
-      - `connection: {refreshToken, drive}`
-      - `folderPath: string` (chemin souhaité)
-      - `driveId: string` (optionnel)
-      - `file: {filename, content, contentType}`
-      - `fetchImpl: Function` (optionnel)
-    - **Retour** :
-      `Promise<{fileId, folderId, folderPath, resolvedPath, driveId, cacheUsed}>`
-    - **Effet de bord** : Dépose un fichier sur le Drive en créant le chemin si nécessaire. Utilise/réactualise un cache d’id de dossier pour éviter les requêtes superflues.
-
----
-
-- **Points d’attention / Edge Cases** :
-    - SCOPE : Code prévu pour le scope "drive.file" (accès restreint aux fichiers créés par l'app) ⇒ la visibilité des dossiers/fichiers est limitée (risque d’homonymes non visibles).
-    - Le dépôt dans des Drives partagés requiert des paramètres
+- Fournit l’accès à Google Drive sans SDK : navigation des dossiers, résolution/création du dossier cible et dépôt de fichiers via l’API REST.
+- Fonctions exportées :
+  - `folderSegments(folderPath)` — transforme un chemin en segments nettoyés ; utilise `DEFAULT_FOLDER` (`myBrief`) si le chemin est vide. Aucun effet de bord.
+  - `listSharedDrives({ accessToken, fetchImpl = fetch, pageSize = 100 })` — retourne les Drive partagés où l’utilisateur peut ajouter des éléments (`id`, `name`, `site`). Appelle `drives.list`, avec au plus cinq pages.
+  - `listFolders({ accessToken, driveId = '', parentId = '', search = '', pageToken = '', pageSize = 100, fetchImpl = fetch })` — retourne `{ folders, nextPageToken }`. En mode recherche, cherche dans tout le Drive et ignore `parentId`.
+  - `folderPathSegments({ accessToken, folderId, driveId = '', fetchImpl = fetch, maxDepth = 12 })` — remonte les noms de dossiers jusqu’à la racine du Drive et retourne les segments du chemin. Une erreur autre qu’un accès révoqué interrompt la remontée et donne un chemin partiel.
+  - `ensureChildFolder({ accessToken, driveId = '', parentId = '', name, fetchImpl = fetch })` — retrouve ou crée un sous-dossier ; retourne ses données avec `created` (`false` si trouvé, `true` si créé). Effet de bord : création éventuelle dans Drive.
+  - `ensureFolderPath({ accessToken, folderPath, driveId = '', fetchImpl = fetch })` — résout ou crée le chemin segment par segment ; retourne l’identifiant du dossier final. Effet de bord : création éventuelle des dossiers manquants.
+  - `probeFolderPath({ accessToken, folderPath, driveId = '', fetchImpl = fetch })` — vérifie sans créer le chemin ; retourne `found`, `missing`, `drive_missing` ou `unknown`. Un 401 lève `ConnectionAuthError`.
+  - `uploadToFolder({ accessToken, folderId, filename, content, contentType = 'application/pdf', fetchImpl = fetch })` — crée une session d’upload résumable, envoie les octets et retourne la réponse de création du fichier. Effet de bord : dépôt du fichier dans Drive.
+  - `storeOnDrive({ credentials, connection, folderPath, driveId = '', file, fetchImpl = fetch })` — renouvelle le jeton, résout le dossier, puis dépose le fichier ; retourne `fileId`, `folderId`, `folderPath`, `resolvedPath`, `driveId` et `cacheUsed`. Peut créer des dossiers et un fichier ; réessaie une fois la résolution si le dossier en cache renvoie un 404.
+- Points d’attention :
+  - `drive.file` ne donne accès qu’aux éléments créés par l’application : un dossier homonyme créé manuellement peut être invisible et un doublon sera créé.
+  - La navigation requiert `drive.metadata.readonly` ; `listSharedDrives` requiert `drive.readonly`. Les Drive partagés en lecture seule sont exclus.
+  - `driveId` participe à la recherche et à la clé du cache : il ne faut pas réutiliser un dossier d’un autre Drive. `''` désigne « Mon Drive ».
+  - Les appels REST utilisent `fetch` injectable et des délais d’expiration. Un 401 devient `ConnectionAuthError` ; les autres erreurs d’API lèvent une erreur, sauf dans `probeFolderPath`, qui renvoie `unknown` pour les statuts non traités.
+  - L’upload est toujours résumable ; l’URL de session porte l’autorisation pour le `PUT`.
 
 ### services/api/lib/connections/googleTokens.js
 
@@ -1497,111 +965,40 @@
 
 ### services/api/lib/connections/msGraph.js
 
-- **Rôle du fichier**
-  - Implémente des interactions directes avec l’API REST Microsoft Graph pour envoyer des e-mails et déposer des fichiers (OneDrive/SharePoint), au nom d’utilisateurs ayant relié leur compte Microsoft.
-  - Gère l’authentification OAuth2, la navigation dans les drives et dossiers, la gestion des pièces jointes, en évitant l’ajout de dépendances lourdes (pas de SDK MS).
-
-- **Fonctions exportées**
-  - `refreshGraphAccessToken({ credentials, refreshToken, fetchImpl })`
-    - **Paramètres** : `{credentials: {clientId, clientSecret, discoveryUrl?}, refreshToken, fetchImpl?}`
-    - **Retour** : `Promise<string>` (access token Microsoft Graph)
-    - **Effets de bord** : jette une `ConnectionAuthError` si le refresh token n’est plus valide/autorisé.
-  
-  - `listDrives({ accessToken, fetchImpl })`
-    - **Paramètres** : `{ accessToken, fetchImpl? }`
-    - **Retour** : `Promise<Array<{id: string, name: string, site: string}>>` (OneDrive de l’utilisateur + bibliothèques SharePoint "suivies")
-    - **Effets de bord** : jette `ConnectionAuthError` si le token est révoqué.
-    - **Spécificité** : si la permission manque pour SharePoint, ne retourne que le OneDrive.
-
-  - `listFolders({ accessToken, driveId, folderPath, pageToken, fetchImpl })`
-    - **Paramètres** : `{ accessToken, driveId?, folderPath?, pageToken?, fetchImpl? }`
-    - **Retour** : `Promise<{folders: Array<{name: string}>, nextPageToken: string}>`
-    - **Effets de bord** : jette `ConnectionAuthError` en cas d’accès révoqué.
-
-  - `ensureChildFolder({ accessToken, driveId, folderPath, name, fetchImpl })`
-    - **Paramètres** : `{ accessToken, driveId?, folderPath?, name, fetchImpl? }`
-    - **Retour** : `Promise<{ name: string }>`
-    - **Effets de bord** : crée le dossier enfant demandé et ses parents si besoin.
-
-  - `ensureFolderPath({ accessToken, folderPath, driveId, fetchImpl, defaultFolder })`
-    - **Paramètres** : `{ accessToken, folderPath, driveId?, fetchImpl?, defaultFolder? }`
-    - **Retour** : `Promise<string>` (id du dossier cible, créé si absent)
-    - **Effets de bord** : création récursive si sous-arborescence manquante. Gère le conflit de création (409) via une nouvelle lecture.
-
-  - `sendViaGraph({ credentials, refreshToken, to, cc, replyTo, subject, html, attachments, fetchImpl })`
-    - **Paramètres** : `{credentials, refreshToken, to, cc?, replyTo?, subject, html, attachments?, fetchImpl?}`
-    - **Retour** : `Promise<void>`
-    - **Effets de bord** :  
-      - Jette `ConnectionAuthError` en cas de révocation d’accès.
-      - Envoie un mail depuis la boîte liée :
-        - Envoi simple, envoi avec pièce jointe inline (<3 Mo), ou création de brouillon puis upload séquencé et envoi (pièce jointe > 3 Mo).
-
-  - `storeOnOneDrive({ credentials, connection, folderPath, driveId, file, fetchImpl })`
-    - **Paramètres** : `{ credentials, connection, folderPath, driveId?, file, fetchImpl? }`
-    - **Retour** : `Promise<{fileId, folderId, folderPath, resolvedPath, driveId, cacheUsed}>`
-    - **Effets de bord** :
-      - Upload chunké via upload session (jamais de PUT direct).
-      - Recréation automatique du dossier si le cache drive/folderId n’est plus valide.
-
-- **Points d’attention**
-  - **Dépendances internes** :  
-    - `withRetry` (gestion des retries),  
-    - `getEndpoints` (découverte OIDC pour endpoint token MS),  
-    - `ConnectionAuthError` (gestion fine révocation/refus MS).
-  - **Edge cases** :  
-    - Expiration ou révocation du refresh token → `ConnectionAuthError` (déconnexion requise pour l’utilisateur).
-    - Les appels au Graph sont sensibles à la validité des permissions (notamment pour SharePoint).
-    - Pagination possible sur la liste des dossiers (`nextPageToken`).
-    - Les conflits de création de dossier (409) sont gérés.
-    - L’envoi
+- **Rôle** : appels REST à Microsoft Graph pour renouveler l’accès, parcourir les drives et dossiers, envoyer des mails et déposer des fichiers. Aucun SDK Graph ou MSAL ; les URL OIDC proviennent de la découverte du tenant.
+- **Fonctions exportées** :
+  - `refreshGraphAccessToken({ credentials, refreshToken, fetchImpl? })` → `Promise<string>` : obtient un jeton d’accès via le `token_endpoint` découvert. Seul appel relancé avec `withRetry`. Les erreurs `invalid_grant`, `interaction_required` et `consent_required` lèvent `ConnectionAuthError`.
+  - `listDrives({ accessToken, fetchImpl? })` → `Promise<Array<{id, name, site}>>` : liste le OneDrive personnel et les bibliothèques des sites suivis. Une erreur non-401 sur `followedSites` laisse le OneDrive seul ; une bibliothèque inaccessible est ignorée.
+  - `listFolders({ accessToken, driveId?, folderPath?, pageToken?, fetchImpl? })` → `Promise<{folders: Array<{name}>, nextPageToken: string}>` : liste les sous-dossiers d’un chemin. Le jeton de page doit être une URL commençant par l’URL Graph v1.0.
+  - `searchFolders({ accessToken, driveId?, term, pageToken?, fetchImpl? })` → `Promise<{folders: Array<{name, parentPath}>, nextPageToken: string}>` : recherche les dossiers du drive et renvoie leur chemin parent. Les apostrophes du terme sont échappées pour OData.
+  - `probeFolderPath({ accessToken, folderPath, driveId?, fetchImpl? })` → `Promise<'found'|'missing'|'drive_missing'|'unknown'>` : vérifie un chemin sans créer de dossier. Seul un 404 permet de conclure à une absence ; les erreurs 401 lèvent `ConnectionAuthError`.
+  - `ensureChildFolder({ accessToken, driveId?, folderPath?, name, fetchImpl? })` → `Promise<{name}>` : crée le dossier enfant si nécessaire, avec création éventuelle des parents. Effet de bord : peut créer des dossiers dans Graph.
+  - `ensureFolderPath({ accessToken, folderPath, driveId?, fetchImpl?, defaultFolder? })` → `Promise<string>` : retrouve ou crée chaque segment du chemin et renvoie l’ID du dossier final. Si le chemin est vide, utilise `defaultFolder` (`myBrief` par défaut). Gère une création concurrente via relecture après 409.
+  - `sendViaGraph({ credentials, refreshToken, to, cc?, replyTo?, subject, html, attachments?, fetchImpl? })` → `Promise<void>` : envoie un mail depuis la boîte liée ; destinataires acceptés sous forme de chaîne ou de tableau. Utilise `sendMail` sans pièce jointe ou jusqu’à 3 Mio, puis un brouillon et un envoi par tranches au-delà. Seul `attachments[0]` est utilisé.
+  - `storeOnOneDrive({ credentials, connection, folderPath, driveId?, file, fetchImpl? })` → `Promise<{fileId, folderId, folderPath, resolvedPath, driveId, cacheUsed}>` : dépose le fichier via une session d’envoi fragmentée. Peut créer le dossier cible ; réessaie après un 404 si le dossier était en cache.
+- **Points d’attention** :
+  - Les fonctions acceptent `fetchImpl` injectable ; par défaut, utilisent `fetch` global et des délais `AbortSignal.timeout`.
+  - Les appels authentifiés Graph convertissent un 401 en `ConnectionAuthError`. Les 403 et 429 ne sont pas assimilés à une révocation ; les erreurs de pagination et d’opérations Graph sont levées sous forme d’`Error`.
+  - `driveId` sélectionne une bibliothèque SharePoint ; sans lui, la cible est le OneDrive personnel. Le cache de dossier tient compte du drive.
+  - Les dépôts et pièces jointes volumineux utilisent des tranches de 3,2 Mio (multiple de 320 Kio). Le fichier déposé est renommé en cas de conflit ; les dossiers créés utilisent une politique de conflit `fail`.
+  - Le chemin vide désigne le dossier par défaut lors d’un dépôt, mais un chemin vide dans `probeFolderPath` ne provoque aucune création.
 
 ### services/api/lib/connections/providers.js
 
-- **Rôle du fichier**
-  - Définit le registre des fournisseurs de comptes EXTERNES (Google, Microsoft) auxquels un utilisateur peut connecter myBrief pour accéder à ses services (Mail, Drive, etc.).
-  - Sépare explicitement la logique de connexion à des comptes tiers (actions sur des ressources) de la logique d’authentification/identité (login).
-
-- **Fonctions exportées**
-  - `connectionCredentials(provider, authSettings)`
-    - **Paramètres :**
-      - `provider` : objet d’un fournisseur dans `CONNECT_PROVIDERS`.
-      - `authSettings` : document de configuration d’authentification (incluant les secrets).
-    - **Retour :**
-      - `{clientId: string, clientSecret: string}` si trouvé/valide, `null` sinon.
-    - **Effets de bord :**
-      - Aucun.
-    - **Points d’attention :**
-      - Ignore le champ `enabled` du provider.
-      - Retourne `null` si identifiants manquants ou pas d’annuaire configuré pour Entra.
-  
-  - `effectiveProvider(configured)`
-    - **Paramètres :**
-      - `configured` : identifiant (`string`) du provider désiré (issu de la conf).
-    - **Retour :**
-      - L’objet fournisseur correspondant dans `CONNECT_PROVIDERS`. Par défaut, celui pour `google` si non défini ou inconnu.
-    - **Effets de bord :**
-      - Aucun.
-
-  - `CONNECT_PROVIDERS`
-    - Objet listant la configuration détaillée des fournisseurs compatibles (Google, Microsoft), y compris scopes, endpoints, gestion des cookies d’état, et champs spécifiques.
-    - **Usage** : pour gérer et uniformiser tous les aspects liés à la connexion d’un compte tiers.
-
-  - `CONNECT_PROVIDER_IDS`
-    - Tableau des identifiants des providers configurés dans `CONNECT_PROVIDERS`.
-
-- **Points d’attention / Edge-cases**
-  - Ne tient pas compte du flag `enabled` : permettre de connecter des comptes même si le login via ce provider est désactivé (cas d'usages différenciés).
-  - Gestion différente du cookie d’état entre Google et Microsoft pour des raisons d’intégration réseau (Traefik).
-  - Changement des scopes Google : anciennes connexions peuvent perdre certaines fonctionnalités de navigation mais restent opérationnelles (fallback prévu).
-  - Pour Microsoft, pas d’endpoint de révocation : la déconnexion consiste seulement à oublier le refresh token côté myBrief.
-  - Les endpoints, extraction d’email et annuaires sont mutualisés avec ceux définis pour l’authentification.
-  - L’évolution des scopes (Google/Microsoft) peut provoquer des dégradations silencieuses (ex : navigation limitée sur Drives sans reconnexion explicite).
-  - Certaines configurations (ex. Entra « on-prem ») imposent des chemins de callback non modifiables.
-  - La documentation mentionne les enjeux administratifs liés à l’obtention de scopes (Google « restricted », consentements Microsoft).
-
-- **Dépendances notables**
-  - Dépend de `../auth/providers.js` pour la configuration fine des endpoints et annuaires OAuth.
-  - Utilise `../auth/oauthState.js` pour le nommage du cookie d’état Microsoft.
+- **Rôle** : registre des fournisseurs de comptes externes Google et Microsoft pour les connexions OAuth. Définit leurs scopes, chemins de callback, clés d’identifiants et capacités, en réutilisant les endpoints et la lecture de profil de `lib/auth/providers.js`. Le réglage `enabled` du login n’est pas pris en compte.
+- **`CONNECT_PROVIDERS`** *(constante exportée)* : décrit les fournisseurs et leurs capacités. Google utilise la clé d’identifiants `google` et Microsoft `entra`. Google peut révoquer l’accès ; Microsoft ne peut qu’oublier le jeton localement. Les callbacks historiques ne doivent pas être renommés sans mise à jour des configurations OAuth externes.
+- **`connectScopeList(provider, connections = {})`** : retourne les scopes demandés sous forme de tableau. Retire `provider.optionalScope` uniquement si `connections.sharepoint === false` ; un réglage absent conserve le scope.
+- **`connectScopes(provider, connections = {})`** : retourne les scopes de `connectScopeList` sous forme de chaîne séparée par des espaces.
+- **`sharedDrivesOffered(provider, connections = {})`** : retourne un booléen indiquant si le scope des lecteurs partagés est demandé par cette installation.
+- **`hasScope(granted, wanted)`** : retourne si un scope accordé correspond au scope attendu. Normalise casse et encodage, puis compare aussi le dernier segment d’URI ; les formes courtes des fournisseurs sont ainsi reconnues.
+- **`hasAnyScope(granted, wanted)`** : retourne si au moins un scope attendu est accordé, via `hasScope`.
+- **`connectionCredentials(provider, authSettings)`** : retourne les identifiants `{ clientId, clientSecret }`, ou `null` si l’un manque ou si aucun endpoint utilisable n’est disponible. Ne vérifie pas `enabled` ; appelle `provider.discoveryUrlOf(conf)` si aucun `fallbackEndpoints` n’est défini.
+- **`effectiveProvider(configured)`** : retourne l’entrée correspondante de `CONNECT_PROVIDERS`, ou Google si la valeur est absente ou inconnue.
+- **Points d’attention** :
+  - Google distingue le dépôt (`drive.file`), la navigation (`browseScopes`) et l’énumération des lecteurs partagés (`sharedDrivesScope`). Les connexions historiques peuvent conserver la navigation sans disposer du scope actuel pour les lecteurs partagés.
+  - Microsoft exige normalement le consentement administrateur pour SharePoint ; désactiver `sharepoint` retire ce scope, mais conserve l’accès au OneDrive.
+  - Microsoft partage le cookie d’état OAuth avec le login pour satisfaire le routage Traefik ; deux flux simultanés peuvent s’écraser et échouer avec `state_mismatch`.
+  - Les fonctions de comparaison de scopes acceptent des entrées non-tableaux en les traitant comme des listes vides. `scopeKey` tolère les séquences `%` mal formées en conservant la chaîne telle quelle.
 
 ### services/api/lib/connections/store.js
 
@@ -1696,52 +1093,14 @@
 
 ### services/api/lib/errors.js
 
-- **Rôle du fichier**
-  - Définit un contrat unifié pour les réponses d’erreur des routes API utilisant l’authentification native, avec codes HTTP appropriés et structure JSON stable (`{ error: '<slug stable>', message?, fields? }`).
-  - Normalise la gestion des erreurs côté serveur (via un handler racine) pour éviter de divulguer des détails techniques à l'utilisateur.
-
-- **Fonctions exportées**
-  - **`fail(reply, status, code, extra?)`**
-    - **Paramètres** :
-      - `reply` : objet FastifyReply
-      - `status` : code HTTP de la réponse
-      - `code` : slug d’erreur stable (string)
-      - `extra` (optionnel) : objet contenant des propriétés additionnelles à ajouter à la réponse JSON
-    - **Retour** : résultat de `reply.code(status).send({ error: code, ...extra })`
-    - **Effets de bord** : écrit la réponse HTTP, structure le corps selon le contrat d’erreur
-  - **`unauthenticated(reply, extra?)`**
-    - Wrapper appelant `fail()` pour 401 « unauthenticated »
-    - **Paramètres** : `reply`, `extra` (optionnel)
-    - **Retour** : réponse structurée pour l’erreur d’authentification
-    - **Effets de bord** : écrit la réponse HTTP 401
-  - **`forbidden(reply, extra?)`**
-    - Wrapper appelant `fail()` pour 403 « forbidden »
-    - **Paramètres** : `reply`, `extra` (optionnel)
-    - **Retour** : réponse structurée pour accès interdit
-    - **Effets de bord** : écrit la réponse HTTP 403
-  - **`notFound(reply, code?)`**
-    - Wrapper appelant `fail()` pour 404 (slug personnalisable, défaut : 'not_found')
-    - **Paramètres** : `reply`, `code` (optionnel, par défaut 'not_found')
-    - **Retour** : réponse structurée pour ressource non trouvée
-    - **Effets de bord** : écrit la réponse HTTP 404
-  - **`slugErrorHandler(err, req, reply)`**
-    - Handler d’erreur global compatible Fastify, à poser sur l’app
-    - **Paramètres** : `err` (erreur capturée), `req` (requête), `reply` (réponse)
-    - **Retour** : réponse d’erreur normalisée, selon cause (voir ci-dessous)
-    - **Effets de bord** :
-      - Pour erreurs de validation AJV : 400 `{ error: 'invalid_body', fields }`
-      - Autres erreurs : renvoi statut original si `<500`, sinon 500, corps `{ error: 'internal_error' }`
-      - Logge l’erreur côté serveur ; n’envoie jamais de détails internes à l’utilisateur
-
-- **Points d'attention**
-  - **Edge cases**
-    - Les erreurs de validation (schema AJV) sont traitées spécifiquement pour afficher les chemins ou propriétés manquantes.
-    - Les routes héritées (ex: n8n) peuvent retourner des réponses d’erreur en HTTP 200 dans certains cas, ce comportement n’est PAS répété ici.
-    - Les détails techniques des erreurs (messages, stack, etc.) NE SONT JAMAIS envoyés au client final.
-  - **Dépendances**
-    - Utilise l’API `FastifyReply` de Fastify (nécessite d’être appelé dans une route Fastify).
-    - Dépend du système de validation AJV intégré à Fastify pour le traitement des erreurs d’entrée.
-    - Certaines routes spécifiques relayant des erreurs d’API en amont (ex: OpenAI) ne passent pas par ce handler global.
+- Définit le contrat d’erreur des nouvelles routes authentifiées : codes HTTP réels et slugs stables, sans message utilisateur fourni par le serveur. Les routes héritées de `routes/templates.js` conservent leur format distinct.
+- `fail(reply, status, code, extra = {})` — envoie `status` avec `{ error: code, ...extra }` et retourne le résultat de `reply.send()`. `extra` peut remplacer `error` s’il contient cette propriété.
+- `unauthenticated(reply, extra)` — délègue à `fail` avec le statut `401` et le slug `unauthenticated` ; retourne le résultat de l’envoi.
+- `forbidden(reply, extra)` — délègue à `fail` avec le statut `403` et le slug `forbidden` ; retourne le résultat de l’envoi.
+- `slugErrorHandler(err, req, reply)` — gestionnaire Fastify global :
+  - si `err.validation` existe, répond `400` avec `invalid_body` et `fields`, extraits des chemins de validation AJV ;
+  - sinon, journalise l’erreur via `req.log?.error`, conserve les statuts inférieurs à `500` (ex. `413`, `415`) et répond `500` pour les autres cas, avec `{ error: 'internal_error' }`.
+- Points d’attention : les détails d’erreur non gérés ne sont jamais renvoyés au client. Les erreurs OpenAI `UpstreamError` sont traitées séparément par `replyUpstreamError`, pas par ce gestionnaire. La validation dépend de la forme `err.validation` fournie par Fastify/AJV.
 
 ### services/api/lib/gmail.js
 
@@ -1801,96 +1160,27 @@
 
 ### services/api/lib/identity.js
 
-- **Rôle du fichier**
-  - Gestion de l'identité utilisateur obtenue via des en-têtes injectés par Traefik (OIDC et mobile).
-  - Extraction et décodage correct de l'identité dans `req.headers`, centralisé pour garantir la cohérence sur toute l'API.
-  - Alternatives compatibles : session OIDC via proxy ou session native (voir lib/auth/).
-
-- **Fonctions exportées**
-  - `utf8Header(headers, name)`
-    - **Paramètres** : 
-      - `headers` (Object) : les en-têtes HTTP (typiquement `req.headers`)
-      - `name` (string) : nom de l’en-tête (en minuscules)
-    - **Retour** : 
-      - (string) valeur décodée en UTF-8
-    - **Effet de bord notable** :
-      - Corrige le problème de mojibake dû au décodage latin1 de Node.js sur des valeurs UTF-8 (noms avec accents etc.)
-
-  - `identityFromHeaders(headers)`
-    - **Paramètres** :
-      - `headers` (Object) : les en-têtes HTTP
-    - **Retour** :
-      - `{ email: string, name: string }` : objet identité utilisateur
-    - **Effet de bord notable** :
-      - Applique un repli automatique : récupère l’email sur `x-user-email` puis `x-auth-request-user` en cas d'absence (pour compenser les différences entre fournisseurs OIDC).
-
-  - `requireEmail(req, reply)`
-    - **Paramètres** :
-      - `req` (FastifyRequest) : requête HTTP
-      - `reply` (FastifyReply) : réponse HTTP
-    - **Retour** :
-      - (string|null) : l’email extrait ou `null` (après réponse 401)
-    - **Effet de bord notable** :
-      - Retourne une 401 + message JSON si l’email ne peut être déterminé.
-      - Prend l'identité prioritairement depuis `req.user` (posée par authPlugin.js), sinon lit directement les en-têtes mais uniquement si le hook du plugin ne s'est pas exécuté (cas typique : tests unitaires).
-
-- **Points d'attention**
-  - **Edge cases** :
-    - En-têtes mal codés ou caractères spéciaux sans utf8Header → valeurs corrompues possibles.
-    - Email requis : requests non authentifiées stoppées net (401, pas de fallback silencieux).
-    - Risque d’usurpation d’identité si requireEmail utilisait toujours les en-têtes sans vérif (protection assurée par le contrôle req.identityResolved).
-  - **Dépendances** :
-    - Nécessite le placement correct de `req.user` par le plugin d’authentification (`lib/authPlugin.js`).
-    - Utilisé dans un contexte Fastify, s’attend à des objets type FastifyRequest/Reply.
-    - Dépend du comportement de Traefik / traefikoidc pour la présence et la nature des en-têtes d'identité.
+- Centralise la lecture et la validation des informations d’identité. La confiance dans les en-têtes est établie par Traefik ou par le hook `authPlugin.js`, qui renseigne `req.user`.
+- **`utf8Header(headers, name)`** — lit un en-tête et le décode de latin1 en UTF-8 pour corriger les caractères accentués ; renvoie une chaîne, vide si l’en-tête est absent.
+- **`pictureUrl(value)`** — valide une URL de photo ; renvoie l’URL si elle est valide, en HTTPS et d’au plus 2 048 caractères, sinon `''`. Rejette notamment les schémas autres que HTTPS et les URL mal formées.
+- **`identityFromHeaders(headers)`** — renvoie `{ email, name, picture }` depuis les en-têtes. Pour l’email, utilise `x-user-email`, puis `x-auth-request-user` en repli ; valide la photo avec `pictureUrl`.
+- **`requireEmail(req, reply)`** — renvoie `req.user?.email` si présent ; sinon répond 401 via `unauthenticated(reply)` et renvoie `null`. Ne lit volontairement pas directement les en-têtes, pour éviter l’usurpation d’identité.
+- **Dépendances et points d’attention :** dépend de `./errors.js` pour la réponse 401 et de l’API Node `Buffer` / `URL`. `identityFromHeaders` ne décode pas ni ne valide le format de l’email ; la fiabilité des en-têtes dépend de leur injection par le chemin d’authentification de confiance.
 
 ### services/api/lib/mailer.js
 
-- **Rôle du fichier**
-  - Gestion centrale de l'envoi d'e-mails via SMTP (Nodemailer) : réinitialisation de mot de passe, envoi de documents (transcription, résumé) à l'utilisateur.
-  - Permet le déploiement on-prem sans dépendance à une API tierce.
-  - Fonctionne dans plusieurs langues (français/anglais).
-  - Se désactive proprement si SMTP non configuré, sans impacter l'app.
-
-- **Fonctions exportées**
-  - `buildDocumentEmail({ kind, title = '', content, lang = 'fr', subject })`
-    - **Paramètres** :  
-      - `kind`: `'transcription'` ou `'summary'` (type de document)  
-      - `title`: titre optionnel  
-      - `content`: contenu (texte brut ou HTML)  
-      - `lang`: 'fr' ou 'en' (défaut 'fr')  
-      - `subject`: sujet personnalisé optionnel
-    - **Retour** :  
-      - Objet `{ subject, text, html }`
-    - **Effet de bord** :  
-      - Aucune, pure transformation de données
-
-  - `createMailer(smtp, log = noopLogger)`
-    - **Paramètres** :
-      - `smtp`: config `{ host, port, secure, user, pass, from }`
-      - `log` (optionnel): logger compatible `{ info, warn }`
-    - **Retour** :  
-      - Objet mailer `{ enabled, sendPasswordReset, sendDocument }`
-    - **Effet de bord notable** :  
-      - Initialise une connexion SMTP (non bloquante, log si échec)
-      - Si `smtp.host` absent, expose `{ enabled: false, ... }` avec méthodes lèvant des erreurs sur appel
-
-      - **Méthodes de l'objet mailer :**
-        - `sendPasswordReset({ to, link, lang = 'fr', expiresInMinutes = 30 })`
-          - Envoie un mail de réinitialisation de mot de passe (jamais de mot de passe transmis)
-          - **Effet de bord** : envoie un mail SMTP
-        - `sendDocument({ to, cc, replyTo, kind, title = '', content, lang = 'fr', subject, attachments })`
-          - Envoie un document à son propriétaire (texte ou résumé, avec ou sans pièce jointe)
-          - **Effet de bord** : envoie un mail SMTP
-
-- **Points d'attention (edge cases, dépendances)**
-  - **Dépendance externe** : utilise `nodemailer`.
-  - **SMTP désactivé** (`host` vide) : renvoie un mailer inoffensif (aucun crash, erreurs contrôlées).
-  - **Les fonctions d'envoi** lèvent en cas d'erreur SMTP, à capturer côté appelant.
-  - **Gestion des langues** : fallback systématique au français si langue non reconnue.
-  - **Sécurité** : aucun mot de passe en clair n'est jamais contenu dans les emails.
-  - **Données utilisateurs ("to", "cc")** : toujours issues des réglages persistés, jamais postées librement.
-  - **Signalétique** : `replyTo` important pour la bonne distribution des réponses, car l'expéditeur (`from`) est toujours un "no-reply".
+- Gère la construction et l’envoi des emails de réinitialisation de mot de passe et de documents (transcription ou résumé), via SMTP avec Nodemailer.
+- Exports :
+  - `buildDocumentEmail({ kind, title?, content, lang?, subject? })` — retourne `{ subject, text, html }`. Construit les versions texte et HTML du document ; un résumé est traité comme du HTML, une transcription comme du texte brut. N’effectue pas d’envoi.
+  - `createMailer(smtp, log?)` — retourne un objet `{ enabled, sendPasswordReset, sendDocument }`. Crée le transport SMTP et lance une vérification de connexion non bloquante ; les méthodes d’envoi transmettent les messages à Nodemailer.
+    - `sendPasswordReset({ to, link, lang?, expiresInMinutes? })` — retourne une promesse résolue après l’envoi ; le corps ne contient que le lien de réinitialisation.
+    - `sendDocument({ to, cc?, replyTo?, kind, title?, content, lang?, subject?, attachments? })` — retourne une promesse résolue après l’envoi du document, avec pièces jointes facultatives. `replyTo` permet aux destinataires de répondre malgré l’adresse d’expédition `no-reply`.
+- Points d’attention :
+  - Sans `smtp.host`, `enabled` vaut `false` et les deux méthodes d’envoi rejettent avec `mailer_disabled`. La configuration SMTP provient de `lib/config.js`.
+  - Une erreur de vérification SMTP au démarrage est seulement journalisée ; elle ne bloque pas le démarrage de l’API. Les erreurs d’envoi, elles, sont propagées.
+  - Les langues non prises en charge utilisent les textes français. Un objet personnalisé non vide remplace l’objet par défaut.
+  - Les destinataires de `sendDocument` doivent être résolus depuis les réglages persistés de l’utilisateur, pas depuis la requête d’envoi. Les pièces jointes PDF sont fournies par le navigateur.
+  - Dépendances : `nodemailer` et `escapeHtml` de `./text.js`.
 
 ### services/api/lib/meetingDuration.js
 
@@ -1918,172 +1208,60 @@
 
 ### services/api/lib/openai.js
 
-- **Rôle du fichier :**
-  - Client minimal pour l’API OpenAI (chat, transcription, Realtime), sans dépendance externe.
-  - Gestion centralisée des erreurs et statuts, adaptation pour un usage backend exposé à un frontend.
-  - Support de clé API dynamique modifiable à chaud.
-
-- **Fonctions & classes exportées :**
-  - `UpstreamError` (classe)
-    - **Paramètres** : `status` (number), `body` (string), `contentType` (string, défaut `'application/json'`)
-    - **Retour** : instance d’erreur enrichie (status HTTP, corps de réponse, type MIME)
-    - **Effets** : Encapsulation des erreurs OpenAI pour relai direct au client.
-  - `relayStatus(upstreamStatus)`
-    - **Paramètres** : `upstreamStatus` (number)
-    - **Retour** : code HTTP (préserve 402/429/5xx, mappe 400/401 en 502)
-    - **Effets** : Indique le status à retourner côté frontend pour une erreur OpenAI.
-  - `replyUpstreamError(reply, err)`
-    - **Paramètres** : `reply` (objet réponse fastify-like), `err` (erreur)
-    - **Retour** : void
-    - **Effets** : Transmet l’erreur OpenAI telle quelle si nature `UpstreamError`, sinon relance.
-  - `normalizeApiKey(raw)`
-    - **Paramètres** : `raw` (string)
-    - **Retour** : `{key: string, problem: string}` (`problem === ''` si valide)
-    - **Effets** : Nettoie/valide une clé OpenAI, détecte doublons de préfixe et erreurs fréquentes.
-  - `verifyOpenAiKey(opts)`
-    - **Paramètres** : `{apiKey, baseUrl?, fetchImpl?, timeoutMs?}`
-    - **Retour** : `Promise<{ok: true}>` si valide
-    - **Effets** : Vérifie la validité d’une clé en appelant `/models`. Lance `UpstreamError` sinon.
-  - `createOpenAiClient(opts)`
-    - **Paramètres** : `{apiKey, baseUrl?, timeoutMs?, fetchImpl?}` (`apiKey` peut être une fonction synchrone/asynchrone)
-    - **Retour** : objet `{chat, transcribe, realtimeClientSecret}`
-      - **chat({model, messages})** : `Promise<string>`
-        - Renvoie la complétion chat du premier choix.
-      - **transcribe({buffer, filename?, mimetype?, model?})** : `Promise<{text: string}>`
-        - Transcription d'un buffer audio OpenAI Whisper.
-      - **realtimeClientSecret(lang, model?)** : `Promise<Object>`
-        - Récupère un token éphémère pour session Realtime.
-
-- **Points d’attention :**
-  - **Edge cases :**
-    - Clé API absente : statut 503 et message explicite, n’appelle jamais OpenAI sans clé.
-    - Erreurs OpenAI 401/400 sont remappées en 502 (évite confusion “session expirée” côté client).
-    - Les 4xx “métier” (crédit épuisé, clé invalide…) sont relayés avec leur corps pour inspection côté frontend.
-    - `apiKey` peut être une fonction pour une MAJ dynamique sans redémarrage du service.
-    - Les fonctions principales (`chat`, `transcribe`, `realtimeClientSecret`) sont idempotentes et relançables via retry automatique sur pannes ou rate limit.
-  - **Dépendances :**
-    - Utilise `withRetry`, `isNetworkError` de `./retry.js` pour gestion de la robustesse réseau.
-    - Modèles par défaut issus de `./transcriptionModels.js`.
-    - Utilise les API natives : `fetch`, `AbortSignal`, `FormData`, etc. (Node.js 20+ requis).
-  - **Remarques techniques :**
-    - Aucun fallback sur les tentatives réseau pour les erreurs logiques type 4xx métier.
-    - Le corps d’erreur OpenAI est toujours relayé verbatim.
-    - Pas de correction silencieuse sur les erreurs de clé pour éviter des erreurs de sécurité.
+- Client OpenAI minimal, basé sur `fetch` natif Node 20. Fournit les appels API, les retries et le relais des erreurs amont.
+- Exports :
+  - `UpstreamError(status, body, contentType)` : erreur portant le statut, le corps et le type MIME de la réponse amont.
+  - `upstreamMessage(err)` : extrait le message d’un corps JSON d’erreur ; renvoie `''` si absent ou invalide.
+  - `relayStatus(upstreamStatus)` : conserve les statuts `402`, `429` et `5xx` ; remappe les autres en `502`.
+  - `replyUpstreamError(reply, err)` : envoie une `UpstreamError` avec statut remappé et corps verbatim ; relance les autres erreurs.
+  - `isAudioTooLong(err)` : détecte une `UpstreamError` `400` dont le corps signale une durée audio excessive.
+  - `normalizeApiKey(raw)` : retire les espaces et renvoie `{ key, problem }` ; signale les clés vides, mal formées ou au préfixe `sk-sk-`, sans les corriger.
+  - `verifyOpenAiKey({ apiKey, baseUrl?, fetchImpl?, timeoutMs? })` : sonde `/models` ; renvoie `{ ok: true }` ou lève une `UpstreamError`. Appel HTTP sans retry.
+  - `createOpenAiClient({ apiKey, baseUrl?, timeoutMs?, fetchImpl? })` : crée un client ; `apiKey` peut être une chaîne ou une fonction résolue à chaque requête. Méthodes retournées :
+    - `chat({ model, messages, verbosity?, reasoningEffort?, timeoutMs? })` : renvoie le texte du premier choix, ou `''` s’il manque. Les options de raisonnement et de verbosité ne sont envoyées qu’aux familles de modèles compatibles.
+    - `transcribe({ path?, buffer?, filename?, mimetype?, model? })` : envoie un fichier audio et renvoie `{ text }`. Fournir `path` ou `buffer`.
+    - `generateImage({ model, prompt, size? })` : renvoie `{ b64 }`, avec un timeout d’au moins 5 minutes.
+    - `realtimeClientSecret(lang, model?)` : crée un secret Realtime et renvoie le corps OpenAI complet.
+  - `REASONING_EFFORTS`, `VERBOSITY_LEVELS` : valeurs autorisées documentées pour les paramètres correspondants.
+- Points d’attention :
+  - `createOpenAiClient` dépend de `retry.js`, `transcriptionModels.js` et des API natives Node (`fetch`, `AbortSignal.timeout`, `Blob`, `FormData`, `openAsBlob`) ; `fetchImpl` est injectable pour les tests.
+  - Les requêtes du client relancent les erreurs réseau, `429` et `5xx`, mais pas les autres statuts. Sans clé, elles échouent avec une erreur synthétique `503`.
+  - Les corps d’erreur amont sont conservés verbatim pour le relais au frontend ; les statuts autres que `402`, `429` et `5xx` deviennent `502`.
+  - Pour `transcribe`, le fichier doit rester disponible jusqu’au retour de l’appel ; un `path` est relu à chaque tentative. Les redirections échouent volontairement (`redirect: 'error'`).
+  - Les paramètres `verbosity` et `reasoningEffort` sont filtrés selon le modèle afin d’éviter des erreurs `400` sur les modèles qui ne les acceptent pas.
 
 ### services/api/lib/ownerScope.js
 
-- **Rôle du fichier**
-  - Centralise la gestion de la "portée utilisateur" pour les collections métier liées à un utilisateur (ex : `resume`, `userTemplates`, etc.).
-  - Unifie et sécurise la logique de filtrage des documents par l’email utilisateur tout en assurant la compatibilité et la migration des anciens documents (champ `email` ou `emailLower`).
-  - Fournit les outils pour appliquer, compléter et purger cette portée.
-
-- **Fonctions exportées**
-  - `ownerFilter(email: string, extra?: object) : object`
-    - Construit un filtre MongoDB pour sélectionner les documents d’un utilisateur, compatible avec anciens (email) et nouveaux documents (emailLower).
-    - Paramètres :  
-      - `email` (string) : email utilisateur (casse quelconque)
-      - `extra` (object, optionnel) : filtres additionnels (fusionnés avec le filtre principal)
-    - Retour : objet filtre MongoDB (`$or` sur `emailLower` et `email`)
-    - 📌 Point d'attention : Ne couvre que les documents où `emailLower` a été renseigné ou où `email` matche exactement ; voir edge case purges.
-
-  - `ownerPurgeFilter(email: string) : object`
-    - Génère un filtre MongoDB pour la suppression complète des documents liés à un utilisateur.
-    - Paramètre :  
-      - `email` (string) : email utilisateur
-    - Retour : objet filtre MongoDB élargi (insensible à la casse via regex)
-    - 📌 Effet : Peut déclencher des balayages non indexés — acceptable pour les opérations d’admin rares (purge).
-
-  - `ownerFields(email: string) : { email: string, emailLower: string }`
-    - Prépare les champs de propriété à insérer dans un document métier.
-    - Paramètre :  
-      - `email` (string) : email utilisateur
-    - Retour : objet `{ email, emailLower }`
-
-  - `OWNED_COLLECTIONS : string[]`
-    - Liste toutes les collections métier soumises à la portée utilisateur.  
-    - 📌 Ajouter une collection utilisateur nécessite de l’ajouter ici : omission = données non purgées.
-
-  - `backfillOwnerEmails(db: object, log: {info: Function, warn: Function}) : Promise<number>`
-    - Script idempotent pour compléter le champ `emailLower` sur les documents qui n’en ont pas.
-    - Paramètres :
-      - `db` : instance de base de données (MongoDB)
-      - `log` : logger avec fonctions `info` et `warn`
-    - Retour : Nombre total de documents modifiés (Promise<number>)
-    - 📌 Effet de bord : Modifie les documents directement en base, par collection ; un échec sur une collection n’arrête pas le traitement des autres.
-
-- **Points d’attention / Edge Cases / Dépendances**
-  - **Problème historique** : différence de casse de l’email générait des oublis dans les historiques ou dans les suppressions ; depuis migration, comparaison sur email normalisé uniquement.
-  - **Compatibilité migration** : Filtre maintenu sur les deux champs (`email` et `emailLower`) tant que tous les documents n’ont pas `emailLower` (fonction backfill).
-  - **Purges** : Pour la suppression de compte, filtre plus large et insensible à la casse (utilisation de regex) — ce qui peut provoquer des scans coûteux, mais acceptable dans un contexte d’opération rare/admin.
-  - **Dépendances** :  
-    - Dépend de `normalizeEmail` (importé de `repositories/users.js`).
-    - Toutes les requêtes portées par utilisateur DOIVENT passer par ce module pour éviter la divergence de critères.  
-    - Oublier une collection dans `OWNED_COLLECTIONS` retire la garantie de purge complète.
-    - Toute nouvelle logique de migration/évolution doit passer par ce fichier.
-  - **Audit** : La collection d’audit (`actionMailLog`) contient aussi des adresses de tiers et sera purgée lors de la suppression d’un compte (tension assumée).
-  - **Performance** :  
-    - Filtrage par index (`emailLower` ou `email`) sauf pour les purges (regex insensible à la casse -> scan).
-    - `backfillOwnerEmails` applique un updateMany par casse d’email rencontrée, pour meilleure performance sur de gros volumes.
+- Centralise l’appartenance des documents métier à un utilisateur : filtres Mongo, champs d’appartenance, collections concernées et backfill de `emailLower`.
+- `ownerFilter(email, extra = {})` : retourne un filtre Mongo combinant `emailLower` normalisé ou `email` exact, avec `extra` en critères additionnels. Utilisé pour les lectures et écritures scopées.
+- `ownerPurgeFilter(email)` : retourne un filtre Mongo plus large, incluant une recherche insensible à la casse sur `email`. Peut entraîner un balayage de collection ; réservé aux purges définitives.
+- `ownerFields(email)` : retourne `{ email, emailLower }`, en conservant la casse d’origine dans `email` et en normalisant `emailLower`.
+- `OWNED_COLLECTIONS` : liste des collections métier à inclure dans le backfill et la purge. Toute nouvelle collection par utilisateur doit y être ajoutée ; sa suppression peut effacer notamment les journaux d’envoi et les données de quota.
+- `backfillOwnerEmails(db, log)` : complète les `emailLower` manquants dans chaque collection et retourne le nombre de documents modifiés. Effet de bord : écrit en base ; une erreur est journalisée par collection sans interrompre les suivantes. Idempotente.
+- Points d’attention :
+  - Dépend de `normalizeEmail` (`./repositories/users.js`) et `escapeRegExp` (`./text.js`).
+  - `ownerFilter` ne retrouve les emails en casse mixte que si `emailLower` a été renseigné ; le backfill est donc important.
+  - `ownerPurgeFilter` est volontairement plus coûteux afin de ne pas laisser de documents lors d’une suppression de compte.
+  - `userConnections` : la suppression du document ne révoque pas les autorisations chez le fournisseur externe.
 
 ### services/api/lib/prompts.js
 
-- **Rôle du fichier**
-  - Centralise la génération et le parsing des prompts pour LLM (modèles GPT) utilisés côté backend, en conservant l’iso-comportement n8n pour l’extraction d’actions, la génération de titres et la correction de transcription.  
-  - Exporte des fonctions pour construire les consignes (prompts), parser et nettoyer les retours du modèle.
-  - Contient des réglages de sensibilité, des règles et des valeurs par défaut pour la gestion métier MyAlfred.ai.
-
-- **Fonctions exportées**
-  - `todayParis(now = new Date())`
-    - **Paramètres :** `now` (`Date`, optionnel)
-    - **Retour :** `string` — date au format `yyyy-MM-dd` fuseau Paris.
-    - **Effet de bord :** Aucun.
-  - `actionsPrompt({content, actions, dismissed, today, settings})`
-    - **Paramètres :** objet avec :
-      - `content` (`string`) : fenêtre récente de transcription ;
-      - `actions` (`Array`) : actions détectées en cours ;
-      - `dismissed` (`Array`) : actions explicitement supprimées par l’utilisateur ;
-      - `today` (`string`) : date du jour (défaut : todayParis()) ;
-      - `settings` (objet optionnel) : réglages dynamiques (sensibilité, mots déclencheurs, contexte…)
-    - **Retour :** `string` — prompt à soumettre au modèle.
-    - **Effet de bord :** Aucun.
-  - `parseActionsOutput(raw)`
-    - **Paramètres :** `raw` (`string`) — sortie LLM attendue sous forme de tableau JSON.
-    - **Retour :** `Array` — liste d’actions parsées (+ nettoyage id avec `sanitizeActionItems`).
-    - **Effet de bord :** Aucune, mais robustesse accrue sur les formats tolérés (JSON strict, fenced, bloc…)
-  - `TITLE_RULES`
-    - **Type :** `string` — consignes système pour générer un titre court de réunion.
-  - `titleUserMessage({ resume, transcription })`
-    - **Paramètres :** objet `{ resume: string, transcription: string }`
-    - **Retour :** `string` — message utilisateur à transmettre à l’IA pour générer un titre.
-    - **Effet de bord :** Aucun.
-  - `UNTITLED_MEETING`
-    - **Type :** `string` — titre par défaut : "Réunion sans titre".
-  - `TITLE_MAX_WORDS`
-    - **Type :** `number` (5) — plafond de mots autorisé pour les titres.
-  - `sanitizeTitle(raw)`
-    - **Paramètres :** `raw` (`string`) titre brut
-    - **Retour :** `string` — titre nettoyé : coupe à 5 mots, retire ponctuation finale, 80 caractères max, rechute sur valeur par défaut si vide.
-    - **Effet de bord :** Aucun.
-  - `refineTranscriptPrompt({ sentences, notes })`
-    - **Paramètres :** objet `{ sentences: string[], notes: string }`
-    - **Retour :** `string` — prompt structuré pour améliorer la transcription à partir de notes manuscrites du client.
-    - **Effet de bord :** Aucun.
-  - `parseRefineOutput(raw, count)`
-    - **Paramètres :** `raw` (`string`), `count` (`number`) attendu de phrases
-    - **Retour :** `Array<string>` si parsing réussi et bonne longueur, sinon `null`.
-    - **Effet de bord :** Aucun.
-
-- **Points d’attention**
-  - **Conformité/compatibilité** : La majorité des prompts sont repris "verbatim" du node n8n originel, même si des fautes y subsistent — ne pas corriger sans recetter.
-  - **actionsPrompt** :
-    - Uniquement ce prompt a été adapté pour permettre la détection directe et la mise à jour d’actions existantes (flexible selon `settings.allowUpdates`).
-    - Gère dynamiquement la « sensibilité » à la détection d’action via différents niveaux (`explicit`, `balanced`, `wide`).
-    - Tolère des mots déclencheurs personnalisés.
-    - Prend en compte les actions « refusées » à ne jamais reproposer.
-  - **parseActionsOutput**
-    - Tolérant sur les formats d’entrée (JSON nu ou markdown fenced, tableau ou `{ actions: [...] }`), chute sur tableau vide si illisible ou non conforme (cf. robustesse n8n).
-    - Nettoie les objets pour éviter de propager des ids erronés/non-entiers.
-  - **sanitizeTitle** :
+- Construit et parse des prompts destinés aux modèles pour les actions, les titres, la relecture de transcription et les infographies. Le prompt de résumé est construit côté frontend.
+- Fonctions exportées :
+  - `todayParis(now = new Date())` → date `yyyy-MM-dd` en Europe/Paris. Utilise `Intl.DateTimeFormat`.
+  - `actionsPrompt({ content, actions, dismissed, today, language, settings })` → prompt d’extraction des actions au format texte. Applique le niveau de sensibilité, les mots déclencheurs, le contexte métier et l’option de mise à jour ; n’effectue pas d’appel modèle.
+  - `parseActionsOutput(raw)` → tableau d’actions parsé et assaini, ou `[]` si la sortie est vide ou illisible. Accepte un tableau JSON, `{ actions: [...] }`, des fences Markdown ou un premier bloc `[...]`.
+  - `titleUserMessage({ resume, transcription })` → message utilisateur texte pour la génération du titre ; les valeurs absentes deviennent des chaînes vides.
+  - `sanitizeTitle(raw)` → titre nettoyé, limité à 80 caractères puis à 5 mots ; renvoie `UNTITLED_MEETING` si le résultat est vide.
+  - `refineTranscriptPrompt({ sentences, notes })` → prompt de relecture au format texte, avec les phrases sérialisées en JSON.
+  - `parseRefineOutput(raw, count)` → tableau de chaînes si la sortie JSON contient exactement `count` phrases ; sinon `null`. Accepte un tableau nu ou `{ sentences: [...] }`, mais pas les fences contenant du JSON additionnel.
+  - `infographicPrompt({ transcription, actions, notes, style, language } = {})` → demande texte pour le modèle d’image ; filtre les actions masquées et borne les blocs.
+- Constantes exportées : `TITLE_RULES`, `UNTITLED_MEETING`, `TITLE_MAX_WORDS`, `INFOGRAPHIC_PROMPT_MAX`, `INFOGRAPHIC_STYLE_MAX`, `INFOGRAPHIC_WRITER_RULES`.
+- Points d’attention :
+  - `actionsPrompt` utilise `normalizeLang` (`./text.js`), retombe sur le français et sur le niveau de sensibilité `explicit` si les réglages sont absents ou invalides. `allowUpdates: false` interdit les mises à jour et l’émission d’`id`.
+  - `parseActionsOutput` retire les objets non valides et convertit les `id` entiers ; un `id` non entier est supprimé. Les éléments d’un tableau JSON valide ne sont pas autrement validés.
+  - `sanitizeTitle` attend une valeur convertible en chaîne ; la coupe à 80 caractères précède la limite de mots.
+  - `infographicPrompt` tronque les actions à 3 000 caractères, les notes à 4 000 et le prompt total à 30 000 ; si nécessaire, conserve le début et la fin de la transcription. Les actions avec `show: false` sont exclues. `INFOGRAPHIC_WRITER_RULES` est distinct des règles intégrées à cette demande.
 
 ### services/api/lib/rbac.js
 
@@ -2194,167 +1372,81 @@
 
 ### services/api/lib/repositories/settings.js
 
-- **Rôle du fichier :**
-  - Gère la persistance, la projection publique et la mise à jour des réglages « installation » modifiables depuis l’admin (`appSettings`).
-  - Modularisé par domaines : authentification (fournisseurs IdP, domaines autorisés), intégration OpenAI, actions post-réunion, branding (visuel), contexte organisationnel.
-
-- **Fonctions/objets exportés :**
-  - **Constantes :**  
-    - `SETTINGS_COLLECTION`, `BRANDING_LOGO_MAX`, `BRANDING_TAGLINE_MAX`, `BRANDING_LOGO_PATTERN`, `ORG_CONTEXT_MAX`, `STORAGE_PROVIDERS`, `CONNECTION_PROVIDERS`.
-  - **Projections publiques :**
-    - `toPublicSettings(doc)`  
-      - **params** : doc complet `auth`  
-      - **retour** : objets sans secrets (inclut hasSecret)  
-      - **effet de bord** : aucun
-    - `toPublicAiSettings(doc, { envKey, envModel })`  
-      - **params** : doc complet `ai`, contexte env optionnel  
-      - **retour** : projection clé OpenAI (jamais le secret), source, modèle  
-      - **effet de bord** : aucun
-    - `toPublicActionsSettings(doc, { mailerEnabled, withFolder })`  
-      - **params** : doc `actions`, options  
-      - **retour** : switches, fournisseur, storage, info mailing (public/admin)  
-      - **effet de bord** : aucun
-    - `toPublicBrandingSettings(doc, { withMeta })`  
-      - **params** : doc `branding`, meta (admin)  
-      - **retour** : branding, éventuellement info maj/admin  
-      - **effet de bord** : aucun
-    - `toPublicOrgContextSettings(doc, { withMeta })`  
-      - **params** : doc contexte, meta  
-      - **retour** : contexte (borne en longueur), meta optionnelle  
-      - **effet de bord** : aucun
-  - **Utilitaires :**
-    - `keyHint(key)` : extrait indice d’une clé (pour debug/affichage, jamais le secret complet)
-    - `connectionProviderOf(doc)` : détermine le fournisseur (gestion rétro-compatibilité noms historiques)
-  - **Dépot principal :**
-    - `createSettingsRepo(db)`  
-      **Expose :**
-      - Projections publiques ci-dessus
-      - `get()` → Promise objet auth **(complet, secrets inclus)**  
-      - `update(patch)` → maj auth
-      - `getAi()`, `resolveOpenAiKey(envKey)`, `resolveTranscriptionModel(envModel)`, `updateAi(patch, ctx)`
-      - `getActions()`, `updateActions(patch, ctx)`
-      - `getBranding()`, `updateBranding(patch, ctx)`
-      - `getOrgContext()`, `orgContextText()`, `updateOrgContext(patch, ctx)`
-      - `seedFromEnv(env)` : amorce la collection à partir de l’environnement (champ par champ), jamais écrasé si déjà existant.
-
-- **Points d’attention / Edge cases / Dépendances :**
-  - **Sécurité** : *Les secrets (ex : clientSecret, apiKey) ne sortent jamais via projections publiques.*  
-    - Seuls `hasSecret` / `hasKey` sont exposés.
-    - Une update sans le champ secret ne le remplace pas (permet edit sans perte du secret).
-  - **Compatibilité** : prise en compte de valeurs et champs historiques (aliases, migration douce entre noms/fournisseurs).
-  - **Validation/Mise à jour** :
-    - Champs **absents** : conservés (inchangés).  
-      Champs **présents mais vides** : valeur effacée (retombée sur défaut/env si applicable).
-    - Limitations en taille (contexte, logo, tagline…), pattern pour images et couleurs.
-    - Protection contre l’affichage de boutons non-fonctionnels si prérequis non actifs (emailAvailable, storage).
-    - Plusieurs validations et fallback sont **doublés ici** même si déjà faits en amont (schéma route) : ce repo est utilisé côté tests et init.
-  - **Dépendances** :  
-    - `sanitizeDomainList` (sanitize domaines emails),  
-    - modèles de transcription (`transcriptionModels.js`),  
-    - exporte des constantes d’autres modules (actions/recipients, templating).
-  - **Mise à jour/amorçage (seed)** : L
+- **Rôle** — Accès aux réglages `appSettings`, stockés par domaine fonctionnel (`auth`, `ai`, `actions`, `branding`, `orgContext`, `transcriptCorrections`). Fournit les valeurs par défaut, les projections destinées aux API et les mises à jour partielles.
+- **Exports nommés**
+  - `SETTINGS_COLLECTION` — nom de la collection MongoDB (`appSettings`).
+  - `BRANDING_LOGO_MAX`, `BRANDING_TAGLINE_MAX`, `BRANDING_LOGO_PATTERN`, `BRANDING_COLOR_PATTERN`, `ORG_CONTEXT_MAX`, `CONNECTION_PROVIDERS` — plafonds, motifs de validation et fournisseurs autorisés.
+  - `connectionProviderOf(doc)` — lit le fournisseur depuis un document `actions`, avec reprise des valeurs historiques `gdrive`/`sharepoint` ; retourne `''`, `'google'` ou `'microsoft'`.
+  - `connectionSharePointOf(doc)` — indique si le scope SharePoint est demandé ; retourne `false` uniquement si le champ vaut explicitement `false`.
+  - `keyHint(key)` — retourne un indice masqué de la clé, ou `''` si elle est vide.
+  - `toPublicSettings(doc, context?)`, `toPublicAiSettings(doc, context?)`, `toPublicActionsSettings(doc, context?)`, `toPublicBrandingSettings(doc, context?)`, `toPublicOrgContextSettings(doc, context?)`, `toPublicTranscriptCorrections(doc, context?)` — projettent les réglages pour exposition contrôlée ; masquent les secrets et limitent les métadonnées ou champs internes selon les options.
+  - `mergeAuthSettings(current, patch?)` — fusionne un patch d’authentification sans écriture ; conserve les secrets absents ou vides et nettoie les domaines.
+  - `createSettingsRepo(db)` — construit le dépôt MongoDB ; retourne les méthodes listées ci-dessous. **Effet de bord :** les méthodes `update*` et `seedFromEnv` écrivent dans la collection via `updateOne` avec `upsert`.
+- **Méthodes retournées par `createSettingsRepo(db)`**
+  - `get()` / `update(patch?)` — lit ou met à jour les réglages d’authentification ; `update` accepte aussi `{ actor }`, met à jour `updatedAt`/`updatedBy` et retourne le document complet.
+  - `getAi()` / `updateAi(patch, context?)` — lit ou met à jour les réglages IA ; `context.actor` renseigne l’audit. Les clés absentes sont conservées, les clés présentes vides effacées ; les modèles inconnus sont refusés.
+  - `resolveOpenAiKey(envKey?)`, `resolveProviderKey(provider)`, `resolveTranscriptionModel(envModel?)`, `resolveSummaryModel(envModel?)`, `infographicEnabled()`, `infographicStyle()`, `resolveInfographicImageModel(envModel?)` — résolvent les clés, modèles et options effectifs ; les valeurs IA sont relues en base à chaque appel.
+  - `getActions()` / `updateActions(patch?, context?)` — lit ou met à jour les actions, les connexions, la politique mail et les gabarits ; fusionne les sections champ par champ, accepte les fournisseurs historiques et renseigne les métadonnées d’audit.
+  - `getBranding()` / `updateBranding(patch, context?)` — lit ou met à jour logo, textes et couleurs ; valide le format du logo et des couleurs, applique les plafonds.
+  - `getOrgContext()` / `orgContextText()` / `updateOrgContext(patch?, context?)` — lit le contexte organisationnel, en retourne le texte seul ou le met à jour avec plafond et audit.
+  - `getTranscriptCorrections()` / `updateTranscriptCorrections(patch?, context?)` — lit ou remplace la liste complète des corrections, nettoyée à l’écriture et à la lecture.
+  - `seedFromEnv(env?)` — amorce les réglages d’authentification depuis l’environnement sans écraser ceux déjà configurés ; retourne `{ seeded: false }` ou `{ seeded: true, providers }`.
+- **Points d’attention**
+  - Les documents complets (`get*`) peuvent contenir des secrets : usage serveur uniquement. Les projections publiques ne renvoient que leur présence et, pour les clés IA, un indice.
+  - Une valeur absente dans un patch signifie généralement « inchangée » ; une valeur vide peut effacer une clé, un modèle, un style ou un champ de marque. Les secrets de fournisseurs OAuth absents **ou vides** sont conservés.
+  - Les réglages anciens sont normalisés à la lecture sans migration ; les valeurs historiques de stockage restent
 
 ### services/api/lib/repositories/userActions.js
 
-- **Rôle du fichier :**
-  - Gère les réglages d’actions utilisateurs (collection `userActionSettings`) : gestion personnalisée des destinataires mails, dossiers de dépôt, gabarits d’objets et de fichiers. Permet également de stocker des paramètres de détection d’actions propres à chaque utilisateur.
-  - Les interrupteurs (activer/désactiver un bouton) sont gérés ailleurs.
-  - Une seule entrée par utilisateur, fortement liée à l’identité (`emailLower`).
-
-- **Fonctions exportées :**
-  - `toPublicUserActions(doc)`
-    - **Paramètres :** `doc` (document brut MongoDB d’un réglage utilisateur)
-    - **Retour :** Projection publique nettoyée des champs non sensibles : mail, storage, naming, updatedAt
-    - **Effet de bord :** Aucun
-  - `createUserActionsRepo(db)`
-    - **Paramètres :** `db` (connexion MongoDB)
-    - **Retour :** Objet repo avec :
-      - `toPublicUserActions(doc)`: Voir ci-dessus.
-      - `get(email, { maxRecipients })`
-        - **Paramètres:** `email` (string), `{ maxRecipients }` (optionnel, nombre)
-        - **Retour:** Réglages pour l’utilisateur (mail, storage, naming, updatedAt), valeurs par défaut si non existantes
-        - **Effet de bord:** Accès en lecture à MongoDB
-      - `update(email, patch)`
-        - **Paramètres:** `email` (string), `patch` (objet partiel)
-        - **Retour:** Réglages mis à jour (après écriture)
-        - **Effet de bord:** Modifie ou crée un document dans MongoDB (`updateOne` avec `upsert`)
-      - `getDetection(email)`
-        - **Paramètres:** `email` (string)
-        - **Retour:** Réglages de détection d’actions pour l’utilisateur (normalisés)
-        - **Effet de bord:** Accès en lecture à MongoDB
-      - `updateDetection(email, patch)`
-        - **Paramètres:** `email` (string), `patch` (objet partiel)
-        - **Retour:** Réglages de détection mis à jour
-        - **Effet de bord:** Modifie ou crée un document dans MongoDB (détection uniquement)
-
-- **Points d’attention :**
-  - **Edge cases :**
-    - Aucun document pour un compte = réglages par défaut : le système reste passif sans configuration explicite.
-    - Jamais d’`upsert` basé sur `ownerFilter()` : il s’agit d’un filtre `$or` invivable pour Mongo pour les insertions uniques. Toujours passer `{ emailLower }` en critère d’écriture.
-    - Les champs de mail attendent `mail` et non `email` (attention à la cohérence lors de la mise à jour).
-    - Les destinataires mail sont TOUJOURS re-normalisés en lecture pour éviter toute dérive ou manipulation directe en base.
-    - Les dossiers/tagFolders sont bornés en taille (FOLDER_MAX, TAG_FOLDERS_MAX) et nettoyés à l’écriture comme à la lecture.
-    - Pas de cache sur la détection d’actions: chaque appel recharge en live.
-  - **Dépendances :**
-    - `../ownerScope.js` (`ownerFilter`, `ownerFields`) : gestion de la portée utilisateur
-    - `./users.js` : normalisation des emails
-    - `../actionDetectionSettings.js` : normalisation/merge des réglages de détection
-    - `../actions/recipients.js` : normalisation de la liste des destinataires
-    - `../actions/templating.js` : bornage des gabarits
-  - **Contraintes métiers atypiques :**
-    - Les réglages utilisateurs ne transitent jamais par `userConfig` (risque de suppression à chaque écriture du contexte utilisateur).
-    - Index Mongo sur `emailLower` essentiel : key pour la performance et l’unicité des documents par utilisateur.
+- **Rôle :** gère dans `userActionSettings` les préférences d’actions par compte : mail, dépôt, nommage, fenêtre après résumé, détection d’actions et envoi à myBrain. Les valeurs vides reprennent le comportement par défaut ; les réglages utilisateur ne peuvent pas rouvrir une action désactivée par l’administration.
+- **Exports :**
+  - `USER_ACTIONS_COLLECTION` — nom de la collection (`userActionSettings`).
+  - `FOLDER_MAX`, `TAG_FOLDERS_MAX`, `TAG_RECIPIENTS_MAX` — plafonds de longueur ou de nombre d’entrées.
+  - `toPublicUserActions(doc)` — projette un document en réglages publics ; nettoie les listes par tag et applique le défaut `afterSummary.offer: true`.
+  - `createUserActionsRepo(db)` — crée le dépôt MongoDB et expose :
+    - `get(email, { maxRecipients } = {})` — retourne les réglages généraux normalisés, avec défauts ; relit et borne les destinataires.
+    - `update(email, patch = {})` — fusionne les champs fournis sans effacer les autres, écrit par upsert, puis retourne les réglages relus. Met à jour `updatedAt`.
+    - `getDetection(email)` — retourne les réglages de détection normalisés, défauts compris.
+    - `updateDetection(email, patch = {})` — fusionne le patch de détection, écrit par upsert et retourne le résultat.
+    - `getMyBrain(email)` — retourne `{ enabled, enabledSince }` ; l’activation est fausse par défaut.
+    - `updateMyBrain(email, { enabled })` — met à jour l’activation et retourne son état ; renseigne `enabledAt` uniquement au passage à activé.
+- **Points d’attention :**
+  - Les lectures utilisent `ownerFilter`; les upserts utilisent `{ emailLower }` avec `ownerFields(email)` en `$setOnInsert`. Ne pas remplacer ce filtre d’écriture par `ownerFilter`, qui contient un `$or`.
+  - Les destinataires sont normalisés et bornés à la lecture ; les destinataires généraux de `update` sont supposés déjà validés par la route.
+  - Les dossiers par tag vides sont conservés ; les entrées de destinataires par tag sans adresse sont supprimées. Les tags sont référencés par ID.
+  - `driveId` accompagne le dossier de stockage ; sans mise à jour cohérente, un dossier homonyme peut être choisi dans une autre bibliothèque.
+  - Dépend de MongoDB via `db`, de `ownerScope.js`, `users.js`, `actionDetectionSettings.js`, `actions/recipients.js` et `actions/templating.js`. Les réglages de détection sont relus sans cache ; leur accès fréquent dépend de l’index unique sur `emailLower`.
 
 ### services/api/lib/repositories/users.js
 
-- **Rôle du fichier**
-  - Gère l'accès à la collection MongoDB `user` et encapsule tout le schéma et les opérations associées.
-  - Centralise la normalisation et l’usage métier de l'adresse email, et expose les fonctions métier pour la gestion des utilisateurs (création, modification, suppression, liste, authentification).
-
-- **Fonctions/utilitaires exportés**
-  - `normalizeEmail(email: string): string`
-    - Retourne l'email en minuscules et trimé.
-    - **Attention** : SERT UNIQUEMENT en clé de recherche (jamais pour le scope métier).
-  - `toPublicUser(doc: object): object|null`
-    - Transforme un doc utilisateur (MongoDB) en projection « publique » (jamais de passwordHash).
-    - Retourne null si le doc est absent.
-  - `toSessionUser(doc: object, opts?: {authMode, authProvider}): object|null`
-    - Formate un utilisateur selon le schéma de session frontend (/api/init).
-    - Retourne null si le doc est absent.
-  - `createUsersRepo(db: MongoClient)`
-    - Fabrique le repository utilisateurs, avec les méthodes suivantes :
-      - `findByEmailLower(emailLower: string): Promise<object|null>`
-        - Recherche d'utilisateur par clé normalisée.
-      - `findByEmail(email: string): Promise<object|null>`
-        - Recherche via clé normalisée puis brute (legacy).
-      - `list(opts?: {q?: string, limit?: number, skip?: number}): Promise<{users: object[], total: number}>`
-        - Liste paginée/recherchable d’utilisateurs ; projection publique.
-      - `countAdmins(): Promise<number>`
-        - Compte les administrateurs actifs.
-      - `create(input: {...}): Promise<object>`
-        - Créé un utilisateur, renseigne les champs obligatoires.
-        - Déclenche l’insertion DB.
-      - `update(emailLower: string, {name, role, disabled}): Promise<object|null>`
-        - Modifie un utilisateur (nom, rôle, activation).
-      - `setPassword(emailLower: string, {passwordHash, mustChangePassword}): Promise<object|null>`
-        - Définit un nouveaux mot de passe, rajoute « password » dans les providers si absent.
-        - **Effet de bord important** : Peut modifier `authProviders`.
-      - `addAuthProvider(emailLower: string, provider: string): Promise<object|null>`
-        - Ajoute un provider d’auth (idempotent).
-      - `remove(emailLower: string): Promise<void>`
-        - Supprime l'utilisateur.
-      - `purgeUserData(email: string): Promise<Record<string, number>>`
-        - Purge toutes les données liées à un utilisateur via ownerPurgeFilter (multi-collections).
-        - Retourne le nombre de documents supprimés par collection.
-
+- **Rôle** : accès à la collection MongoDB `user`, seule couche qui connaît son schéma. Centralise les recherches, projections publiques, gestion des comptes, groupes, moyens d’authentification et purge des données métier.
+- **Exports**
+  - `ROLES` — tableau `['user', 'admin']`.
+  - `SERVED_ACCOUNT` — filtre MongoDB des comptes servis : documents dont `emailLower` est une chaîne.
+  - `normalizeEmail(email)` — convertit en chaîne, retire les espaces périphériques et met en minuscules ; utilisé pour la clé de recherche `emailLower`, pas pour l’identité métier.
+  - `toPublicUser(doc)` — renvoie `null` si le document est absent, sinon une projection publique sans `passwordHash`.
+  - `toSessionUser(doc, options?)` — renvoie `null` si le document est absent, sinon l’identité de session ; options : `authMode`, `authProvider`, `groups`, `rights`.
+  - `createUsersRepo(db)` — construit le dépôt lié à `db` et renvoie :
+    - `findByEmailLower(emailLower)` — document complet ou `null` ; peut donc exposer `passwordHash` au code appelant.
+    - `findByEmail(email)` — document complet ou `null` ; recherche par clé normalisée, puis par email brut pour les documents legacy.
+    - `list({q, limit, skip, group}?)` — `{users, total}` ; liste paginée projetée en utilisateurs publics, avec recherche échappée et filtre de groupe.
+    - `countAdmins()` — nombre d’administrateurs actifs parmi les comptes servis.
+    - `groupMemberCounts()` — `Map<groupId, nombre>` ; les comptes sans groupe sont attribués au groupe par défaut.
+    - `create(input)` — insère un compte et renvoie son document ; initialise les timestamps, le groupe, le fournisseur d’authentification et, si fourni, le hash de mot de passe.
+    - `setPicture(emailLower, picture)` — met à jour photo et `updatedAt` ; ignore les valeurs absentes.
+    - `update(emailLower, champs)` — met à jour les champs administrables fournis et `updatedAt`, puis renvoie le document complet ou `null`.
+    - `changeGroupMembers(groupId, {add, remove})` — déplace les comptes entre groupes ; renvoie `{added, removed}`. Les retraits ramènent au groupe par défaut.
+    - `detachGroup(groupId)` — replace les membres dans le groupe par défaut ; renvoie le nombre modifié.
+    - `setPassword(emailLower, {passwordHash, mustChangePassword})` — écrit les informations de mot de passe, ajoute le fournisseur `password` si nécessaire et renvoie le document complet ou `null`.
+    - `addAuthProvider(emailLower, provider)` — ajoute le fournisseur s’il est absent ; opération idempotente, renvoie le document complet ou `null`.
+    - `remove(emailLower)` — supprime le compte et les documents legacy correspondant à l’adresse, sans valeur de retour utile.
+    - `purgeUserData(email)` — supprime les données possédées dans chaque collection de `OWNED_COLLECTIONS` ; renvoie les nombres supprimés par collection.
 - **Points d’attention**
-  - **⛔ Jamais normaliser ou altérer l’email pour les usages d’identité métier** (scope, lecture, historique).
-  - Gestion des doublons/casse sur l’email : l’email BRUT reste la référence pour certains scopes, alors que `emailLower` sert uniquement pour la recherche/unicité dans la DB.
-  - Migration / Documents legacy possibles (absence de champ `emailLower` → fallback sur champ `email`).
-  - Suppressions multi-collections dépendent du filtre métier (`ownerPurgeFilter`).
-  - Import circulaire avec `ownerScope.js`, sans effet secondaire au runtime car n'affecte que les appels.
-  - **Dépendance :** MongoDB (`db`), ownerScope (`ownerPurgeFilter`, `OWNED_COLLECTIONS`).
-  - Fields sensibles (`passwordHash`) ne sortent jamais via `toPublicUser`. Seules les méthodes internes du repo exposent toute la doc si besoin.
+  - L’email brut conserve sa casse pour l’identité et les données métier ; `emailLower` sert uniquement à rechercher et garantir l’unicité du compte.
+  - `SERVED_ACCOUNT` exclut les doublons inertes sans `emailLower` des listes et décomptes.
+  - Un compte n’appartient qu’à un groupe ; `normalizeGroupIds` et `groupIdOf` appliquent le groupe par défaut aux champs absents ou vides.
+  - `remove` et `purgeUserData` suppriment aussi des données legacy ; cette dernière dépend de `ownerScope.js` et des collections qui y sont déclarées.
+  - Dépendances : MongoDB via `db`, `groups.js`, `ownerScope.js` et `text.js`. L’import circulaire avec `ownerScope.js` est intentionnel ; les liaisons concernées ne sont utilisées qu’à l’appel.
 
 ### services/api/lib/retry.js
 
@@ -2400,121 +1492,65 @@
 
 ### services/api/lib/stats.js
 
-- **Rôle du fichier :**
-  - Calcul des statistiques d’usage sur les réunions et utilisateurs, de manière pure (aucune dépendance à MongoDB/Fastify). Sert à exposer la charge utile pour l’API `/api/admin/stats`. Permet des agrégations (comptes, durée, activité, etc.) sur une fenêtre temporelle donnée.
-  - Justification technique : isolement du calcul côté JS car les données de dates sont hétérogènes (chaînes ISO, plusieurs champs historiques), et le volume traité reste faible (quelques milliers de documents).
-
-- **Fonctions et constantes exportées :**
-  - `DURATION_BUCKETS`  
-    - *Description :* Bornes ordonnées de tranches de durée de réunion, en secondes (ex : "lt15", "lt30", etc.).
-    - *Retour :* Tableau d’objets `{id, max}`.
-  - `RANGE_DAYS`  
-    - *Description :* Durées prédéfinies (en jours) proposées pour le choix de la période : `[7, 30, 90, 365, 0]` (0 = depuis toujours).
-    - *Retour :* Tableau de nombres.
-  - `meetingDate(doc)`  
-    - *Paramètres :* `doc` (objet réunion, potentiellement avec plusieurs formats de date).
-    - *Retour :* Date JS ou `null` si impossible à parser.
-    - *Effet de bord :* Aucun.
-  - `ownerKey(doc)`  
-    - *Paramètres :* `doc` (objet réunion ou utilisateur avec `email`/`emailLower`).
-    - *Retour :* Email en minuscules (clé d’identification insensible à la casse).
-    - *Effet de bord :* Aucun.
-  - `granularityFor(days)`  
-    - *Paramètres :* `days` (nombre de jours).
-    - *Retour :* `"day"`, `"week"` ou `"month"` selon la fenêtre.
-    - *Effet de bord :* Aucun.
-  - `computeUsageStats({ meetings, users, days, now })`  
-    - *Paramètres :*
-      - `meetings`: tableau de documents réunion (minimum : projections dates, durée, template, propriétaire).
-      - `users`: tableau de documents utilisateur (email, nom, rôle, état, dates).
-      - `days`: nombre de jours (0 = depuis toujours, valeur défaut : 30).
-      - `now`: date courante optionnelle (pour test, défaut : `new Date()`).
-    - *Retour :* Objet contenant :
-      - Informations sur la période (bornes, granularité…)
-      - Statistiques globales (nb de réunions, durées moyennes/medians, nombre d’usagers actifs, nouveaux, etc.)
-      - Séries temporelles par granularité calendaire, découpage par buckets de durée, activité par jour de semaine.
-      - Classements des utilisateurs les plus actifs et les moins actifs sur la période.
-    - *Effets de bord :* Aucun, fonction pure.
-
-- **Points d’attention / Edge cases :**
-  - Les dates sont sur plusieurs champs (`lastConnecion`, `lastConnection`, `now`) avec potentiels formats invalides ou absents → réunion prise en compte dans les totaux mais ignorée des séries temporelles si impossible à parser.
-  - L’absence de `meetingDuration` (réunions anciennes) : ces réunions n’entrent pas dans les moyennes/medians de durée ni dans la couverture "durées connues".
-  - Les réunions sans owner ou email partiellement normé : `ownerKey` harmonise mais certains documents peuvent être anonymes (clé vide).
-  - Les découpages temporels produisent toujours tous les "buckets" entre le début et la fin de la période, y compris s'ils sont vides (affichage graphique pertinent).
-  - Garde-fou sur le nombre maximal de buckets temporels générés (limité à 400).
-  - Comptes désactivés exclus du classement "idle".
-  - Pas de dépendance réseau ou base, fonction testable sans I/O.
-
-- **Dépendances internes :**
-  - Pas de dépendance externe, uniquement des helpers techniques internes (manipulation de dates, normalisation d’e-mails, bucketisation des valeurs).
+- **Rôle** : calcule en mémoire les statistiques d’usage des réunions et des comptes, sans accès direct à Mongo ni à Fastify. Applique le périmètre avant les agrégations et renvoie la charge utile de `GET /api/admin/stats`.
+- **Fonctions exportées** :
+  - `meetingDate(doc)` — retourne la date valide (`Date`) issue de `lastConnecion`, `lastConnection` ou `now`, sinon `null`. Une date invalide exclut la réunion des séries temporelles.
+  - `ownerKey(doc)` — retourne l’adresse de compte normalisée en minuscules, ou `''`.
+  - `templateOf(doc)` — retourne le template nettoyé, ou `'inconnu'`.
+  - `hasSummary(doc)` — retourne un booléen ; `versions` absent est considéré comme un compte rendu présent, tandis que `versions: []` ne l’est pas.
+  - `granularityFor(days)` — retourne `'day'`, `'week'` ou `'month'` selon la durée de période.
+  - `statsWindow(query, now = new Date())` — retourne `{ days, since, until }` pour une période glissante ou des dates `from`/`to` inclusives, ou `{ error: 'range_invalid' }`. Utilise `zonedMidnight` pour les bornes à minuit de Paris ; `until` peut dépasser `now`.
+  - `adoptionStatus(usage)` — avec `{ meetings, meetingsUntilEnd, activeWeeks, weeks }`, retourne `'regular'`, `'occasional'`, `'dormant'` ou `'never'`. Le seuil « régulier » est `REGULAR_SHARE` (0,5).
+  - `applyScope({ meetings, users, groups, scope })` — retourne `{ accounts, meetings }` filtrés par groupe, compte et/ou template. Dépend de `groupsOfUser` et `toUserGroup` ; les réunions orphelines sont exclues dès qu’un filtre de compte ou de groupe est appliqué.
+  - `templateCounts(meetings)` — retourne les templates triés par nombre de réunions décroissant, puis par nom.
+  - `computeUsageStats(input)` — calcule indicateurs, période précédente, adoption, séries temporelles, comptes et couverture des durées/transcriptions ; retourne un objet de statistiques. `now` est injectable pour les tests. Aucun effet de bord notable : calcul en mémoire uniquement.
+- **Constantes exportées** : `DURATION_BUCKETS` (tranches de durée), `RANGE_DAYS` (périodes proposées, `0` = depuis toujours), `ADOPTION_STATUSES` (ordre des statuts) et `REGULAR_SHARE` (seuil d’adoption régulière).
+- **Points d’attention** :
+  - Les durées absentes, nulles ou invalides ne sont pas incluses dans les moyennes ; `coverage` indique le nombre de durées mesurées.
+  - Les réunions sans date exploitable restent comptées dans les totaux globaux, mais sont exclues des calculs temporels.
+  - Les semaines commencent le lundi UTC ; les jours de semaine utilisent le fuseau local du serveur.
+  - Les séries incluent les compartiments vides, avec une limite de 400 points.
+  - Les bornes de `statsWindow` sont validées comme jours ISO réels ; la validation dépend de `zonedMidnight` (`./quota.js`). Les groupes dépendent de `./repositories/groups.js`.
 
 ### services/api/lib/transcriptionModels.js
 
-- **Rôle du fichier :**
-  - Centralise la liste des modèles de transcription temps réel utilisables et valides côté administration.
-  - Évite que l’UI propose des modèles rejetés par les endpoints backend (évite erreurs 400 côté utilisateur).
-
-- **Fonctions et constantes exportées :**
-  - `DEFAULT_TRANSCRIPTION_MODEL`  
-    - *Type :* string  
-    - *Valeur :* 'gpt-realtime-whisper'  
-    - *Usage :* Modèle de transcription par défaut utilisé si aucun choix explicite.
-  - `TRANSCRIPTION_MODELS`  
-    - *Type :* array<string>  
-    - *Valeur :* Liste ordonnée des modèles acceptés côté frontend/admin.
-  - `isTranscriptionModel(id)`  
-    - *Paramètre :* `id` (string)  
-    - *Retour :* boolean (vrai si le modèle est dans `TRANSCRIPTION_MODELS`)  
-    - *Effet de bord :* Aucun.
-  - `resolveTranscriptionModel(stored, envModel)`  
-    - *Paramètres :*  
-      - `stored` (string, optionnel) — valeur stockée côté administration  
-      - `envModel` (string, optionnel) — valeur de la variable d’environnement  
-    - *Retour :* string — identifiant du modèle à utiliser (garanti valide)  
-    - *Effet de bord :* Aucun. Ignore une valeur non reconnue et rétablit un fallback sûr (jamais de rejet global des sessions à cause d’une erreur d’édit.)
-
-- **Points d'attention :**
-  - Les identifiants **hors liste** sont systématiquement refusés par le backend `/realtime/client_secrets` (erreur 400).
-  - `resolveTranscriptionModel` protège contre une corruption de la base admin ou un env mal configuré : jamais de valeur inconnue propagée.
-  - Certains modèles n’émettent *jamais* d'événement `completed` (ex : `gpt-realtime-whisper`), la gestion des "fins de ligne" dans le frontend doit en tenir compte (`src/utils/transcriptDeltas.js`).
-  - Modèles susceptibles d’être ajoutés ou d'exister côté provider sans être activables (ex : `gpt-4o-transcribe-diarize`), bien vérifier la liste à chaque évolution.
-  - **Aucune dépendance externe**, pure logique de whitelist.
+- Centralise les modèles de transcription acceptés, leur fournisseur et les règles de résolution des modèles temps réel et fichier.
+- Exports :
+  - `DEFAULT_TRANSCRIPTION_MODEL`, `TRANSCRIPTION_PROVIDERS`, `KEYED_PROVIDERS`, `PROVIDER_LABELS`, `TRANSCRIPTION_MODELS`, `FILE_TRANSCRIPTION_MODEL`, `TRANSCRIPTION_RETIREMENT_DATE`, `RETIRED_TRANSCRIPTION_MODELS` : constantes de configuration. `TRANSCRIPTION_MODELS` suit l’ordre des clés de `TRANSCRIPTION_PROVIDERS`.
+  - `providerKeyField(provider)` → nom du champ de clé API (`<provider>ApiKey`).
+  - `transcriptionProvider(id)` → fournisseur du modèle ; retourne `openai` si l’identifiant est inconnu.
+  - `speechmaticsModel(id)` → identifiant Speechmatics sans le préfixe `speechmatics-` (convertit une valeur absente en chaîne vide).
+  - `fileTranscriptionModel(liveModel)` → modèle fichier associé au modèle temps réel ; retombe sur `gpt-transcribe` si aucune correspondance tierce n’existe.
+  - `isTranscriptionModel(id)` → booléen indiquant si l’identifiant est accepté.
+  - `describeTranscriptionModel(stored, envModel)` → `{ model, source, retiredFrom }`, en privilégiant le réglage enregistré, puis l’environnement, puis le défaut ; traduit les modèles retirés.
+  - `resolveTranscriptionModel(stored, envModel)` → identifiant du modèle effectif, via `describeTranscriptionModel`.
+- Points d’attention :
+  - Les modèles acceptés doivent rester compatibles avec les préfixes utilisés par `src/lib/realtime/channel.js` ; un test API vérifie leur alignement.
+  - Les identifiants inconnus sont ignorés lors de la résolution. Les modèles retirés sont remplacés sans réécrire la valeur enregistrée.
+  - Les modèles de transcription de fichier sont distincts des modèles temps réel ; les modèles tiers utilisent leurs équivalents fournisseur.
+  - Les fournisseurs tiers nécessitent une clé enregistrée dans les réglages IA. La liste des modèles acceptés doit correspondre à ceux autorisés par l’API temps réel.
 
 ### services/api/routes/actions/execute.js
 
-- **Rôle du fichier :**
-  - Définit les routes API pour exécuter des actions utilisateur sur une transcription ou un résumé (par ex. envoi par email, dépôt sur un drive), via des boutons configurés dans l’admin.
-  - Garantit que les actions utilisent le document local affiché à l’utilisateur (modifications non persistées incluses).
-  - Ne permet jamais de spécifier la destination (email, dossier…) dans la requête : les destinations sont résolues côté serveur selon la configuration (lib/actions/resolve.js), pour des raisons de sécurité et d’auditabilité.
+- Enregistre les routes d’actions utilisateur sur une transcription ou un résumé. Le document provient du client, afin d’inclure les modifications locales non persistées.
+- `actionsExecuteRoutes(app)` — paramètre l’application Fastify ; ne retourne pas de valeur utile. Enregistre les routes `POST /actions/email` et `POST /actions/store`, un limiteur par compte pour les e-mails, et son arrêt à la fermeture de l’application.
 
-- **Fonctions exportées :**
-  - `actionsExecuteRoutes(app)` (**export par défaut**)
-    - **Paramètre :** `app` (instance du serveur/routeur Fastify)
-    - **Retour :** `void` (side effects : attache des routes POST `/actions/email` et `/actions/store` à l’instance)
-    - **Effets de bord :** 
-      - Instancie un rate-limiter par compte utilisateur (pas par IP).
-      - Déclare un hook d’arrêt à la fermeture de l’app.
-      - Route `/actions/email` :
-        - Envoie le document en email (corps JSON ou multipart), éventuellement avec pièce jointe.
-        - Vérifie l’activation de l’action, le quota par compte, et utilise les réglages persistés pour les destinataires.
-        - **Retour:** `{ ok, via, degraded }` ou erreur JSON.
-      - Route `/actions/store` :
-        - Dépose le document sur le drive relié (reçoit uniquement des requêtes multipart contenant le fichier).
-        - Peut exiger une confirmation utilisateur (`approved`) selon la destination.
-        - **Retour :** `{ ok, provider, folder, driveName, tag }` ou erreur JSON.
+- `POST /actions/email`
+  - Authentifie l’utilisateur, applique le quota par compte, lit le document en JSON ou en multipart, puis appelle `executeEmail`.
+  - Le multipart permet une pièce jointe facultative ; le corps de l’e-mail contient déjà le document.
+  - Réponse réussie : `{ ok, via, degraded, to }`, où `to` indique les destinataires effectifs. En cas d’erreur, renvoie l’erreur et le statut fournis par `executeEmail`.
+  - Effets de bord : envoi d’e-mail ; le dépassement du quota renvoie `429`.
 
-- **Points d’attention / edge cases / dépendances notables :**
-  - Refuse toute destination fournie dans la requête (sécurité, prévention relay/détournement).
-  - Rate-limiting par compte utilisateur (risque d’abus par script massivement authentifié).
-  - Un document peut contenir des modifications locales non encore persistées.
-  - Multipart : prise en compte explicite de l’absence ou taille excessive de la pièce jointe (erreurs 400/413).
-  - `/actions/store` : retour 409 (`approval_required`) pour distinction explicite entre "à confirmer" et "déposé", afin d’éviter les traitements automatiques de perte de session par le frontend.
-  - Dépendances sur des modules internes (auth, rbac, rateLimit, errors, document, execute, etc.), ainsi que sur la résolution de destination/config (lib/actions/resolve.js).
-  - La logique des contrôles d’accès et de la vérification de l’activation d’une action réside côté serveur, masquage côté client seul insuffisant.
+- `POST /actions/store`
+  - Authentifie l’utilisateur ; exige un multipart, lit le document et le fichier, puis appelle `executeStore`.
+  - Réponse réussie : `{ ok, provider, folder, driveName, tag }`. Les erreurs de lecture renvoient `400`, ou `413` si la pièce jointe dépasse la taille autorisée.
+  - Effet de bord : dépôt du fichier sur le stockage distant. Une confirmation requise est renvoyée comme erreur métier avec son statut (notamment `409`) et ses détails.
 
-- **Résumé rapide routes :**
-  - **POST /actions/email** : envoie une transcription/résumé par mail ; document en JSON ou multipart, destinataires résolus serveur.
-  - **POST /actions/store** : dépose un fichier sur un drive relié ; requiert multipart, parfois confirmation d’utilisateur.
+- **Points d’attention**
+  - Les destinations ne sont jamais acceptées depuis le corps de la requête : elles sont résolues à partir des réglages persistés.
+  - L’activation de chaque action est revérifiée dans `lib/actions/execute.js` ; masquer un bouton côté interface ne constitue pas un contrôle d’accès.
+  - Dépendances principales : `requireUser`, `fail`, `createRateLimiter`, `jsonOnlyBody`, `readMultipartDocument`, `executeEmail` et `executeStore`.
+  - Le schéma JSON de l’e-mail ne s’applique pas au multipart ; ne pas y introduire de destinations contrôlables par le client.
 
 ### services/api/routes/actions/index.js
 
@@ -2543,113 +1579,48 @@
 
 ### services/api/routes/actions/settings.js
 
-- **Rôle du fichier :**
-  - Définit les routes liées aux réglages d'actions utilisateur (destinataires email, dossier de dépôt, gabarits d’objet/nom de fichier).
-  - Expose aux clients les plafonds organisationnels, variables de gabarit autorisées et limites pour garantir la cohérence avec les règles administratives.
-  - Interagit avec les paramètres administrateur et spécifiques à l'utilisateur.
-
-- **Fonctions exportées :**
-  - `actionsSettingsRoutes(app)`
-    - **Paramètres** :
-      - `app` : Instance de l’application Fastify ou équivalent.
-    - **Retour** : void (enregistre les routes sur l’application).
-    - **Effets de bord notables** :
-      - Registration des routes HTTP :
-        - `GET /actions/settings`
-          - Authentifie l’utilisateur.
-          - Récupère les plafonds d’action et réglages utilisateur.
-          - Retourne `{ settings, ceiling, limits, variables, defaults }`.
-        - `POST /actions/settings`
-          - Authentifie l’utilisateur.
-          - Vérifie l’origine de la requête (protection CSRF).
-          - Valide/adapte les destinataires (noms refusés, limite max).
-          - Valide les variables des gabarits (rejette si inconnue).
-          - Applique un patch partiel et sauvegarde les réglages utilisateur.
-          - Retourne les réglages à jour et le contexte d’administration.
-      - Peut refuser la requête avec code et motif explicite (cf. erreurs dédiées).
-
-- **Points d'attention / Edge cases :**
-  - **Destinataires** :
-    - Toute adresse refusée bloque la requête (message d’erreur explicite, pas de filtrage silencieux).
-    - Si le nombre dépasse la limite admin, rejet avec une erreur dédiée.
-  - **Gabarits (templates)** :
-    - Toute variable non reconnue dans un template bloque la mise à jour (erreur dédiée).
-  - **CSRF** :
-    - Vérification de l'origine sur `POST` (sauf cas injection/script).
-  - **Patch partiel** :
-    - Seuls les champs présents dans le corps de la requête sont modifiés ; aucun effacement implicite de réglages préexistants.
-  - **Dépendances** :
-    - Autorisations utilisateur (`requireUser`), gestion des erreurs (`fail`), contrôle d'origine (`isSameOrigin`), normalisation/validation des données entrée/sortie spécifiques (recipients, variables de template, etc).
-    - Limites en provenance de la configuration administrateur, utilisées pour borner les possibilités des utilisateurs.
+- Gère les réglages d’actions propres à l’utilisateur : destinataires, stockage, gabarits de nom et d’objet, et offre affichée après le résumé. Les interrupteurs et le fournisseur externe relèvent des réglages d’organisation.
+- **`default actionsSettingsRoutes(app)`** — enregistre les routes Fastify `GET` et `POST /actions/settings` ; ne retourne pas de valeur utile.
+  - **GET** — sans paramètre métier ; exige un utilisateur authentifié, charge ses réglages et ceux de l’organisation, puis retourne `{ settings, ceiling, limits, variables, defaults }`. Le plafond indique les fonctions autorisées par l’administration.
+  - **POST** — reçoit un corps validé par `userActionsSettingsBody` ; exige un utilisateur authentifié et une origine identique, valide et normalise les destinataires et les variables de gabarit, applique un patch via `app.userActions.update`, puis retourne le même contexte que le GET. Effets de bord : met à jour les réglages de l’utilisateur ; peut répondre avec une erreur explicite (`403 bad_origin`, `400` pour destinataire invalide, limite dépassée ou variable inconnue).
+- **`context(admin)`** — helper interne ; construit le plafond, les limites, les variables disponibles et les valeurs par défaut à partir des réglages d’administration.
+- **Points d’attention :**
+  - Les destinataires sont réglés sur cette route, pas dans la requête d’envoi ; chaque liste est normalisée et limitée selon `admin.mail.maxRecipients`. Les refus identifient les adresses ou le tag concerné.
+  - Les gabarits sont rejetés s’ils contiennent des variables inconnues. Le stockage est copié champ par champ pour préserver les patchs partiels.
+  - Dépend de `requireUser`, `isSameOrigin`, des schémas de requête, de `normalizeRecipients`, des utilitaires de gabarit et des services `app.settings` / `app.userActions`. L’absence d’en-tête `Origin` est tolérée par le contrôle d’origine.
 
 ### services/api/routes/actions/storage.js
 
-- **Rôle du fichier**  
-  Gère les routes API pour la navigation dans le stockage connecté (Google Drive, Microsoft OneDrive/SharePoint) depuis l’interface utilisateur, sans exposer de jeton d’accès au navigateur. Permet de lister, rechercher, connaître le chemin, et créer des dossiers à travers une API serveur.
+- Enregistre les routes API de navigation et de création de dossiers dans le stockage connecté. Le fournisseur est déterminé par la configuration serveur ; les jetons d’accès ne sont pas transmis au navigateur.
+- Export par défaut : `actionsStorageRoutes(app)` — configure les routes Fastify ; ne retourne pas de valeur utile.
 
-- **Fonctions exportées**
-  - `actionsStorageRoutes(app)`
-    - **Paramètres** :  
-      - `app` : Instance de l’application (contenant notamment `settings`, `driveBrowser`).
-    - **Retour** :  
-      - Enregistre les routes au sein de l’application (`undefined`).
-    - **Effet de bord notable** :  
-      - Déclare 4 routes GET et 1 POST, toutes en lecture seule côté fournisseur sauf la POST qui permet la création de dossier.
+- `GET /actions/storage/drives`
+  - Paramètres : aucun.
+  - Retour : `{ provider, multiDrive, sharedDrivesMissing, drives }`.
+  - Effet : liste les espaces de stockage accessibles via `app.driveBrowser.drives`.
 
-  - **Routes créées** :
-    - `GET /actions/storage/drives`
-      - **Effet** : Liste les espaces de stockage racine accessibles (Drives Google, OneDrive, SharePoint suivis).
-      - **Retour** :  
-        - Objet `{ provider, multiDrive, sharedDrivesMissing, drives }`.
-      - **Points d’attention** :  
-        - La propriété `sharedDrivesMissing` indique si la liste est tronquée par manque de scope OAuth.
-        - Ne purge pas la connexion en cas d’erreur d’authentification.
+- `GET /actions/storage/folders`
+  - Paramètres de requête : `driveId`, `cursor`, `search`, `pageToken` (tous facultatifs).
+  - Retour : `{ ok: true, ...result }`, avec les sous-dossiers ou résultats de recherche.
+  - Effet : lecture seule ; délègue à `app.driveBrowser.list`.
 
-    - `GET /actions/storage/folders`
-      - **Params Query** :  
-        - `driveId` (optionnel), `cursor` (optionnel), `search` (optionnel), `pageToken` (optionnel).
-      - **Effet** : Liste les sous-dossiers du dossier courant ou résultats de recherche.
-      - **Retour** :  
-        - `{ ok: true, ...result }` où `result` contient la liste des objets folders.
-      - **Edge Cases** :
-        - Limites de taille sur les paramètres via `listQuery`.
-        - Échoue silencieusement en cas d’erreur d’authentification (ne purge pas la connexion).
+- `GET /actions/storage/path`
+  - Paramètres de requête : `driveId`, `cursor` (les autres champs du schéma de requête sont acceptés).
+  - Retour : `{ ok: true, path }`, chemin absolu du dossier.
+  - Effet : lecture seule ; délègue à `app.driveBrowser.pathOf`.
 
-    - `GET /actions/storage/path`
-      - **Params Query** :  
-        - `driveId` (optionnel), `cursor` (optionnel).
-      - **Effet** : Donne le chemin absolu d’un dossier obtenu par recherche.
-      - **Retour** :  
-        - `{ ok: true, path }`.
-      - **Edge Cases** :
-        - Retourne `undefined` si le chemin n’est pas défini ou en cas d’erreur.
+- `POST /actions/storage/folders`
+  - Corps : `name` requis ; `driveId` et `cursor` facultatifs.
+  - Retour : `{ ok: true, folder }`.
+  - Effet : crée un dossier via `app.driveBrowser.create` ; vérifie l’origine de la requête.
 
-    - `POST /actions/storage/folders`
-      - **Body** :  
-        - `driveId` (optionnel), `cursor` (optionnel), `name` (requis, string).
-      - **Effet** : Crée un dossier dans le stockage distant.
-      - **Retour** :  
-        - `{ ok: true, folder }` en cas de succès.
-      - **Effet de bord** :
-        - Vérification de l’origine via `isSameOrigin(req)`.
-        - Rejette les noms contenant un `/` (nom de dossier non valide dans ce contexte).
-
-- **Points d’attention**
-  - **Dépendances** :
-    - Repose sur `app.driveBrowser` (API d’accès unifiée pour fournisseurs).
-    - Exige que le serveur possède et gère le refresh token (jamais de jeton d’accès en front).
-    - Les connexions/authentifications sont gérées via des helpers (`resolveStorageAccess`, etc.).
-  - **Edge Cases / Sécurité** :
-    - Ne jamais supprimer la connexion utilisateur sur simple échec navigation (erreur réseau ou auth temporaire).
-    - Toutes les routes sauf la POST sont en lecture seule et donc exemptes de vérification d’origine.
-    - Les paramètres de requête/body sont validés en taille et format.
-    - Un nom de dossier contenant un `/` est explicitement rejeté (empêche l’injection de niveaux de dossier ou ambigüités de chemin).
-    - Gestion fine des erreurs d’authentification (renvoi d’un message dédié si l’auth est révoquée).
-    - En cas d'erreur sur une route, la réponse est toujours contrôlée (jamais d’exception non catchée vers l’utilisateur).
-
-- **À lire dans le code :**
-  - Pour l’algorithme client : la notion de navigation par « curseur » et « nom » (adapter pour Google Drive et Graph/Onedrive/SharePoint).
-  - Voir aussi le fichier `lib/connections/browse.js` pour la logique de navigation/protocole.
+- Points d’attention :
+  - Toutes les routes exigent un utilisateur et un accès de navigation valide (`requireUser`, `resolveStorageAccess`).
+  - Les curseurs sont opaques ; le client conserve les noms pour composer le chemin. Les limites de validation sont de 1 000 caractères pour `cursor`, 300 pour `driveId`, 100 pour `search`, 2 000 pour `pageToken` et 200 pour `name`.
+  - La création refuse les noms contenant `/` et applique `trim()`.
+  - Les erreurs fournisseur sont converties en `502` (`storage_auth_revoked` ou `browse_failed`) sans supprimer la connexion. Les échecs d’accès sont traités par `resolveStorageAccess`.
+  - `sharedDrivesMissing` n’est pertinent que si l’installation propose le scope requis ; il signale alors un scope absent de la connexion.
+  - Dépendances principales : `app.settings.getActions()`, `app.driveBrowser` et les utilitaires RBAC, d’accès aux connexions, de validation d’origine et de gestion d’erreurs.
 
 ### services/api/routes/actions/test.js
 
@@ -2687,220 +1658,76 @@
 
 ### services/api/routes/admin/index.js
 
-- **Rôle du fichier :**
-  - Regroupe et installe les routes d'administration sous le préfixe `/api/admin` dans l'application.
-  - Garantit la normalisation des erreurs (contrat cohérent avec `/api/auth`), notamment pour les erreurs de validation (ajv) et la structure des réponses d’erreur.
-
-- **Fonction exportée :**
-  - **Nom :** `adminRoutes`
-  - **Paramètres :**
-    - `app` (instance du serveur/app, typiquement fastify)
-  - **Retour :**
-    - Aucun (side effect uniquement : enregistrement des routes sur l’app)
-  - **Effets de bord notables :**
-    - Enregistre des sous-routes provenant de trois modules : `users.js`, `settings.js` et `stats.js` sous `/admin`
-    - S’appuie sur un handler d’erreurs racine pour normaliser les réponses d’erreur
-
-- **Points d’attention :**
-  - **Dépendances importantes :**
-    - Dépend des modules locaux `./users.js`, `./settings.js` et `./stats.js` pour intégrer les sous-routes d’administration.
-    - Dépend du système de gestion d’erreurs global (`app.js`, `lib/errors.js`).
-  - **Edge cases :**
-    - Si un des modules de routes (`users`, `settings`, `stats`) échoue à l’import ou à l’enregistrement, tout ce groupe admin échouera à s’initialiser correctement.
-    - La structure des erreurs dépend fortement de la cohérence avec `/api/auth` et de la normalisation ajv.
-  - **Convention :**
-    - Toutes les routes enfants héritent du préfixe `/api/admin`.
+- **Rôle** : regroupe et monte les routes d’administration sous le préfixe `/admin` (généralement `/api/admin`).
+- **Fonction exportée — `adminRoutes(app)`**
+  - **Paramètre** : `app`, instance Fastify.
+  - **Retour** : aucune valeur explicite.
+  - **Effet de bord** : appelle `app.register` avec le préfixe `/admin`, puis enregistre les routes utilisateurs, groupes, paramètres, statistiques, « myBrain » et vérifications de configuration.
+- **Points d’attention**
+  - Les erreurs sont normalisées par le handler racine ; le contrat annoncé reprend celui de `/api/auth` (codes HTTP réels, slug stable et normalisation des erreurs AJV).
+  - Dépend des modules `./users.js`, `./groups.js`, `./settings.js`, `./stats.js`, `./myBrain.js` et `./configChecks.js`.
 
 ### services/api/routes/admin/settings.js
 
-- **Rôle du fichier :**
-  - Définit les routes API d’administration pour la gestion centralisée des réglages applicatifs : identité, IA (OpenAI), actions post-réunion, apparence (branding), et contexte d’organisation.
-  - Toutes les routes sont réservées aux administrateurs (contrôle par `requireAdmin`).
-  - Les valeurs sensibles (ex. clés API) ne sont jamais ré-exposées aux clients.
-
-- **Fonctions exportées :**
-  - `default function adminSettingsRoutes(app)`
-    - **Paramètre** : `app` (contexte serveur, injecte settings, config, mailer, openai, etc.).
-    - **Retour** : Aucun (enregistre les routes Fastify/Express sur l’instance `app`).
-    - **Effets de bord notables** : Ajoute des routes HTTP protégées à l’application.
-    - **Routes définies :**
-      - `GET /settings/auth`
-        - Retourne les réglages d’authentification publics.
-      - `POST /settings/auth`
-        - Met à jour les réglages d’auth (Google, Entra, domaines autorisés).
-        - Relais explicites des champs : absent = inchangé, vide = suppression.
-      - `GET /settings/ai`
-        - Retourne les réglages OpenAI publics.
-      - `POST /settings/ai`
-        - Met à jour la clé et/ou le modèle de transcription OpenAI.
-        - **Clé vérifiée en amont auprès d’OpenAI** ; refus explicite ≤ clé invalide/suspendue.
-        - Champ absent = inchangé ; champ vide = retour à la valeur d’environnement (.env).
-      - `POST /settings/ai/test`
-        - Vérifie la validité de la clé OpenAI effectivement utilisée, sans changement d’état.
-      - `POST /settings/ai/test-transcription`
-        - Teste le modèle de transcription via un appel Realtime effectif OpenAI ; détecte accès refusé, quotas, etc.
-        - Modèle testé : fourni ou, à défaut, enregistré.
-      - `GET /settings/actions`
-        - Retourne les réglages actions post-réunion, liste des variables de gabarit utilisables.
-      - `POST /settings/actions`
-        - Met à jour les réglages post-réunion (mails, fichiers, variables templates).
-        - **Refus des variables inconnues** dans les templates : échec explicite si usage non autorisé.
-      - `GET /settings/branding`
-        - Retourne les réglages branding publics, info sur l’auteur du changement.
-      - `POST /settings/branding`
-        - Met à jour logo, phrase d’accueil, couleur primaire.
-      - `GET /settings/org-context`
-        - Retourne le contexte organisationnel (vocabulaire partagé) avec métadonnées.
-      - `POST /settings/org-context`
-        - Met à jour le contexte organisationnel.
-
-- **Points d’attention :**
-  - **Aucune donnée sensible n’est renvoyée dans les réponses** (masquage strict).
-  - **Relayage explicite obligatoire** des champs entre schéma et dépôt (ajouter un champ côté schéma sans logique d’écriture côté route = aucun effet, message « Enregistré » trompeur).
-  - **Sanitisation & validation** renforcées : ex. listes de domaines, clés, templates vérifiés côté serveur.
-  - **Distinction champ absent / champ vide** : Absence ↔ valeur inchangée, chaîne vide ↔ suppression/retrait/revenir à défaut.
-  - **Gestion des erreurs OpenAI** : messages d’erreur de l’amont relayés pour diagnostic, log warnings sur refus.
-  - **Variables de template** : Allowlists dynamiques synchronisées serveur <-> client ; tout décalage refusera la requête côté serveur.
-  - **Dépendances principales** : `app.settings` (accès aux dépôts des réglages), middlewares de validation et RBAC, utilitaires OpenAI, mailer (optionnel), schémas de validation (auth/schemas.js).
-  - **Cas limites** : modification du schéma sans mise à jour des routes, passage d’une clé OpenAI erronée, modèles de transcription inaccessibles, listes de domaines malformées.
+- **Rôle** : enregistre les routes Fastify de consultation, modification et test des réglages administratifs (authentification, IA, actions, marque, contexte organisationnel et corrections de transcription). Toutes les routes vérifient les droits administrateur.
+- **Export**
+  - `adminSettingsRoutes(app)` — reçoit l’instance Fastify configurée ; enregistre les routes et ne renvoie pas de valeur utile. Les handlers lisent et modifient `app.settings` et peuvent appeler les fournisseurs externes pour vérifier des clés ou des modèles.
+- **Routes principales**
+  - `GET/POST /settings/auth` — lit ou met à jour les réglages d’authentification ; refuse la mise à jour si elle ne laisse aucun mode de connexion utilisable.
+  - `GET/POST /settings/ai` — expose les réglages publics et les tarifs, ou enregistre les modèles, clés et options IA. Vérifie les clés fournies et la présence de la clé requise par les modèles actifs.
+  - `GET/POST /settings/actions` — lit ou enregistre les réglages d’actions ; rejette les variables inconnues dans les gabarits.
+  - `GET/POST /settings/branding`, `/settings/org-context`, `/settings/transcript-corrections` — lit ou met à jour ces réglages.
+  - `POST /settings/ai/test`, `/settings/ai/test-transcription`, `/settings/ai/test-summary` — vérifie l’accès réel aux clés ou modèles, sans enregistrer de réglage ; les tests de modèles peuvent effectuer un appel fournisseur.
+- **Points d’attention**
+  - Les projections publiques n’exposent pas les secrets. Pour les champs modifiables, un champ absent signifie généralement « inchangé » ; un champ vide peut rétablir la valeur par défaut ou retirer une clé.
+  - Les champs transmis aux dépôts doivent être relayés explicitement : un champ accepté par le schéma mais oublié dans le patch sera ignoré.
+  - Les prix IA sont facultatifs : une erreur de tarification est journalisée et renvoie `prices: null`, sans bloquer la configuration.
+  - Dépend des schémas de `../auth/schemas.js`, du contrôle d’accès `requireAdmin`, des services de réglages, de tarification et des clients OpenAI/fournisseurs tiers ; les erreurs amont sont converties en erreurs HTTP métier, les autres sont propagées.
 
 ### services/api/routes/admin/stats.js
-
-- **Rôle du fichier**  
-  Fournit une route API `/stats` réservée aux administrateurs pour consulter des statistiques agrégées d'usage (nombre, volume des réunions/utilisateurs) sur l'ensemble de l'installation, sans accès au contenu détaillé des réunions.
-
-- **Fonction exportée**
-  - `adminStatsRoutes(app)`
-    - **Paramètres** : `app` (instance du serveur, typiquement Fastify ou Express)
-    - **Retour** : Aucune valeur explicite (enregistre la route `/stats` sur l'app).
-    - **Effets de bord notables** :
-      - Création de la route GET `/stats` (API admin uniquement).
-      - Validation de l'admin via `requireAdmin`.
-      - Requêtes vers la base MongoDB (`resume` et `user`), avec projection stricte sur les champs nécessaires.
-      - Appel de la fonction pure `computeUsageStats` pour le calcul.
-      - Les réponses ne contiennent que des statistiques agrégées, jamais de texte de réunion.
-
-- **Points d'attention**
-  - **Dépendances notables** :
-    - `requireAdmin` (RBAC, contrôle d’accès)
-    - `computeUsageStats`, `RANGE_DAYS` (calcul, validation)
-    - `adminStatsQuery` (schéma de validation de la querystring)
-  - **Edge cases** :
-    - Si le paramètre `days` n’est pas dans `RANGE_DAYS`, il bascule sur 30 jours (par défaut).
-    - Les champs Mongo projetés sont limités, tout ajout de champs dans le calcul doit être reporté ici.
-    - Les noms de champs contiennent une coquille persistante : `lastConnecion` sans "t" (présent dans 2 collections).
-    - La route traverse toutes les réunions et utilisateurs, attention à la volumétrie (risque sur très grandes installations).
-  - **Sécurité & confidentialité** :
-    - Accès réservé aux administrateurs et projection stricte pour éviter toute fuite de données sensibles.
+- Enregistre les routes de statistiques réservées aux administrateurs. Les lectures portent sur des volumes et utilisent des projections limitées pour ne pas exposer le contenu des réunions.
+- `adminStatsRoutes(app)` — configure les routes sur `app`; ne retourne pas de valeur. Déclare aussi l’estimation des dépenses et l’actualisation des tarifs, sans les exporter séparément.
+- Routes enregistrées :
+  - `GET /stats` — paramètres de requête validés par `adminStatsQuery` : période (`from`/`to` ou jours), groupe, compte, template. Retourne les statistiques, les filtres et les options disponibles, ainsi que `costs` (`null` si l’estimation échoue). Une période invalide renvoie une erreur 400.
+  - `GET /stats/credits` — sans paramètre ; retourne le crédit de temps mensuel des comptes, calculé par `computeTeamCredits`.
+  - `POST /stats/account` — corps validé par `adminAccountStatsBody`, notamment l’adresse du compte et une plage facultative. Retourne les statistiques personnelles du compte et son identité ; renvoie 404 si le compte est introuvable.
+  - `POST /stats/prices/refresh` — sans paramètre ; actualise les tarifs et le taux de change, puis retourne les éléments actualisés. Renvoie 502 (`prices_unreachable`) si aucun tarif ni taux n’a pu être actualisé.
+- Points d’attention :
+  - Chaque route applique `requireAdmin` avant son traitement. Les calculs métier sont délégués à `lib/stats.js`, `lib/costs/`, `lib/teamCredits.js` et `lib/personalStats.js`.
+  - Les filtres cadrent les statistiques et les dépenses ; leurs options restent indépendantes des filtres appliqués. Un groupe ou compte inconnu peut produire une population vide.
+  - L’estimation des coûts est tolérante aux erreurs : elle journalise l’échec et renvoie `null` sans bloquer les statistiques. Elle dépend des réglages IA, des tarifs, des modèles configurés et des comptes ayant désactivé la détection d’actions.
+  - L’actualisation des tarifs est mutualisée via `inFlight` : les requêtes simultanées partagent un relevé. Un résultat partiel est enregistré et indique les sources manquantes ; sans mise à jour, le dernier relevé est conservé.
 
 ### services/api/routes/admin/users.js
 
-- **Rôle du fichier :**
-  - Fournit les routes d'administration pour la gestion des utilisateurs (CRUD, reset mot de passe), uniquement accessibles aux administrateurs.
-  - Choix de routes avec verbes dans le chemin (et non REST avec `:id`) pour éviter d'exposer les emails ou `_id` en URL.
-
-- **Fonctions/exportations principales :**
-  - **adminUsersRoutes(app)**
-    - **Paramètre :** `app` (contexte principal de l’application, expose les méthodes utilisateurs et sessions)
-    - **Retour :** Rien (enregistre les handlers sur l’instance `app`)
-    - **Effets de bord :** Modifie l’état utilisateur, sessions associées, connexions OAuth, tokens de réinitialisation.
-    - **Routes exposées :**
-      - `GET /users`  
-        - *Liste des utilisateurs selon critères*  
-        - `q`, `limit`, `skip` (query)  
-        - Retour : Tableau d'utilisateurs filtrés
-      - `POST /users/create`
-        - *Création d'utilisateur par admin*  
-        - Paramètres : {email, name, role, password?, mustChangePassword?}
-        - Retour : Utilisateur créé (+ mot de passe généré si absent en entrée)
-        - **Effet :** Mot de passe stocké haché
-      - `POST /users/update`
-        - *Modification d’un utilisateur*  
-        - Paramètres : {email, name?, role?, disabled?}
-        - Retour : Utilisateur modifié
-        - **Effet :** Si désactivation ou rétrogradation du rôle, toutes les sessions de l’utilisateur sont détruites
-      - `POST /users/reset-password`
-        - *Réinitialisation du mot de passe*  
-        - Paramètres : {email, password?, mustChangePassword?}
-        - Retour : Utilisateur modifié (+ mot de passe généré si absent en entrée)
-        - **Effet :** Détruit toutes les sessions et tokens de reset pour ce compte
-      - `POST /users/delete`
-        - *Suppression d’un utilisateur (et purge possible de ses données)*
-        - Paramètres : {email, purgeData?}
-        - Retour : (204 No Content)
-        - **Effet :** Sessions, connexions OAuth, tokens reset supprimés. Purge des données personnelles si demandé.
-
-- **Points d'attention / Edge cases :**
-  - **Protection contre la perte totale d’administration :**
-    - Impossible de désactiver, rétrograder ou supprimer le dernier administrateur actif (`isLastActiveAdmin`).
-  - **Opérations interdites :**
-    - Un administrateur ne peut pas se désactiver ou se supprimer lui-même.
-  - **Password policy :**
-    - Vérification de la robustesse systématique sur création/réinitialisation; retour explicite du motif de rejet.
-  - **Email en entrée :**
-    - Toujours normalisé (minuscule, format homogène).
-  - **Sessions :**
-    - Toute désactivation/réinitialisation/suppression purge les sessions de l’utilisateur immédiatement.
-  - **Connexions tierces (OAuth) :**
-    - Révocation systématique des refresh tokens pour les providers proposant la fonction.
-  - **Dépendances externes principales :**
-    - `../../lib/auth/password.js` (gestion mots de passe)
-    - `../../lib/repositories/users.js` (gestion utilisateurs)
-    - `../../lib/errors.js`, `../../lib/rbac.js` (gestion droits/erreurs)
-    - `../auth/schemas.js` (validation des schémas req)
-    - `app.sessions`, `app.resetTokens`, `app.connections` (API interne pour manipuler sessions et connexions)
-
-- **Remarque :**
-  - Les emails n'apparaissent jamais dans l'URL (usage exclusif dans le corps/params), pour confidentialité et robustesse.
+- Enregistre les routes d’administration des utilisateurs. Toutes exigent `requireAdmin` et valident leurs entrées avec les schémas de `../auth/schemas.js`.
+- Fonctions exportées :
+  - `default adminUsersRoutes(app)` — enregistre les routes sur `app` ; ne retourne pas de valeur utile. Effets de bord : crée, modifie, réinitialise ou supprime des comptes et peut invalider des sessions, jetons et connexions externes.
+- Routes enregistrées :
+  - `GET /users` — paramètres de requête `q`, `limit`, `skip`, `group` ; retourne le résultat de `app.users.list(...)`.
+  - `POST /users/create` — corps avec email, nom, rôle, groupes et options de mot de passe ; retourne `201` avec l’utilisateur public et, si le mot de passe a été généré, `generatedPassword` (une seule fois).
+  - `POST /users/update` — corps identifiant l’utilisateur par email et champs à modifier ; retourne `{ user }`. Un changement de rôle peut déplacer l’utilisateur vers le groupe correspondant ; désactivation ou changement de rôle invalide ses sessions.
+  - `POST /users/reset-password` — corps avec email et mot de passe facultatif ; retourne `{ user }` et éventuellement `generatedPassword`. Invalide les sessions et purge les jetons de réinitialisation.
+  - `POST /users/delete` — corps avec email et `purgeData` facultatif ; retourne `204`. Révoque les connexions externes révocables, supprime connexions, sessions et jetons ; `purgeData` supprime aussi les données personnelles.
+- Points d’attention :
+  - Les emails sont normalisés pour les recherches. Les mots de passe fournis ou générés sont contrôlés selon la politique puis hachés ; un mot de passe généré n’est renvoyé qu’à la création ou à la réinitialisation.
+  - Les groupes inconnus sont refusés (`400 group_not_found`). Un email déjà utilisé, un utilisateur absent, une opération sur soi-même ou la perte du dernier administrateur actif entraînent des erreurs dédiées.
+  - La suppression de soi-même est interdite ; `purgeData` est irréversible. La révocation Gmail dépend de `CONNECT_PROVIDERS` et de `app.gmailRevoke`.
+  - Dépendances principales : `app.users`, `app.groups`, `app.sessions`, `app.resetTokens`, `app.connections` et les utilitaires d’authentification, de dépôts, de RBAC et d’erreurs importés.
 
 ### services/api/routes/ai.js
 
-- **Rôle du fichier**
-  - Définit les routes API relatives aux fonctionnalités d’IA : gestion de jetons éphémères pour OpenAI Realtime, transcription batch via Whisper, extraction d’actions en réunion, et rafraîchissement du texte transcrit via le contexte des notes.
-  - Garantit que la clé OpenAI reste côté serveur.
-  - Fournit un historique des adaptations liées au workflow n8n.
-
-- **Fonctions exportées**
-  - `default function aiRoutes(app)`
-    - **Paramètres :**
-      - `app` : instance du serveur/serveur Fastify avec accès à la configuration et aux services (OpenAI, settings, logs, etc.).
-    - **Effet de bord :** Enregistre plusieurs routes HTTP sur l’instance du serveur.
-    - **Routes et logique principale :**
-      - `GET /tempkey`
-        - **Entrée** : paramètre de query `lang` (optionnel).
-        - **Retour** : objet contenant le jeton OpenAI Realtime pour transcription live (`value`, `client_secret.value`, et `transcriptionModel`).
-        - **Effets de bord** : Log des erreurs (logger de la requête), appele OpenAI pour générer un jeton.
-        - **Points d’attention** : 
-          - Fait coexister deux formats attendus côté client pour le jeton.
-          - La langue est validée (sinon repli sur `fr`).
-      - `POST /record`
-        - **Entrée** : Fichier audio envoyé multipart (champ `data` attendu).
-        - **Retour** : `{ text }` – texte transcrit.
-        - **Effets de bord** : Log des erreurs, envoie le fichier à OpenAI pour batch transcription.
-        - **Points d’attention** : 
-          - Erreur 400 si fichier absent.
-      - `POST /actions`
-        - **Entrée** : JSON avec `content`, `actions`, `dismissed`.
-        - **Retour** : `{ actions }` – liste d’actions détectées/affinées.
-        - **Effets de bord** : Log des erreurs, appelle la détection 'actionDetection' avec ajout du contexte métier.
-        - **Points d’attention** :
-          - Prend en compte les actions déjà détectées/supprimées.
-          - Si la fonctionnalité a été désactivée côté utilisateur, retour immédiat liste vide.
-      - `POST /refine-transcript`
-        - **Entrée** : JSON avec `sentences` (2 dernières phrases) et `notes` (notes de réunion).
-        - **Retour** : `{ sentences }` – phrases éventuellement réécrites par le modèle ; sinon inchangées.
-        - **Effets de bord** : Log des erreurs, prompt(s) OpenAI pour raffinage.
-        - **Points d’attention** :
-          - Taille des notes et phrases strictement limitée (payload minuscule).
-          - Si sortie du modèle illisible ou mal alignée, on retourne les phrases sources.
-
-- **Points d’attention, edge cases, dépendances**
-  - Gestion stricte des paramètres (`lang` normalisé, défaut sur `fr`, tailles max des champs `notes` et `sentences`).
-  - Si modèle OpenAI ou configurations sont changés en cours de session, les changements sont pris en compte sans redémarrage.
-  - Les erreurs upstream (OpenAI) sont systématiquement loguées et relayées via `replyUpstreamError`.
-  - Dépend des modules internes : `lib/openai.js`, `lib/actionDetection.js`, `lib/prompts.js`.
-  - Nécessite que l’objet `app` fournisse `openai`, `settings`, `userActions`, etc.  
-  - Les interactions audio en temps réel ne transitent jamais physiquement par ce service (jeton uniquement).
+- Enregistre les routes IA de l’API. Elles exigent une identité via `requireUser` et gardent les clés fournisseurs côté serveur.
+- `aiRoutes(app)` — reçoit l’instance Fastify, enregistre les routes `/tempkey`, `/record`, `/actions` et `/refine-transcript`. Retourne implicitement `undefined`. Effet de bord : configure le routeur et maintient un compteur de transcriptions en cours dans le processus.
+- `/tempkey` — `GET`, paramètres de requête `lang` et éventuellement `meetingId`. Retourne un jeton éphémère avec le modèle de transcription. Vérifie le quota au démarrage, mais pas pour une réunion reconnue comme active. Appelle OpenAI ou le fournisseur configuré.
+- `/record` — `POST`, multipart avec un fichier `data`; paramètres `source=offline` et `lang`. Retourne `{ text }` ou une erreur. Écrit le fichier temporairement sur disque, le découpe si nécessaire, puis le supprime. Limite les requêtes simultanées; le quota ne s’applique pas à `source=offline`.
+- `/actions` — `POST`, corps contenant `content`, `actions`, `dismissed` et `language`. Retourne `{ actions }`; renvoie une liste vide si la détection est désactivée. Appelle OpenAI avec les réglages du compte et le contexte organisationnel serveur.
+- `/refine-transcript` — `POST`, corps avec `notes` et `sentences`. Retourne `{ sentences }`, en conservant les phrases d’origine si les entrées sont insuffisantes ou la sortie du modèle invalide. Les notes sont limitées à 4 000 caractères et les phrases à 4 éléments de 1 200 caractères.
+- Points d’attention :
+  - Les refus de quota renvoient `409 quota_exhausted`. Les erreurs fournisseurs sont relayées via `replyUpstreamError`; les fichiers trop volumineux ou trop longs renvoient `413`.
+  - `/record` dépend du multipart, du disque temporaire, de `app.audioChunker`, des modèles et fournisseurs configurés. Une tranche en échec fait échouer toute la transcription; les tranches sont traitées au plus trois à la fois.
+  - `/tempkey` adapte le format du jeton aux deux formes attendues par le client; celui-ci doit utiliser le modèle renvoyé.
+  - Dépendances principales : `requireUser`, `ownerFilter`, quota et réglages de `app`, fournisseurs IA, détection d’actions, prompts et normalisation de langue.
 
 ### services/api/routes/auth/index.js
 
@@ -2933,44 +1760,22 @@
 
 ### services/api/routes/auth/login.js
 
-- **Rôle du fichier**
-  - Définit les routes API pour la connexion et la déconnexion par mot de passe utilisateur.
-  - Met en place la logique de gestion de session, validation d’origine, limitation du nombre de tentatives (rate limiting), et normalisation des données d’entrée pour l’authentification.
-
-- **Fonction exportée**
-  - `loginRoutes(app)`
-    - **Paramètres** :
-      - `app` : instance du serveur (ex : Fastify), contenant la configuration, les utilisateurs, les sessions, etc.
-    - **Retour** : aucun (side effect : ajoute les routes `/login` et `/logout` à l’application passée en paramètre).
-    - **Effets de bord notables** :
-      - Ajoute deux routes POST :
-        - **/login**
-          - Authentifie un utilisateur par email/mot de passe.
-          - Met en place deux rate limiters (par IP et par compte).
-          - Émet un cookie de session à la connexion réussie.
-          - S’assure que la réponse aux échecs ne fournit aucune indication sur l’existence ou l’état du compte (protection contre l’énumération).
-        - **/logout**
-          - Procède à la suppression de la session et du cookie associé, envoyé idempotent 204 même si l’utilisateur n’a pas de session.
-      - Nettoie/réalise l’arrêt des rate limiters à la fermeture de l’application (`onClose`).
-      - Dépend fortement des middlewares/dépendances internes sur gestion des cookies, vérification de mot de passe, gestion des utilisateurs et sessions, contrôle d’origine de requête, validation de schéma.
-  
+- Enregistre les routes de connexion et de déconnexion par mot de passe.
+- **Export par défaut — `loginRoutes(app)`**
+  - Paramètre : instance Fastify `app`.
+  - Retour : aucun retour explicite.
+  - Effets : installe `POST /login` et `POST /logout`, crée deux limiteurs de débit et les arrête à la fermeture de l’application.
+- **`POST /login`**
+  - Valide le corps avec `loginBody`.
+  - Vérifie l’origine et que la connexion par mot de passe est activée, en configuration comme dans les paramètres administratifs.
+  - Limite les tentatives par IP et par adresse e-mail normalisée ; en cas de dépassement, répond `429` avec `Retry-After`.
+  - Vérifie le mot de passe, crée une session et pose le cookie de session en cas de succès. Retourne l’utilisateur de session.
+  - Les échecs d’identifiants répondent uniformément `401 invalid_credentials`. Pour un compte inconnu, désactivé ou sans mot de passe, `burnVerify` réduit les différences de latence.
+- **`POST /logout`**
+  - Détruit la session si un jeton est présent, efface le cookie et répond toujours `204`, même sans session.
 - **Points d’attention**
-  - **Protection contre l’énumération d’utilisateurs** :
-    - Même temps de réponse et mêmes messages que l’échec soit dû à un mauvais mot de passe, compte inexistant, désactivé ou sans mot de passe.
-    - Utilise systématiquement une vérification CPU-intensive (`burnVerify`) sur échec pour ne pas révéler l’état du compte.
-  - **Rate limit par IP ET par compte** :
-    - Bloqueur efficace contre les attaques en force brute, particulièrement pour protéger les utilisateurs ciblés et l’API globale.
-    - Les paramètres de limitation sont configurables via `app.config`.
-  - **Validation d’origine (`isSameOrigin`)** :
-    - Refuse toute authentification provenant d’une origine différente de celle attendue (CSRF).
-  - **Edge cases** :
-    - Les champs du formulaire sont normalisés (e-mail), mais dépendant de la consistance du schéma validé en amont (`loginBody`).
-    - `/logout` retourne toujours 204, que l’utilisateur soit connecté ou non (idempotence).
-  - **Dépendances notables** :
-    - Modules internes : mot de passe, cookies, sessions, utilisateurs, gestion des erreurs, validation de schéma, configuration et protection contre les attaques par force brute.
-    - Attendu que les couches d’accès aux users/sessions lancent correctement les exceptions/retours.
-    - Les options de sécurité des cookies (`config.cookieSecure`) doivent correspondre à la politique HTTPS du déploiement.
-    - Le bon fonctionnement repose sur la présence d’un corps de requête conforme (validé par `loginBody`).
+  - Un échec de connexion ne réinitialise pas les compteurs ; ils sont réinitialisés après authentification réussie.
+  - Dépend des modules d’authentification, de cookies, de limitation de débit et de vérification d’origine, ainsi que des dépôts utilisateurs et groupes, des paramètres et des sessions fournis par `app`.
 
 ### services/api/routes/auth/password.js
 
@@ -3057,139 +1862,35 @@
 
 ### services/api/routes/auth/schemas.js
 
-- **Rôle du fichier**
-  - Définit les schémas de validation JSON pour les corps et requêtes des routes d’authentification et d’administration (Fastify/ajv).
-  - Garantit la conformité des structures reçues (validation à l’entrée).
-  - Privilégie la validation déclarative native Fastify (pas de zod ni de validator custom).
-
-- **Fonctions/schémas exportés**  
-  Chacun est un objet de schéma Fastify/ajv :
-
-  - `loginBody`  
-    - Params : objet `{ email, password }`  
-    - Email doit matcher un pattern défini en externalité.
-    - Retour/effet : utilisé pour valider le login d’un utilisateur.
-  
-  - `forgotBody`  
-    - Params : `{ email, lang }` (`lang` optionnel: `'fr'` ou `'en'`)
-    - Effet : validation sur la demande de réinitialisation du mot de passe.
-
-  - `resetBody`  
-    - Params : `{ token, password }`, deux strings avec limitations de taille.
-    - Effet : validation du reset de mot de passe via token.
-
-  - `changePasswordBody`  
-    - Params : `{ currentPassword, newPassword }`
-    - Effet : validation du changement de mot de passe.
-
-  - `adminCreateBody`  
-    - Params : `{ email, password, name, role, mustChangePassword }`
-    - Role : `"user"` ou `"admin"`.
-    - Effet : création d’un utilisateur en admin.
-
-  - `adminUpdateBody`  
-    - Params : `{ email, name, role, disabled }`
-    - Effet : mise à jour partielle d’un utilisateur par l’admin.
-
-  - `adminResetBody`  
-    - Params : `{ email, password, mustChangePassword }`
-    - Effet : réinitialisation du mot de passe d’un utilisateur par l’admin.
-
-  - `adminDeleteBody`  
-    - Params : `{ email, purgeData }`
-    - Effet : suppression d’un utilisateur, option pour purger ses données.
-
-  - `adminSettingsBody`  
-    - Params : configuration des providers OAuth (google/entra), et liste de domaines autorisés.
-    - Dépendances : valeurs max/importées pour les longueurs et enums.
-
-  - `adminAiSettingsBody`  
-    - Params : `{ apiKey, transcriptionModel }`. Les deux sont facultatifs, voir section "points d’attention" pour signification.
-
-  - `adminBrandingSettingsBody`
-    - Params : `{ logo, tagline, primaryColor }` ; changement apparence installation.
-
-  - `adminOrgContextSettingsBody`
-    - Params : `{ context }` ; contexte organisation.
-
-  - `userActionDetectionBody`
-    - Params : réglages détection d’action utilisateur (`enabled`, `sensitivity`, `triggerWords`, etc.).
-
-  - `userActionDetectionTestBody`
-    - Params : `{ content, settings }`
-    - Usage : tester la détection sans effet de bord.
-
-  - `adminTranscriptionTestBody`
-    - Params : `{ model }` ou `null`
-    - Usage : tester un modèle de transcription, même schéma que pour la sélection.
-
-  - `adminActionsSettingsBody`
-    - Params : actions proposées après transcription/résumé, connexion provider, mail policy…
-
-  - `userActionsSettingsBody`
-    - Params : préférences d’action utilisateur (destinataires, stockage, etc.).
-
-  - `actionTestBody`
-    - Params : `{ target, kind, lang, scope }`
-    - Usage : tester l’action (mail, stockage), distinction admin/user.
-
-  - `adminListQuery`
-    - Params : `{ q, limit, skip }`
-    - Usage : Recherche et pagination liste d’utilisateurs admin.
-
-  - `adminStatsQuery`
-    - Params : `{ days }`, enum restrictif.
-
-- **Points d’attention / edge cases / dépendances**
-  - Aucune réponse n’est strictement schématisée (`schema.response` absent) : ne pas déclarer car Fastify retirerait alors tout champ inconnu sans alerter, générant des bugs côté frontend.
-  - Les validations côté serveur sont doublées côté lecture (ex : détection d’action, mailPolicy…), pour éviter les incohérences si des documents hors-schéma surviennent.
-  - `format: 'email'` n’est PAS utilisé, car la dépendance `ajv-formats` n’est pas incluse (évite toute erreur de compilation ajv).
-  - Beaucoup de bornes et patterns sont importés dynamiquement depuis d’autres modules, attention lors de la modification des valeurs limites (ex: taille des mots de passe, nombre max de destin
+- **Rôle** : définit les schémas JSON Schema Fastify/Ajv des corps de requête et des paramètres de requête des routes d’authentification, d’administration et de réglages. Ce fichier exporte des objets de schéma, pas des fonctions ; ils ne produisent donc aucun effet de bord à l’import.
+- **Exports** :
+  - `loginBody`, `forgotBody`, `resetBody`, `changePasswordBody` : corps des routes de connexion, récupération et changement de mot de passe.
+  - `adminCreateBody`, `adminUpdateBody`, `adminResetBody`, `adminDeleteBody` : corps de gestion des comptes administrateur.
+  - `adminGroupCreateBody`, `adminGroupUpdateBody`, `adminGroupDeleteBody`, `adminGroupMembersBody` : corps de gestion des groupes et de leurs membres.
+  - `adminSettingsBody`, `adminAiSettingsBody`, `adminBrandingSettingsBody`, `adminOrgContextSettingsBody`, `adminTranscriptCorrectionsBody`, `adminActionsSettingsBody` : corps des réglages d’installation et d’administration.
+  - `userActionDetectionBody`, `userActionDetectionTestBody`, `userActionsSettingsBody` : corps des réglages et tests d’actions propres à l’utilisateur.
+  - `adminTranscriptionTestBody`, `adminSummaryModelTestBody`, `actionTestBody` : corps des routes de test de modèles et d’actions.
+  - `adminListQuery`, `adminStatsQuery`, `personalStatsQuery` : schémas des paramètres de requête pour les listes et statistiques.
+  - `adminAccountStatsBody` : corps de consultation des statistiques d’un compte.
+  - Chaque export est un objet JSON Schema consommé par Fastify ; il n’accepte pas de paramètres et n’a pas de valeur de retour d’exécution propre.
+- **Points d’attention** :
+  - Les objets utilisent généralement `additionalProperties: false` : les champs non déclarés sont refusés. Aucun schéma de réponse n’est défini, afin d’éviter la suppression silencieuse de champs à la sérialisation.
+  - Les champs facultatifs des réglages distinguent souvent l’absence (« inchangé ») d’une valeur vide ou `null` (« réinitialiser », « supprimer » ou « illimité » selon le champ). Vérifier le contrat commenté avant de modifier ces schémas.
+  - Certaines règles métier sont volontairement vérifiées après la validation de transport ; les limites numériques de détection et de destinataires sont aussi contrôlées à la lecture.
+  - Les schémas dépendent de constantes et helpers métier importés sous `services/api/lib` (plafonds, motifs, listes de modèles et valeurs autorisées) : toute évolution de ces contrats doit rester synchronisée.
+  - `email` utilise `EMAIL_PATTERN`. Aucun `format: 'email'` n’est utilisé : `ajv-formats` n’est pas installé. Les bornes des mots de passe doivent rester cohérentes avec `MAX_PASSWORD_LENGTH` pour limiter le coût de `scrypt`.
 
 ### services/api/routes/auth/session.js
 
-- **Rôle du fichier :**
-  - Définit les routes publiques d'API pour l'authentification : exposition des capacités du serveur (SSO, options de connexion) et information sur l’état de la session utilisateur.
-  - Utilisé au démarrage du frontend pour configurer l’UI (affichage conditionnel des boutons, branding, etc.).
-
-- **Fonction exportée :**
-  - `sessionRoutes(app)`
-    - **Paramètres :**
-      - `app` : Objet application (doit exposer `.get()`, `.settings`, `.config`, `.mailer`, etc.).
-    - **Retour :**
-      - Aucun (enregistre les routes via `app.get()`).
-    - **Effets de bord notables :**
-      - Définit deux routes GET publiques :  
-        - `/config` : retourne capacités et configuration publique du serveur.
-        - `/session` : retourne l’état d’authentification de l’utilisateur actuel.
-    - **Pas d’état global modifié.**
-
-- **Détail des routes :**
-  - `/config`
-    - Retourne un objet JSON de configuration publique (présence SSO, fournisseurs activés, politique de mot de passe, actions post-réunion, branding…).
-    - Donne seulement les informations nécessaires au frontend pour afficher les bons boutons/éléments.
-    - Utilise :  
-      - `isProviderUsable()` pour la validation dynamique des providers (Google, Entra),
-      - les méthodes `app.settings` pour actions et branding.
-  - `/session`
-    - Retourne `{ authenticated: false }` si l’utilisateur n’est pas identifié (pas d’email dans `req.user`).
-    - Sinon, retourne `{ authenticated: true, user: ... }` où `user` est réduit par `toSessionUser()`.
-    - **Ne jamais renvoyer 401** (important pour éviter un flicker de l’UI au boot frontend).
-
-- **Points d’attention / Edge cases :**
-  - **Jamais de 401 sur `/session`** : en cas d’absence de session, renvoyer `{ authenticated: false }`.
-  - Réponses à `/config` et `/session` doivent être rapides et indépendantes du contexte utilisateur (routes publiques, infos non sensibles).
-  - Les capabilities (ex : SSO activé ou non) dépendent à la fois des settings dynamiques et de la config process (`app.config`, `app.settings`, etc.).
-  - `isProviderUsable()` dépend de la bonne configuration des identifiants dans les settings.
-  - Pour l’avenir : le flag Traefik OIDC (`oidcEnabled`) est legacy, à retirer ultérieurement.
-
-- **Dépendances notables :**
-  - Libs internes :  
-    - `lib/auth/password.js` (MIN_PASSWORD_LENGTH)  
-    - `lib/repositories/users.js` (toSessionUser)  
-    - `lib/auth/providers.js` (isProviderUsable)  
-    - `lib/auth/resolve.js` (authModeOf, authProviderOf)
-  - Repose sur les propriétés et méthodes de l’objet `app` passé en paramètre (structure attendue).
+- Enregistre deux routes publiques de sonde, utilisées au démarrage du frontend pour récupérer la configuration de connexion et l’état de la session.
+- `sessionRoutes(app)` — paramètre : instance de l’application. Retour : aucune valeur explicite. Effet de bord : enregistre `GET /config` et `GET /session`.
+- `GET /config` — aucun paramètre. Retourne les capacités publiques du serveur : options d’authentification, politique de mot de passe, actions, apparence, infographie et URL de feedback et de documentation. Effets de bord : lit les paramètres, actions et branding via `app.settings`.
+- `GET /session(req)` — paramètre : requête contenant éventuellement `req.user`. Retourne `{ authenticated: false }` si aucun email utilisateur n’est présent, sinon `{ authenticated: true, user }`, avec les groupes et droits associés. Ne renvoie jamais `401`.
+- Points d’attention :
+  - `/config` combine configuration d’environnement et réglages administratifs pour déterminer les options affichées; les fournisseurs Google et Entra doivent être utilisables pour être annoncés.
+  - Les projections publiques des actions et du branding excluent les données privées.
+  - `/session` dépend de `toSessionUser`, des résolveurs du mode et du fournisseur d’authentification, ainsi que de `app.groups` pour les groupes et droits.
+  - Dépendances importées : `MIN_PASSWORD_LENGTH`, `toSessionUser`, `isProviderUsable`, `authModeOf`, `authProviderOf`.
 
 ### services/api/routes/auth/sso.js
 
@@ -3222,267 +1923,87 @@
     - Dépend du respect des chemins/contrats de Google Cloud Console et de la configuration Entra.
 
 ### services/api/routes/auth/ssoFlow.js
-
-- **Rôle du fichier :**
-  - Gère les routes de démarrage et de callback du flux d’authentification SSO (OIDC) pour tous les fournisseurs, avec une gestion centralisée de la session utilisateur (cookie unique).
-  - Fonctionne uniquement par navigation/redirect, jamais par des réponses JSON.
-  - Sur échec, redirige toujours vers `/signin?error=<slug>`.
-
-- **Fonctions exportées :**
-
-  - `createStartHandler(app, provider)`
-    - **Paramètres :**
-      - `app` : instance Fastify de l’application.
-      - `provider` : objet de configuration du fournisseur (entrée de PROVIDERS).
-    - **Retour :**
-      - Fonction asynchrone `(req, reply)` à monter en route, qui :
-        - Contrôle le rate limit par IP.
-        - Valide la disponibilité du fournisseur.
-        - Récupère la configuration du fournisseur et les endpoints OAuth.
-        - Prépare et redirige vers l’IdP (fournisseur) avec l’état stocké en cookie.
-        - En cas d’erreur, redirige vers `/signin?error=<slug>`.
-    - **Effets de bord notables :**
-      - Pose un cookie d’état OAuth.
-      - Dépend du rate limiter (`rateLimit.js`).
-      - Ajoute un hook d’arrêt du limiter à la fermeture du serveur.
-
-  - `createCallbackHandler(app, provider)`
-    - **Paramètres :**
-      - `app` : instance Fastify de l’application.
-      - `provider` : objet de configuration du fournisseur.
-    - **Retour :**
-      - Fonction asynchrone `(req, reply)` à monter en route, qui :
-        - Gère le retour IdP : vérifie état et code, puis échange l’auth code contre un profil.
-        - Vérifie les emails (présence, email_verified le cas échéant, domaine autorisé).
-        - Crée un utilisateur si besoin et si le domaine est autorisé.
-        - Ajoute le provider à l’utilisateur existant si absent.
-        - Crée une session (cookie `mybrief_sess`).
-        - Redirige vers le “next” validé par le flux initial.
-        - Redirige vers `/signin?error=<slug>` en cas d’échec à n’importe quelle étape.
-    - **Effets de bord notables :**
-      - Pose/supprime un cookie d’état OAuth.
-      - Crée ou met à jour des utilisateurs, crée une session.
-
-- **Points d’attention / Edge cases :**
-  - **Rate limit** (démarrage du flux SSO) : tentatives trop fréquentes → redirection erreur.
-  - **Disponibilité des fournisseurs** : Si désactivé ou endpoints OIDC injoignables → erreur.
-  - **Vérification du state OAuth** : sécurité renforcée (triple contrôle, state + flow).
-  - **Emails non vérifiés** (si requis), ou absents → refusé.
-  - **Domaines restreints** : si l’inscription libre n’est pas autorisée, le domaine doit être explicitement dans `allowedDomains`.
-  - **Échecs/annulations utilisateurs** : gestion fine des retours `?error=...` de l’IdP.
-  - **Création d’utilisateurs** : automatique uniquement si domaine autorisé.
-  - **Sécurité redirection finale** : la valeur “next” est revalidée même stockée côté serveur (cf. safeNext).
-  - **Dépendances techniques :**
-    - Fonctionne avec divers helpers d’authentification génériques (`lib/auth/` : cookies, rateLimit, oauthFlow, providers, originCheck, safeNext).
-    - Nécessite accès à la base utilisateurs et sessions (`app.users`, `app.sessions`).
-    - La gestion des erreurs/translations côté frontend repose sur le slug passé dans l’URL.
+- Gère le flux OIDC partagé : démarre l’authentification auprès d’un fournisseur, traite son callback et ouvre une session native. Les réponses sont des redirections, jamais du JSON.
+- `createStartHandler(app, provider)` — retourne un handler Fastify de démarrage. Limite les tentatives par IP, vérifie que le fournisseur est utilisable, découvre ses endpoints, puis lance le flux OIDC et redirige vers l’IdP. Effets de bord : crée un cookie d’état et enregistre l’arrêt du rate limiter à la fermeture de l’application.
+- `createCallbackHandler(app, provider)` — retourne un handler Fastify de callback. Vérifie et consomme l’état, échange le code contre un profil, retrouve ou crée le compte, puis crée une session et pose le cookie `mybrief_sess`. Redirige vers la destination validée (`pending.next`) ou vers `/signin?error=…` en cas d’échec.
+- Points d’attention :
+  - La création de compte est réservée aux adresses dont le domaine figure dans `settings.allowedDomains`. Un compte désactivé trouvé sous l’une des adresses du profil bloque la connexion.
+  - Les adresses sont examinées dans l’ordre fourni par `provider.emailsOf`; un compte existant est privilégié. Le fournisseur et la photo du profil peuvent être mis à jour à la connexion.
+  - `safeNext` valide la destination au démarrage puis au callback. La destination est conservée dans l’état en attente, pas transmise à l’IdP.
+  - Dépend des utilitaires OAuth, des cookies, du rate limiter, de la configuration et des dépôts utilisateurs/sessions ; les slugs d’erreur et l’extraction du profil dépendent de `provider`.
 
 ### services/api/routes/connect.js
-
-- **Rôle du fichier**
-  - Gère l’ensemble du flux de connexion d’un compte externe (actuellement Google, Microsoft à venir) via OAuth pour l’envoi de mails et le dépôt de documents.
-  - Centralise et généralise la logique de connexion, en s’appuyant sur les spécificités des fournisseurs dans `lib/connections/providers.js`.
-  - Fournit des routes Fastify pour démarrer, suivre, valider ou révoquer une connexion.
-
+- Orchestre la connexion OAuth des comptes externes : démarrage du consentement, traitement du callback, consultation de l’état et déconnexion. Le fournisseur est choisi par la configuration de l’installation.
 - **Fonctions exportées**
-  - `createConnectCallback(app, provider, { resolveUser })`
-    - **Paramètres** :
-      - `app` : instance Fastify
-      - `provider` : configuration du fournisseur OAuth (cf. `CONNECT_PROVIDERS`)
-      - `{ resolveUser }` (optionnel) : fonction asynchrone pour déterminer l’utilisateur
-    - **Retour** : handler Fastify asynchrone (req, reply) gérant le callback OAuth, enregistre/rejette la connexion, redirige toujours.
-    - **Effet de bord notable** : Écrit/efface des cookies d’état, écrit en DB la connexion OAuth, potentiellement révoque des tokens.
-
-  - `connectRoutes(app)` (export par défaut)
-    - **Paramètres** :
-      - `app` : instance Fastify
-    - **Retour** : void (monte les routes sur l’app)
-    - **Effets de bord notables** :
-      - Monte les routes suivantes :
-        - `GET /connect/status` : retourne l’état de connexion du compte courant ou undefined.
-        - `POST /connect/mobile/ticket` : génère un billet à usage unique pour démarrer le flux OAuth depuis une app native (nécessite session active/valide).
-        - `GET /connect/start` : démarre le flux OAuth (redirection selon compte en session ou billet natif).
-        - Google – Callback : monte une route pour le retour du flux via `createConnectCallback`.
-        - `POST /connect/disconnect` : révoque et supprime toutes les connexions du compte utilisateur.
-      - Instancie un rate limiter par IP pour limiter les créations de tickets/start.
-      - Utilise les hooks Fastify (onClose).
-
-- **Points d'attention**
-  - **Connexion mobile (app native) :**
-    - Utilise un système de billet (ticket) pour relier identité et navigation OAuth, à usage unique et durée de vie limitée.
-    - Le retour dans l’app natif utilise un `deep link` (`mybrief://auth/connect`).
-  - **Edge cases / Sécurité :**
-    - Contrôle rigoureux du state OAuth : vérifie le state, le flow, l’email qui a initié, utilisation de PKCE.
-    - Cas particulier des installations OIDC sans cookie : le callback ne doit pas dépendre strictement d’une session HTTP.
-    - Si le refresh token manque, la connexion est révoquée côté fournisseur après le consentement.
-    - Lors de la reconnexion, si le compte de destination change, le refresh token antérieur est révoqué (sauf pour Microsoft).
-    - Toute navigation échouée retourne vers `/?connectError=...#config` (ou déclenche un retour natif si mobile).
-    - Les tokens de refresh ne quittent jamais l’API (sécurité renforcée).
-    - Déconnexion : suppression locale et révocation côté fournisseur possible, mais certains (Microsoft) ne le permettent pas – simple suppression côté myBrief alors.
-  - **Dépendances majeures**
-    - `lib/connections/providers.js` : description des fournisseurs, discovery endpoints, scopes, callbacks.
-    - `lib/auth/oauthFlow.js` : gestion état OAuth, cookies, échange code/token.
-    - `lib/rbac.js`, `lib/errors.js`, `lib/auth/rateLimit.js`, `lib/auth/originCheck.js`
-    - Accès à la DB pour connexions et utilisateurs, accès à la configuration d’actions/providers.
-  - **Compatibilité**
-    - Chemins/déclarations en lien avec les stores mobiles (intent Android sur `auth`, etc).
-    - Les callbacks de Microsoft ne passent pas par le même chemin Fastify que ceux de Google.
-
-- **À surveiller**
-  - Toute optimisation/factorisation doit préserver la compatibilité entre web/natif et les différences de flux entre fournisseurs.
-  - Toute suppression de refresh token doit tenir compte du comportement du provider (cas Google vs Microsoft).
-  - La sécurité repose sur la bonne implémentation PKCE/state/oauth côté navigateur et serveur.
-  - Ne renvoie jamais de JSON sur les routes d’enchaînement ; toujours des redirections.
+  - `createConnectCallback(app, provider, { resolveUser? } = {})` — retourne un handler Fastify asynchrone. Vérifie le state, échange le code OAuth, rattache et enregistre la connexion, puis redirige vers l’application web ou native. Effets notables : peut révoquer un jeton chez le fournisseur et écrit la connexion en base.
+  - `default connectRoutes(app)` — enregistre les routes Fastify ; ne retourne pas de valeur utile.
+- **Routes enregistrées**
+  - `GET /connect/status` — requiert un utilisateur ; retourne l’état de la connexion, les actions activées, la disponibilité SMTP, le compte et `driveReady`.
+  - `POST /connect/mobile/ticket` — requiert un utilisateur et une origine valide ; retourne un billet à usage unique pour démarrer le flux depuis l’application native.
+  - `GET /connect/start` — démarre OAuth depuis une session web ou un billet natif valide ; redirige vers le fournisseur.
+  - `GET` sur le callback Google — vérifie le state et traite le retour OAuth. Le callback Microsoft est monté séparément par `routes/oauth2.js`.
+  - `POST /connect/disconnect` — requiert une origine valide et un utilisateur ; tente la révocation, supprime les connexions et retourne `{ ok: true }`.
+- **Points d’attention**
+  - Les démarrages et callbacks sont des navigations avec redirections, pas des réponses JSON. Les erreurs web reviennent à `/?connectError=<slug>#config` ; les flux natifs utilisent `mybrief://auth/connect`.
+  - Le callback rattache la connexion au compte inscrit dans le state, et non à la session courante. Une session présente est toutefois vérifiée ; `resolveUser` permet de résoudre l’identité pour les callbacks hors `authPlugin`.
+  - Sans refresh token, la connexion n’est pas enregistrée et une révocation est tentée. Les scopes enregistrés sont ceux effectivement accordés ; `driveReady` dépend du scope Drive requis.
+  - La révocation dépend du fournisseur (`provider.revocable`) et reste un meilleur effort. Un changement de compte peut entraîner la révocation de l’ancien jeton.
+  - Dépend de `oauthFlow`, `connections` et `connections/providers.js`, des dépôts `app.connections` / `app.oauthStates`, des paramètres et credentials OAuth, et du rate limiter. Le billet natif expire et ne peut être consommé qu’une fois.
 
 ### services/api/routes/core.js
 
-- **Rôle du fichier**
-  - Définit les routes « cœur » de l’API : `/init`, `/ping`, `/logout`.
-  - Gestion du bootstrap utilisateur, sonde de vivacité, déconnexion.
+- Enregistre les routes cœur `/init`, `/ping` et `/logout` sur `app`.
+- `coreRoutes(app)` — paramètre : instance Fastify enrichie (`db`, `users`, `groups`, `quota`, `sessions`, `config`) ; retour : aucun. Effet de bord : déclare les trois routes.
 
-- **Fonction exportée**
-  - `coreRoutes(app)`
-    - **Paramètre** : `app` (instance de l’application ou framework, exposant `.db`, `.users`, `.sessions`)
-    - **Retour** : void (registre les routes sur l’app)
-    - **Effet de bord notable** : Attache 3 routes HTTP.
+- `GET /init` — exige une identité via `requireEmail(req, reply)` ; sans email, arrête le traitement. Normalise l’email, puis fait un upsert partiel du compte servi : met à jour les dates et l’email normalisé, et recopie éventuellement la photo OIDC ; les valeurs initiales ne sont définies qu’à la création. Relit le compte et renvoie l’identité, le mode et le fournisseur d’authentification, la photo, les groupes, les droits, le quota et `lastConnecion`.
+- `GET /ping` — ne prend aucun paramètre ; renvoie `{ ok: true }`. Sert de sonde de vivacité.
+- `POST /logout` — paramètres : `req`, `reply` ; retour : réponse HTTP `204`. Si une session native est présente, la détruit et efface le cookie de session.
 
-    - **Routes et comportements ajoutés :**
-      - `/init` (GET)
-        - **Paramètres** : lit les propriétés de `req` et `reply` (notamment `req.user`).
-        - **Retour** : Objet identité utilisateur ({email, name, role, …}).
-        - **Effet de bord** : Upsert de l'utilisateur dans MongoDB (`collection('user')`), mise à jour sélective (jamais de remplacement complet), correction partielle de certains champs.
-      - `/ping` (GET)
-        - **Paramètres** : aucun.
-        - **Retour** : `{ ok: true }`
-        - **Effet de bord** : aucun.
-      - `/logout` (POST)
-        - **Paramètres** : `req`, `reply`
-        - **Retour** : HTTP 204 No Content.
-        - **Effet de bord** : Détruit la session native (si présente), supprime le cookie de session.
-
-- **Points d'attention**
-  - L’upsert `/init` ne doit PAS écraser les champs sensibles (`passwordHash`, `role`) — une mise à jour complète effacerait involontairement ces infos.
-  - Le champ `lastConnecion` (faute d’orthographe persistée) doit être conservé tel quel pour cohérence historique.
-  - Dépendances à l’identité utilisateur : `requireEmail`, `normalizeEmail`, gestion des cookies/session dans des fichiers de librairie associés.
-  - `/logout` ne fait rien si pas de session utilisateur matérialisée.
-  - La logique OIDC vs session native côté auth est affinée via `authModeOf`/`authProviderOf`.
-  - Le frontend repose sur `authMode` et `authProvider` pour choisir le type de déconnexion ou d’UI à afficher.
-  - `/ping` : toujours accessible, ne déclenche pas le gestionnaire d’erreur HTTP.
-  - Appelle des méthodes sur `app.db`, `app.users`, `app.sessions` : dépendances injectées attendues.
+- Points d’attention :
+  - `/init` préserve les champs non modifiés, notamment `passwordHash`, `role` et les noms définis par l’administration ; ne pas remplacer l’upsert par un remplacement de document.
+  - `lastConnecion` est une faute historique conservée comme nom de champ.
+  - Le filtre d’upsert utilise `SERVED_ACCOUNT` pour viser le compte servi et éviter les conflits avec les doublons inertes ; `normalizeEmail` et `DEFAULT_GROUP_ID` viennent des repositories.
+  - Les réponses de `/init` dépendent aussi de `app.users`, `app.groups` et `app.quota`, ainsi que de `authModeOf` et `authProviderOf`.
+  - `/logout` ne détruit une session que si `req.user.sessionToken` existe ; l’effacement du cookie utilise `app.config.cookieSecure`.
+  - Dépendances d’identité et de session : `requireEmail`, `clearSessionCookie` ; `/ping` ne dépend d’aucune identité.
 
 ### services/api/routes/meetings.js
 
-- **Rôle du fichier**
-  - Déclare les routes HTTP (API REST) liées à la gestion des réunions (meetings) : génération et stockage de résumés, historique, manipulation des versions, gestion de la transcription, tagging, renommage et suppression.
-  - Tous les accès sont sécurisés par scoping via l'email utilisateur (présent dans le header).
-
-- **Fonctions exportées**
-
-  - **persistResume({ app, body, email, name, resumeHtml, meetingId })**
-    - Paramètres : objet avec références au context app (db, config, openai), le body (payload POST), email utilisateur, nom, HTML du résumé, identifiant réunion.
-    - Retour : Promise<void>
-    - Effet de bord : Crée ou met à jour un document `resume` dans MongoDB ; la méthode effectue deux chemins : insertion (nouveau meeting) ou mise à jour (édition existante). Modifie également des champs liés à la durée/durée source, notes, actions…
-
-  - **generateAndSaveTitle({ app, log, body, email, resumeHtml, meetingId })**
-    - Paramètres : objet contextuel incluant app, log, payload, email, HTML résumé, id réunion.
-    - Retour : Promise<void>
-    - Effet de bord : Génère le titre via OpenAI (async, après le 200 HTTP) et met à jour le champ `title` (ou non en cas de défaillance).
-
-  - **meetingsRoutes(app)**
-    - Paramètre : app (contexte serveur, expose app.db, app.openai etc.).
-    - Retour : void
-    - Effet de bord : Enregistre toutes les routes HTTP de l’API "meetings" dans l’application (`app.post`, `app.get`…).
-
-  - **Routes HTTP déclarées :**
-    - `/resume` (POST) : Génère le résumé de la réunion (via OpenAI), écrit le `resume` en base (200 = réunion persistée), déclenche la génération du titre en fond. Insertion ou mise à jour selon la présence RÉELLE du document, jamais selon le drapeau `isEdit` du client — la réunion existe déjà quand elle a été ouverte par `/history/start`.
-    - `/history` (GET) : Retourne la liste des réunions de l'utilisateur, triée par date affichée. Ne fabrique AUCUN titre de repli : une réunion sans titre sort avec `title: ''`, le libellé daté « Réunion JJ-MM-AAAA HH:MM » étant composé côté client (`src/utils/historyTitle.js`), dans le fuseau et la langue du lecteur.
-    - `/history/start` (POST) : Ouvre la réunion en base au DÉMARRAGE de l'enregistrement — brouillon sans titre, sans résumé, sans version, `status: 'recording'`. Upsert par `$setOnInsert` : rejouable sans rien écraser. Retourne `{ ok: true, meetingId }`.
-    - `/history/stop` (POST) : Clôt la réunion (`status: 'ended'` + durée mesurée). Avec `discardIfEmpty`, supprime la ligne si rien n'a été dit ni rédigé. Retourne `{ ok: true, discarded }`, 404 si la réunion est inconnue.
-    - `/history/title` (POST) : Nomme par IA une réunion enregistrée SANS compte rendu (bouton « Enregistrer » de la fin de réunion) — titre tiré de la transcription seule. Même contrat que `/resume` : `titlePending` posé avant la réponse, titre en tâche de fond. N'écrase jamais un titre déjà là (seul le repli « Réunion sans titre » se retente), aucun appel modèle sans matière. Retourne `{ ok: true, meetingId, titlePending }`, 404 si la réunion est inconnue.
-    - `/history/delete` (POST) : Supprime une réunion par id et email (sécurité fix), retourne `{ ok: true }`.
-    - `/history/rename` (POST) : Renomme le titre d'une réunion, nécessite un title non vide, retourne `{ ok: true }`.
-    - `/history/tag` (POST) : Ajoute ou retire un tag à une réunion (scopé, vérifie aussi la propriété du tag), retourne `{ ok: true, meetingId, tagId }`.
-    - `/versions/add` (POST) : Ajoute une version de résumé dans le tableau `versions`. IDEMPOTENT par `version.id` — retourne `{ ok: true, duplicate: true }` sans rien empiler si la version y est déjà.
-    - `/versions/delete` (POST) : Supprime une version donnée (`versionId`), retourne `{ ok: true }`.
-    - `/versions/update` (POST) : Met à jour le HTML d'une version, synchronise aussi le `resume` principal, retourne `{ ok: true }`.
-    - `/transcription/update` (POST) : Met à jour la transcription (texte + taille), retourne `{ ok: true }`.
-
-- **Points d'attention / edge cases**
-
-  - **Email Scoping**
-    - Tous les accès sont filtrés par l’email du header (via `ownerFilter`). Évite les escalades de droits (cf. faille historique n8n).
-  - **Atomicité de persistence**
-    - Le résumé (document Mongo) est enregistré AVANT toute réponse HTTP 200, garantissant la présence de la donnée (ancien comportement n8n : perte silencieuse possible).
-  - **Durée réunion :**
-    - Deux sources possibles — chronomètre client prioritaire, repli si besoin sur l'extraction du texte du résumé.
-    - Edge : Chronomètre à zéro lors de la régénération, ou réunion ancienne sans durée stockée.
-  - **Titre généré en fond :**
-    - Le titre peut arriver plusieurs secondes après (/resume => OpenAI). En cas de défaillance, le champ `titlePending` est géré pour éviter les lectures infinies côté frontend.
-  - **Tri / dates historique :**
-    - Deux dates présentes dans un `resume` (`lastConnecion`, `now`) ; tri côté serveur sur `now` mais rendu sur date de réunion réelle.
-    - Edge : réécritures répétées sur un vieux meeting ne le font plus remonter en tête de la sidebar.
-    - Entrées sans date valide triées en fin de liste (jamais perdues).
-  - **Sécurité tagging :**
-    - Ajout de tag vérifie la propriété du tag via email.
-    - Un seul tag par
+- **Rôle** : enregistre les routes Fastify liées aux réunions : génération et historique des résumés, versions, transcription, notes/actions, titres, tags et infographies. Les accès Mongo sont filtrés par email propriétaire.
+- **Fonction exportée — `meetingsRoutes(app)`**
+  - **Paramètre** : `app`, instance Fastify enrichie des dépendances applicatives.
+  - **Retour** : aucun retour explicite ; enregistre les routes sur `app`.
+  - **Effets de bord** : appels à MongoDB, aux modèles IA et aux services de quota, groupes, infographies et MyBrain ; certains traitements (titres, infographies, alimentation MyBrain) sont lancés en arrière-plan.
+- **Routes enregistrées** :
+  - `POST /resume` : génère le résumé, vérifie éventuellement sa longueur, puis le persiste avant de répondre ; titre et infographie peuvent être générés en arrière-plan.
+  - `GET /history` : renvoie l’historique du demandeur, ordonné selon la date affichée.
+  - `POST /history/start`, `/history/stop`, `/history/delete` : crée un brouillon, clôt ou supprime une réunion.
+  - `POST /history/notes-actions`, `/history/title`, `/history/rename`, `/history/tag` : modifie notes/actions, génère ou renomme un titre, ou affecte un tag.
+  - `POST /versions/add`, `/versions/delete`, `/versions/update` : gère les versions de résumé et leur HTML.
+  - `POST /transcription/update` : sauvegarde la transcription et son nombre de caractères.
+  - `GET /infographic`, `POST /infographic/regenerate`, `/infographic/delete` : consulte, régénère ou supprime l’infographie.
+- **Points d’attention** :
+  - Les routes exigent une identité email (`requireEmail`) et doivent conserver le filtrage propriétaire (`ownerFilter`, `ownerFields`) pour toute lecture ou écriture.
+  - Les routes sans schéma valident notamment les identifiants avec `idOf`, qui accepte uniquement les chaînes afin d’éviter l’injection d’opérateurs Mongo.
+  - `/resume` ne répond avec succès qu’après persistance ; le titre est asynchrone. La durée privilégie celle du chronomètre, puis celle déduite du résumé.
+  - `/history/start` est idempotente et crée un brouillon ; `/history/stop` peut le supprimer s’il est strictement vide. Une durée nulle ne remplace pas une durée existante.
+  - Les versions sont ajoutées de façon idempotente si leur identifiant existe ; plusieurs opérations de mise à jour/suppression répondent `{ ok: true }` même si aucun document n’a été modifié.
+  - L’accès à l’infographie dépend à la fois du réglage global et des droits du groupe, relus à chaque demande. Les images sont stockées dans une collection séparée.
+  - Dépendances principales : `app.db`, `app.openai`, `app.settings`, `app.groups`, `app.users`, `app.quota`, `app.background`, ainsi que les modules `identity`, `ownerScope`, `summaryModels`, `pageTarget`, `meetingDuration`, `notesActions`, `infographic` et `myBrain`.
 
 ### services/api/routes/mobileAuth.js
 
-- **Rôle du fichier :**
-  - Gère l’authentification mobile (apps Capacitor) pour l’API. Fournit le flux d’échange d’OTT (One-Time Token) contre des JWT longue durée, utilisé par l’app mobile ; expose aussi un endpoint de vérification pour ForwardAuth Traefik.
-  - S’assure que l’identification est résolue de façon unifiée via `resolveIdentity`.
-  - Implémente des contrôles de rate-limit et sécurise les en-têtes d’identité transmis.
-
-- **Fonctions/constantes exportées :**
-  - `MOBILE_START_PATH`, `MOBILE_EXCHANGE_PATH`, `MOBILE_VERIFY_PATH`
-    - Chemins des trois endpoints principaux du flux.
-  - `mobileAuthRoutes(app)`
-    - **Paramètres** : `app` (`FastifyInstance`)  
-    - **Retour** : rien (side effect : ajoute routes sur l’instance Fastify)
-    - **Effets de bord** :
-      - Ajoute routes HTTP :
-        - `GET /auth/mobile/start` :  
-          - Démarre le flow d’auth (attend `?cc=` – code challenge PKCE), require user authentifié.  
-          - Retourne une page HTML (soit rebond OTT → app, soit redirection login si pas connecté).
-        - `POST /auth/mobile/exchange` :  
-          - Prend `{ ott, verifier }` en body.  
-          - Vérifie/consomme le OTT, retourne `{ token, user }` ou erreur.
-        - `GET /auth/verify` :  
-          - Prend JWT en header Bearer.  
-          - Vérifie, renvoie en-têtes identité (`X-Auth-Request-User`, etc.) ou 401.
-      - Enregistre des hooks pour nettoyer les timers de rate-limit/OTT à l’arrêt du serveur.
-      - S’appuie sur la config `app.config.mobile` (`jwtSecret`, `jwtTtlDays`, etc.).
-
-- **Points d’attention :**
-  - **Edge cases & Sécurité**
-    - Le flux mobile est désactivé si `jwtSecret` absent/incorrect. Toutes les routes répondent 503.
-    - Pas d’émission d’OTT sans identité établie (prévention des usurpations).
-    - Les chemins dépendent d’un middleware d’authentification Traefik (OIDC ou marqueur `noident`).
-    - Les OTT sont liés et single-use. Validation stricte du code challenge/verifier et imposition de limites par IP.
-    - Les en-têtes d’identité en sortie `/verify` sont toujours écrasés, jamais hérités de la requête.
-  - **Dépendances importantes**
-    - Dépend des helpers du dossier `lib/auth` (rateLimit, resolve, cookies, mobileTokens, mobileJwt, safeNext).
-    - Repose sur la config Fastify (`app.config`) pour les secrets, TTL et sécurité cookies.
-    - Implique le comportement de Traefik côté reverse proxy.
-    - Le schéma d’exchange limite le body à 4 Ko ; possibilité d’échec si body trop gros.
-  - **Remarques diverses**
-    - Page de rebond mobile : pas de 302 vers deep link app, affiche une page contenant un lien JS et visible (contournement pour compat custom tabs Android/iOS).
-    - Les cookies invalides sont explicitement effacés.
-    - L’identité transmise à l’app se limite à email, name, picture – pas d’autres claims.  
-    - Non testé côté back (hérité d’un code non testé du sidecar).
-
-- **Principales routes gérées :**
-  - **GET `/auth/mobile/start?cc=sha256(verifier)`**  
-    - Précondition : utilisateur authentifié, paramètre cc valide  
-    - Retour : page HTML de rebond vers app avec OTT.
-  - **POST `/auth/mobile/exchange`**  
-    - Body : `{ ott, verifier }`  
-    - Retour : `{ token, user }` ou erreur.
-  - **GET `/auth/verify`**  
-    - Header : `Authorization: Bearer ...`  
-    - Retour : headers identité à usage Traefik.
-
-**Résumé** : Ce fichier implémente l’intégralité du flux d’auth mobile moderne utilisé pour une appli Capacitor, maillant JWT et OTT, et veille à ce que l’authentification soit alignée avec le reste de l’API (OAUTH/OIDC).
+- **Rôle** : enregistre le flux d’authentification mobile Capacitor, monté à la racine : émission d’un OTT lié à un challenge PKCE, échange contre un JWT mobile, puis vérification du JWT pour Traefik ForwardAuth.
+- **Export nommé `MOBILE_START_PATH`, `MOBILE_EXCHANGE_PATH`, `MOBILE_VERIFY_PATH`** : constantes contenant respectivement `/auth/mobile/start`, `/auth/mobile/exchange` et `/auth/verify`.
+- **Export par défaut `mobileAuthRoutes(app)`** : reçoit l’instance Fastify et enregistre les trois routes. Retourne implicitement `undefined`. Crée le magasin d’OTT et deux limiteurs de débit, arrêtés via le hook `onClose`.
+  - `GET /auth/mobile/start?cc=…` : valide le challenge, limite les requêtes par IP, résout l’identité, puis émet un OTT à usage unique et une page de retour vers l’application. Sans identité, redirige vers `/signin`; si le secret JWT est absent ou inutilisable, répond `503`.
+  - `POST /auth/mobile/exchange` : reçoit `{ ott, verifier }`, consomme et vérifie l’OTT et le verifier, puis renvoie un JWT et les informations utilisateur. Peut répondre `503`, `429` ou `401`. Le corps est limité à 4 Ko.
+  - `GET /auth/verify` : valide le Bearer JWT et renvoie `401` en cas d’absence ou d’invalidité; sinon répond `{ ok: true }` avec les quatre en-têtes d’identité attendus par ForwardAuth.
+- **Points d’attention** :
+  - La route `start` doit passer par un middleware Traefik qui établit l’identité (`oidc` ou `noident`) ; aucune OTT n’est émise sans identité résolue.
+  - La configuration `app.config.mobile` fournit le secret, les durées et l’URL de callback. Le flux est désactivé si le secret n’est pas utilisable.
+  - Dépend des modules d’authentification locaux (résolution d’identité, sessions, OTT/PKCE, JWT, limitation de débit), ainsi que de Traefik ForwardAuth pour la vérification et la propagation des en-têtes.
+  - Les réponses HTML sont sans cache; les valeurs injectées dans la page de callback sont échappées pour HTML et JavaScript.
 
 ### services/api/routes/oauth2.js
 
@@ -3515,173 +2036,62 @@
 
 ### services/api/routes/tags.js
 
-- **Rôle du fichier**
-  - Gère l’API REST liée aux "tags" (étiquettes/ classeurs) de conversations, utilisés pour organiser les conversations d’un utilisateur.
-  - Assure la validation, la cohérence métier et la gestion des droits d’accès sur les tags (palette fermée, étiquettes uniques par utilisateur, limite maximale).
-  - Sert la palette de couleurs autorisée, le plafond par utilisateur et la liste des tags de l'utilisateur.
-
-- **Fonctions exportées**
-  - `tagsRoutes(app)`
-    - **Paramètres**: 
-      - `app` : instance du serveur (doit fournir accès à `.db` pour MongoDB).
-    - **Retour** :
-      - void (enregistre les routes via `app.get`, `app.post`)
-    - **Effets de bord** :
-      - Définit trois routes API :
-        - `GET /tags` :
-          - Liste les tags de l'utilisateur, la palette de couleurs et la limite de tags.
-          - **Paramètres**: aucun (lecteur authentifié via l'email).
-          - **Retour**: `{ tags: [<tag>], colors: [<couleurs>], max: <int> }`
-        - `POST /tags/save` :
-          - Ajoute ou édite un tag (création si sans `id`, édition sinon).
-          - **Paramètres body**: `{ id?, label, color }`
-          - **Retour**: `{ tag: <tag> }` ou erreur 400/404/409 selon validation.
-          - **Effets de bord**: crée ou met à jour un document dans la collection `userTags`.
-        - `POST /tags/delete` :
-          - Supprime un tag et détache ce tag de toutes les conversations qui y font référence.
-          - **Paramètres body**: `{ id }`
-          - **Retour**: `{ ok: true, untagged: <nb_conversations_modifiées> }`
-          - **Effets de bord**: 
-            - Retire le champ `tagId` sur tous les `resume` associés.
-            - Supprime le tag dans `userTags`.
-  - Variables d’intérêt exportées:
-    - `TAGS_COLLECTION` – nom de la collection MongoDB.
-    - `TAG_COLORS` – palette autorisée.
-    - `TAG_LABEL_MAX`/`USER_TAGS_MAX` – plafonds métier.
-
-- **Points d’attention**
-  - **Unicité des labels**: labels neutralisés (casse/espaces) ; doublons interdits par utilisateur (sinon 409).
-  - **Palette fermée**: seuls les slugs de couleur listés côté backend (`TAG_COLORS`) sont acceptés.
-  - **Plafond utilisateur**: pas plus de 20 tags ; l’ajout au-delà retourne 409.
-  - **Suppression d’un tag** : s’effectue en 2 temps — les conversations sont “détaguées” avant suppression du tag pour préserver la cohérence des références.
-  - **Sérialisation**: jamais de `_id` MongoDB ni de métadonnées d’appartenance exposées côté client.
-  - **Contrôle d’accès**: toujours vérification de l’email du propriétaire pour lecture/écriture.
-  - **Codes d’erreur**: utilise de vrais codes HTTP via `lib/errors.js` (par ex. pas de `{ok:false}` + HTTP 200).
-  - **Validation**: validation JSON Schema en entrée, puis logique métier (format/longueur) ; les messages d’erreur sont précis (ex : ‘label_too_long’, ‘duplicate_label’).
-  - **Dépendances** :
-    - `node:crypto` (pour `randomUUID`)
-    - Libs internes : `identity.js`, `ownerScope.js`, `errors.js`
-    - Collection `userTags`, collection `resume` (pour `tagId`)
-    - Validation AJV
-  - **Edge cases** :
-    - Tentative de suppression d’un tag inexistant ⇒ 404.
-    - Tentative de modification avec un `id` inconnu ⇒ 404, jamais une création silencieuse.
-    - Aucun tag ne peut être associé à deux conversations avec le même label pour le même utilisateur.
-    - Le passage d’un label vide ou trop long, ou d’une couleur inconnue, est rejeté avec une erreur explicite.
+- Définit les routes API des tags de conversation, propres à chaque utilisateur. Un tag est un classeur : chaque conversation peut en porter au plus un.
+- Exports :
+  - `TAGS_COLLECTION` — nom de la collection MongoDB (`userTags`).
+  - `TAG_COLORS` — palette de couleurs admises, incluant les motifs.
+  - `TAG_HUE_LIGHTNESS` — bornes et valeur par défaut de clarté des couleurs libres.
+  - `TAG_SHAPES` — formes de pastille admises.
+  - `TAG_LABEL_MAX` — longueur maximale d’un libellé (`32`).
+  - `USER_TAGS_MAX` — nombre maximal de tags par utilisateur (`20`).
+  - `isTagColor(color)` — indique si `color` est un slug de palette valide ou une couleur libre conforme ; aucun effet de bord.
+  - `default(app)` — enregistre les routes Fastify sur `app` ; ne renvoie pas de valeur métier.
+- Routes enregistrées :
+  - `GET /tags` — exige une identité utilisateur ; renvoie ses tags triés par libellé et le vocabulaire de validation (`colors`, `shapes`, `hueLightness`, `max`). Lecture de la collection `userTags`.
+  - `POST /tags/save` — reçoit `{ id?, label, color, shape? }` ; crée un tag ou remplace ses champs modifiables si `id` est fourni. Renvoie `{ tag }`. Refuse les libellés vides ou trop longs, les couleurs/formes invalides, les doublons insensibles à la casse et aux espaces, les tags inconnus (404) et le dépassement du quota (409). La forme absente vaut `circle`.
+  - `POST /tags/delete` — reçoit `{ id }` ; supprime le tag et retire son `tagId` des conversations de l’utilisateur. Renvoie `{ ok: true, untagged }`, où `untagged` est le nombre de conversations modifiées.
+- Points d’attention :
+  - Toutes les opérations sont limitées à l’utilisateur authentifié (`requireEmail`, `ownerFilter`, `ownerFields`). Les erreurs utilisent `fail` et de vrais codes HTTP ; les schémas Fastify rejettent les corps invalides.
+  - Une couleur libre suit `hue-<angle>` ou `hue-<angle>-<clarté>` : angle entier de 0 à 359, clarté de 35 à 68. Palette et formes doivent rester synchronisées avec les jetons de rendu frontend.
+  - La suppression détague les conversations avant de supprimer le tag ; un échec de la seconde écriture peut laisser un tag orphelin, mais pas de références pendantes.
+  - Dépendances : MongoDB via `app.db`, `node:crypto` (`randomUUID`), `lib/identity.js`, `lib/ownerScope.js` et `lib/errors.js`.
 
 ### services/api/routes/templates.js
 
-- **Rôle du fichier :**
-  - Définit les routes API pour la gestion des templates globaux (administration), des templates utilisateur (max 5 par utilisateur), et de la configuration utilisateur ("MA configuration").
-  - Gère l'accès selon les rôles (admin/utilisateur).
-  - Remarque importante : en cas d'erreur de validation, la réponse HTTP est `200` avec `{ ok: false, error: "..." }` (voir commentaire en tête de fichier).
+- Enregistre les routes des templates partagés, des templates propres à chaque utilisateur et de la configuration utilisateur. Les données sont stockées dans les collections MongoDB `templates`, `userTemplates` et `userConfig`.
+- `templatesRoutes(app)` — reçoit l’instance Fastify ; enregistre les routes. Les handlers retournent des objets JSON et écrivent en base. Pas de valeur de retour documentée.
 
-- **Fonction exportée :**
-  - `default function templatesRoutes(app)`
-    - Paramètre : `app` (instance Fastify/serveur, contenant le routeur, la DB et les méthodes utilitaires).
-    - Effets : enregistre toutes les routes décrites ci-dessous sur `app`.
+- **Templates partagés**
+  - `GET /templates` — paramètres : requête authentifiée ; retourne `{ templates, orgContext, transcriptCorrections }`. Les templates sont lisibles par tout compte authentifié. Les données d’organisation et les corrections de transcription sont converties en formes publiques via `app.settings`.
+  - `POST /templates/save` — paramètres : corps `{ value, icon, labels, prompt, pageMeter }` ; retourne `{ ok: true }` ou une erreur. Réservé aux administrateurs (`requireAdmin`). Remplace le template de même `value` par suppression puis insertion ; `value` vide donne HTTP 400.
+  - `POST /templates/delete` — paramètres : corps `{ value }` ; retourne `{ ok: true }` ou une erreur. Réservé aux administrateurs ; supprime les templates correspondant à `value`. Une valeur absente ou non textuelle donne HTTP 400.
 
-- **Routes et fonctions définies :**
-  - **Templates globaux (tous les utilisateurs)**
-    - `GET /templates`
-      - Renvoie : `{ templates, orgContext }` (tous les templates + contexte organisation).
-      - Accès : tout utilisateur authentifié.
-    - `POST /templates/save`
-      - Paramètres attendus : objet `{ value (string), icon (string optionnel), labels (obj optionnel), prompt (string optionnel) }` dans le body.
-      - Création/mise à jour du template (suppression par value puis insertion).
-      - Retour : `{ ok: true }` ou `{ ok: false, error }` (HTTP 400 seulement si valeur manquante).
-      - Accès : administrateur uniquement.
-    - `POST /templates/delete`
-      - Paramètre attendu : `{ value }` dans le body.
-      - Suppression du template par `value`.
-      - Retour : `{ ok: true }` ou `{ ok: false, error }`.
-      - Accès : administrateur uniquement.
+- **Templates utilisateur**
+  - `GET /user-templates` — paramètres : requête authentifiée ; retourne `{ templates }`, filtrés au propriétaire.
+  - `POST /user-templates/save` — paramètres : corps `{ value, icon, labels, prompt, pageMeter }` ; retourne `{ ok: true }` ou `{ ok: false, error, … }`. Crée ou remplace un template du propriétaire ; limite de 5, hors mise à jour d’un template existant. `value` doit être non vide et correspondre à `/^[a-z0-9-_]+$/i`.
+  - `POST /user-templates/delete` — paramètres : corps `{ value }` ; retourne `{ ok: true }` ou `{ ok: false, error }`. Supprime uniquement le template du propriétaire.
 
-  - **Templates utilisateur (propre à l'utilisateur)**
-    - `GET /user-templates`
-      - Renvoie : `{ templates }` (5 max, du propriétaire).
-      - Accès : utilisateur authentifié.
-    - `POST /user-templates/save`
-      - Paramètres attendus : `{ value (slug), icon, labels, prompt }` dans le body.
-      - Validation : slug, unicité par utilisateur, max 5.
-      - Retour :
-        - Succes : `{ ok: true }`.
-        - Erreur : `{ ok: false, error: "value_required" | "value_invalid" | "limit_reached", ... }`.
-      - Effet : suppression précédente entrée puis insertion.
-      - Accès : utilisateur authentifié.
-    - `POST /user-templates/delete`
-      - Paramètre attendu : `{ value }` dans le body.
-      - Suppression du template (du propriétaire).
-      - Retour : `{ ok: true }` ou `{ ok: false, error }`.
+- **Configuration utilisateur**
+  - `GET /user-config` — paramètres : requête authentifiée ; retourne `{ context }`, chaîne vide si aucune configuration valide n’existe.
+  - `POST /user-config/save` — paramètres : corps `{ context }` ; retourne `{ ok: true }`. Convertit les valeurs non textuelles en chaîne vide, tronque à 4 000 caractères et remplace la configuration du propriétaire.
 
-  - **Configuration utilisateur ("MA configuration")**
-    - `GET /user-config`
-      - Renvoie : `{ context }` (string, limité à 4000 caractères).
-      - Accès : utilisateur authentifié.
-    - `POST /user-config/save`
-      - Paramètre : `{ context (string optionnel) }` dans le body.
-      - Enregistre la config utilisateur (`context`). Tronque à 4000 caractères.
-      - Retour : `{ ok: true }`.
-
-- **Dépendances et points d'attention :**
-  - **Contrat d'erreur :** Validation KO → HTTP 200 `{ ok: false, error }` (ne pas casser le frontend).
-  - **Edge cases / validations :**
-    - Limite stricte 5 templates utilisateur, vérifiée côté serveur.
-    - Slug pour `value` validé côté serveur (`/^[a-z0-9-_]+$/i`).
-    - Nettoyage/remplacement des templates lors du save (deleteMany + insertOne).
-    - Sauvegarde du context utilisateur tronquée à 4000 caractères.
-  - **Dépendances principales :**
-    - `requireEmail`, `requireAdmin` (middleware d'authentification/autorisation).
-    - `ownerFilter`, `ownerFields` pour scoper les opérations DB par utilisateur.
-    - Accès direct à `app.db` (Mongo-like).
+- **Points d’attention**
+  - Les routes utilisateur exigent un email (`requireEmail`) et isolent les données via `ownerFilter` / `ownerFields`. Les routes partagées en écriture exigent `requireAdmin`.
+  - Les erreurs de validation des routes utilisateur sont renvoyées avec HTTP 200 et `{ ok: false, error }` ; les routes admin utilisent HTTP 400 pour les champs requis manquants. Le frontend dépend de cette distinction.
+  - `pageMeterField` n’écrit `pageMeter` que si `normalizePages` accepte la valeur ; comme le document est remplacé, une valeur absente ou invalide retire le champ.
+  - Les opérations de remplacement font un `deleteMany` suivi d’un `insertOne`, sans transaction apparente. `TEMPLATE_FIELDS` exclut `_id` des réponses.
+  - Dépendances : MongoDB via `app.db`, paramètres via `app.settings`, et utilitaires `identity.js`, `ownerScope.js`, `rbac.js`, `pageMeter.js`.
 
 ### services/api/server.js
 
-- **Rôle du fichier**
-  - Point d’entrée de l’API applicative (remplace les workflows n8n).
-  - Démarre le serveur HTTP après initialisation intégrale de l’environnement (configuration, connexion MongoDB, index, compte admin, client IA, mailer).
-  - Garantit que l’API n’est jamais exposée publiquement : écoute uniquement en interne Docker, derrière Traefik qui gère l’authentification.
-  - Gère l’injection/configuration dynamique (clé OpenAI via l’admin, e-mail, sécurité sessions).
-
-- **Fonctions/exportations**
-  - **Aucune fonction explicitement exportée** (fichier exécutable, pas un module library).
-  - Fonctions internes notables :
-    - `shutdown(signal)`
-      - **Paramètres** : `signal` (string, par ex. 'SIGTERM')
-      - **Retour** : `Promise<void>`
-      - **Effets de bord** :
-        - Ferme proprement le serveur HTTP (`await app.close()`)
-        - Attend la fin de tous les travaux de fond (`app.background.drain()`)
-        - Ferme la connexion MongoDB (`await mongo.close()`)
-        - Termine le process (`process.exit(0)`)
-      - **Déclenchée par** : signaux SIGTERM/SIGINT via handlers process.
-
-- **Points d’attention**
-  - **Arrêt démarrage si MONGO_URL absent** (logs + exit 1)
-  - **Bootstrap bloquant & idempotent** : si migration/indexation échoue, API ne démarre pas (fail-fast pour éviter des corruptions silencieuses).
-  - **La clé OpenAI** :
-    - Peut être absente au boot : ne bloque pas l’API (uniquement les endpoints IA indisponibles — réponse 503 explicite).
-    - Toujours résolue dynamiquement (pas en cache) : modifiable en live via l’interface admin.
-  - **Sécurité/authentification** :
-    - Auth principal via headers OIDC/Mobile (injection par Traefik)
-    - Auth fallback ou spécifique via cookie de session native (cf. lib/auth/)
-  - **Dépendances critiques** :
-    - MongoDB (service critique, toute instance de la BDD échouée bloque l’API)
-    - lib/bootstrap.js : création d’index, migrations, seed admin
-    - lib/identity.js, lib/auth/ : gestion de l’identité utilisateur (attention à la cohérence des chemins d’auth)
-    - lib/config.js et variables d'env
-    - lib/openai.js / lib/mailer.js / lib/repositories/settings.js pour les intégrations externes
-  - **Écoute réseau** : toujours sur `0.0.0.0` mais uniquement sur réseau interne Docker.
-  - **Processus agnostique** : aucun export, conçu pour être exécuté en “singleton” dans un conteneur.
-
-- **Edge cases**
-  - Démarrage sans clé OpenAI selon attente (installation neuve)
-  - Boot stoppé si index/migration échoue (raise & exit)
-  - Changements de config (OpenAI, SMTP…) dynamiquement applicables via l’admin, sans restart.
-
-- **Variables d’environnement essentielles**
-  - `MONGO_URL` (obligatoire), `OPENAI_API_KEY` (optionnel/dynamique), `MONGO_DB`, `PORT`, `OPENAI_BASE_URL`
-  - Pour la sécurité, e-mails et diverses options : voir lib/config.js/lib/mailer.js.
+- **Rôle** : point d’entrée du service API. Charge la configuration, connecte MongoDB, exécute le bootstrap, construit l’application et démarre l’écoute HTTP.
+- **Fonctions exportées** : aucune.
+- **Effets de bord** : lit `process.env`, ouvre une connexion MongoDB, initialise les index/migrations et le compte admin, crée le mailer et le client OpenAI, démarre la boucle de reprise myBrain et écoute sur `0.0.0.0`. À `SIGTERM` ou `SIGINT`, arrête la boucle, ferme l’application, attend les travaux de fond puis ferme MongoDB.
+- **Points d’attention** :
+  - `MONGO_URL` est requis ; son absence ou un échec du bootstrap arrête le processus (`process.exit(1)`).
+  - Sans clé OpenAI, le service démarre tout de même ; les fonctions IA répondent `503`. La clé enregistrée dans les paramètres est résolue à chaque appel et prime sur `OPENAI_API_KEY`.
+  - `MONGO_DB` et `PORT` ont leurs valeurs par défaut dans `loadConfig` ; les autres paramètres sont centralisés dans `lib/config.js`.
+  - Dépend de MongoDB, de `buildApp`, du bootstrap, des modules de configuration, d’authentification indirecte et de mail, ainsi que du flux myBrain. Le service est prévu pour les réseaux Docker internes, derrière Traefik.
 
 ### services/api/vitest.config.js
 
@@ -3705,113 +2115,646 @@
 
 ### services/api/lib/actionDetection.js
 
-- **Rôle** :  
-  Chemin d'exécution unique pour la détection d’actions à partir de transcriptions, utilisé par l’API utilisateur (`POST /api/actions`) et par l’interface d’administration (banc d’essai), garantissant la cohérence de l’algorithme de prompt.
-
-- **Fonctions exportées** :  
-  - `runActionDetection(params)`
-    - **Paramètres** :
-      - `openai` (object) : client OpenAI (décoré pour l’application)
-      - `model` (string) : identifiant du modèle OpenAI à utiliser
-      - `content` (string) : texte de la fenêtre de transcription à analyser
-      - `actions` (Array, optionnel) : actions déjà détectées (avec leur id)
-      - `dismissed` (Array, optionnel) : actions déjà supprimées par l’utilisateur
-      - `settings` (object, optionnel) : paramètres de réglage pour la détection d’actions
-    - **Retour** :  
-      `Promise<{actions: Array, prompt: string}>`
-        - `actions` : liste des actions détectées (format défini par `parseActionsOutput`)
-        - `prompt` : consigne réellement envoyée (utile pour le banc d’essai)
-    - **Effets de bord** :  
-      - Effectue un appel distant à l’API OpenAI.
-
-- **Points d'attention** :
-  - Dépend des modules locaux `./prompts.js` (`actionsPrompt`, `parseActionsOutput`, dont la stabilité et la logique impactent directement le résultat).
-  - Les valeurs de `settings` doivent impérativement différencier les cas production (paramètres DB) et banc d’essai (paramètres UI).
-  - La cohérence des IDs dans `actions` et `dismissed` impacte la détection : collisions ou mauvaises références peuvent donner des résultats inattendus.
-  - Si `openai.chat` échoue (erreur réseau/API), l’erreur remontera à l’appelant.
-  - `content` doit être non vide et correctement formaté ; en cas contraire, le prompt généré peut être incohérent ou inefficace.
+- Point d’entrée unique de la détection d’actions, partagé par la route `POST /api/actions` et le banc d’essai d’administration. Les deux utilisent la même consigne ; seuls les réglages fournis diffèrent.
+- **`runActionDetection({ openai, model, content, actions, dismissed, language, settings })`** — fonction asynchrone ; `actions`, `dismissed`, `language` et `settings` sont facultatifs, avec `settings = {}` par défaut. Construit la consigne via `actionsPrompt`, appelle `openai.chat` avec le modèle et `reasoningEffort: 'medium'`, puis renvoie une promesse résolue en `{ actions, prompt }`. Le prompt retourné est celui envoyé au modèle.
+- **Effet notable :** effectue un appel au client OpenAI fourni ; ne modifie pas directement les actions en entrée.
+- **Points d’attention :** `language` est destiné à la langue de l’interface/du compte rendu, avec repli sur le français géré par la construction du prompt. Le résultat des actions dépend de `parseActionsOutput`. Dépend de `./prompts.js` (`actionsPrompt`, `parseActionsOutput`) et de l’interface `openai.chat`.
 
 ### services/api/lib/actionDetectionSettings.js
 
-- **Rôle du fichier**
-  - Définit les réglages, contraintes et valeurs par défaut liés à la détection d'actions utilisateur.
-  - Normalise, valide et applique les paramètres d’action au niveau utilisateur (plus installation).
-  - Permet la cohérence entre le dépôt, les routes d’API et les tests (banc d’essai).
-
-- **Fonctions exportées**
-  - `normalizeTriggerWords(words, fallback)`
-    - **Paramètres** :  
-      - `words` : liste ou chaîne de mots déclencheurs (peut être `undefined`)  
-      - `fallback` : valeur de repli si `words` est `undefined`
-    - **Retour** : `Array<string>` — liste unique, max 20 mots de max 40 caractères, fallback si non fourni.
-    - **Effets de bord** : Aucuns (purement fonctionnelle).
-  - `normalizeActionDetection(doc)`
-    - **Paramètres** :
-      - `doc` : objet partiel ou null décrivant les réglages de détection à normaliser (`enabled`, `sensitivity`, `triggerWords`, etc.)
-    - **Retour** : objet complet et borné `{enabled, sensitivity, triggerWords, allowUpdates, windowSize, minSentences}`
-    - **Effet de bord**: Aucuns.
-  - `mergeActionDetectionPatch(current, patch)`
-    - **Paramètres** :
-      - `current` : réglages déjà normalisés
-      - `patch` : modifications à appliquer (tout champ absent = inchangé ; vide = retour au défaut)
-    - **Retour** : nouveaux réglages, norme appliquée et valeurs bornées
-    - **Effet notable**:  
-      - Lance une exception si la sensibilité (`sensitivity`) n’est pas reconnue.
-      - Les paramètres invalides sont ignorés ou reset (jamais transmis tels quels).
-
-- **Constantes exportées**
-  - `DETECTION_SENSITIVITIES` : `['explicit', 'balanced', 'wide']`
-  - Bornes pour `windowSize`, `minSentences`, nombre/longueur de triggerWords.
-  - `DEFAULT_ACTION_DETECTION` : valeur par défaut appliquée en toutes circonstances.
-
-- **Points d'attention**
-  - Les valeurs sont bornées deux fois : schéma côté API et ici à la lecture côté JS.
-  - Les entrées inconnues ou extrêmes sont toujours ramenées à une valeur sûre (fallback et clamp).
-  - Changement notable : le vocabulaire de l’organisation n’est pas ici, il doit être injecté ailleurs.
-  - L’appelant doit gérer les erreurs si la sensibilité fournie n’est pas dans la liste.
-  - Indépendant de la validation de schéma : ne compte pas sur une API externe pour l’intégrité.
-  - Edge cases pris en compte :
-    - Importation de documents avec des valeurs hors bornes ou anciennes versions.
-    - Distinction entre `undefined` (utiliser fallback) et liste vide (réinitialiser au défaut explicite).
-
-- **Dépendances**
-  - Aucune dépendance externe : tout est encapsulé, constants et fonctions incluses dans le module.
+- Centralise les constantes, valeurs par défaut et fonctions de normalisation des réglages de détection d’actions propres à chaque utilisateur.
+- Exports :
+  - `DETECTION_SENSITIVITIES`, `DETECTION_WINDOW_MIN/MAX`, `DETECTION_INTERVAL_MIN/MAX`, `DETECTION_TRIGGER_WORDS_MAX`, `DETECTION_TRIGGER_WORD_MAX` : valeurs de référence pour les sensibilités et les bornes.
+  - `DEFAULT_ACTION_DETECTION` : réglages par défaut (`enabled: true`, sensibilité `explicit`, mot déclencheur `action`, fenêtre de 8 phrases, minimum de 1 phrase).
+  - `normalizeTriggerWords(words, fallback)` : retourne une liste de mots nettoyés, dédoublonnés et bornés ; si `words` vaut `undefined`, retourne `fallback`. Ne modifie pas les arguments.
+  - `normalizeActionDetection(doc)` : prend un document partiel ou absent et retourne l’ensemble des réglages normalisés ; ne modifie pas le document.
+  - `mergeActionDetectionPatch(current, patch = {})` : applique les champs présents d’un patch et retourne un nouvel objet ; ne modifie pas `current`. Une sensibilité inconnue déclenche une erreur.
+- Points d’attention :
+  - Les valeurs numériques sont arrondies puis bornées, y compris à la lecture ; les valeurs non numériques ou non finies prennent le repli prévu.
+  - `enabled` et `allowUpdates` sont `false` uniquement si leur valeur est strictement `false` lors de la normalisation ; dans un patch, elles sont converties en booléens.
+  - Une liste de mots vide dans un patch rétablit `['action']`, tandis que `undefined` signifie « ne pas modifier » dans le patch et « utiliser le repli » dans la normalisation.
+  - Les mots déclencheurs sont limités à 20 entrées de 40 caractères ; les doublons sont supprimés selon la casse exacte.
+  - Le vocabulaire de l’organisation n’est pas géré ici ; aucune dépendance externe.
 
 ### services/api/routes/actions/detection.js
 
-- **Rôle du fichier**
-  - Définit les routes API pour la gestion et le test des réglages de détection d'actions en réunion, spécifiques à chaque utilisateur.
-  - Permet aux utilisateurs de consulter, modifier et tester leurs propres réglages de détection via un "banc d'essai" sans effet de bord sur leurs données.
+- Enregistre les routes Fastify de lecture, mise à jour et test des réglages personnels de détection d’actions.
+- **Export par défaut — `actionsDetectionRoutes(app)`**
+  - **Paramètre :** instance Fastify configurée.
+  - **Retour :** aucun retour explicite ; enregistre les routes et des hooks.
+  - **Effets de bord :** crée deux limiteurs de débit et les arrête à la fermeture de l’application.
 
-- **Fonctions exportées**
-  - Fonction principale : `actionsDetectionRoutes(app)`
-    - **Paramètre** :  
-      - `app` : instance applicative Fastify/Express, fournissant contextes, dépendances (ex: openai, userActions, settings), gestion des hooks.
-    - **Effets** :
-      - Ajoute les routes suivantes à l'API :
-        - `GET /actions/detection`
-          - Retour : `{ settings }` — les réglages actuels de détection de l'utilisateur (chargés via `app.userActions.getDetection`)
-          - Effet de bord : Aucune.
-        - `POST /actions/detection`
-          - Corps : Validé par `userActionDetectionBody`, nouveaux réglages partiels.
-          - Retour : `{ settings }` — réglages mis à jour pour l'utilisateur.
-          - Effet de bord : Met à jour en base les réglages personnels de l’utilisateur.
-        - `POST /actions/detection/test`
-          - Corps : Validé par `userActionDetectionTestBody`, inclut un contenu à tester + éventuels réglages non-enregistrés.
-          - Retour : `{ ok: true, actions, prompt, model }` (résultat du test d’analyse d’actions via OpenAI).
-          - Effet de bord notable : AUCUN effet permanent, mais sollicite OpenAI à chaque appel (appel facturé côté fournisseur). Active un double rate-limiting (par compte + par IP).
+- **Routes enregistrées :**
+  - `GET /actions/detection` — exige un utilisateur authentifié ; retourne `{ settings }` avec ses réglages.
+  - `POST /actions/detection` — valide le corps avec `userActionDetectionBody`, vérifie l’origine et met à jour les réglages de l’utilisateur ; retourne `{ settings }`.
+  - `POST /actions/detection/test` — valide le corps avec `userActionDetectionTestBody`, vérifie l’origine et applique des limites par compte et par IP. Teste le contenu avec les réglages affichés fusionnés aux réglages enregistrés ; retourne `{ ok, actions, prompt, model }`. Le test ne sauvegarde pas les réglages.
 
-- **Points d'attention**
-  - Système de rate-limit sur `/actions/detection/test` (par utilisateur ET par IP) pour limiter les abus/excès d’appels.
-  - Vérification d’origine (CSRF) sur les requêtes POST, tolérant l’absence d’Origin pour les appels techniques.
-  - Paramètre `settings` lors du test : fusionne les réglages affichés (potentiellement non sauvegardés) avec ceux persistés, via `mergeActionDetectionPatch`.
-  - Dépendances critiques :
-    - `openai` (via app.openai, service upstream) : erreurs amont relayées à l’utilisateur avec message explicite.
-    - Validation des schémas via `userActionDetectionBody` et `userActionDetectionTestBody`.
-    - `app.userActions` : accès/mise à jour base des réglages utilisateurs.
-  - Edge cases :
-    - Si manque de contenu à tester : code 400 `detection_test_content_missing`.
-    - Si settings fournis invalides : code 400 `detection_settings_invalid`.
-    - Échec OpenAI : retour 400 détaillé avec cause (extraction du message d’erreur d'OpenAI).
-    - Gestion fine du prompt transmis à OpenAI : le contexte métier est toujours injecté côté serveur, jamais piloté complètement par l'appelant.
-    - Les hooks d'arrêt (`onClose`) arrêtent les rate-limiters pour éviter les fuites mémoire.
+- **Points d’attention :**
+  - Les routes exigent un utilisateur ; les écritures et le test rejettent une origine non conforme (`403`). Les requêtes sans `Origin` restent tolérées selon `isSameOrigin`.
+  - Le test rejette un contenu vide (`400`) et renvoie `429` si l’un des deux quotas est dépassé.
+  - Le contexte métier provient du serveur ; la langue du test est fournie par la requête, avec repli français dans `runActionDetection`.
+  - Les erreurs de réglages invalides et les erreurs amont sont converties en réponses `400`. Les autres erreurs sont propagées.
+  - Dépend de `runActionDetection`, `mergeActionDetectionPatch`, des schémas de `../auth/schemas.js`, du stockage `app.userActions`, et des configurations OpenAI, limites de débit et contexte d’organisation.
+
+### services/api/lib/audioChunks.js
+
+- Décode les métadonnées audio et, si nécessaire, découpe les fichiers longs en tranches égales d’au plus 300 s, sans réencodage, pour `/record`.
+- **Exports**
+  - `CHUNK_MAX_SECONDS` — constante `300` (secondes), durée maximale visée par tranche.
+  - `createAudioChunker({ ffmpeg, ffprobe, log, run })` — crée un découpeur configurable ; retourne un objet avec `split(path)`.
+  - `split(path)` — retourne une promesse de `{ paths, cleanup }`. `paths` contient les fichiers dans l’ordre ; `cleanup()` supprime les tranches temporaires, jamais le fichier source. Pour les fichiers jusqu’à 315 s inclus, ou si la sonde échoue, retourne le fichier source sans nettoyage.
+- **Effets de bord** — lance `ffprobe` et `ffmpeg` sans shell ; crée un répertoire temporaire pour les tranches et le supprime via `cleanup` ou après un échec. Émet des avertissements et une information facultative via `log`.
+- **Points d’attention**
+  - Sans `ffmpeg`/`ffprobe`, si le format est illisible, ou si la découpe échoue, le fichier entier est transmis : un import long peut alors être refusé ou tronqué.
+  - Formats acceptés limités à ceux de `EXTENSIONS` ; les entrées sont restreintes au protocole `file` et à cette liste pour réduire les risques de lecture de fichiers ou d’URL externes.
+  - Les processus sont arrêtés après 60 s. `run` est injectable pour les tests.
+
+### services/api/lib/configChecks.js
+
+- Fournit les diagnostics de configuration destinés aux pastilles de l’interface. Chaque constat indique une section, un code stable, un niveau (`error`, `warning`, `tip`) et, au besoin, des variables. Les textes sont traduits côté interface ; ce fichier ne produit pas de phrases.
+- Exporte :
+  - `CHECK_LEVELS` : ordre des niveaux, du plus grave au plus léger.
+  - `CHECK_TTL_MS`, `CHECK_FAILURE_TTL_MS`, `PROBE_BUDGET_MS`, `PRICES_STALE_DAYS` : durées de cache, budget des sondes et seuil d’ancienneté des tarifs.
+  - `createVerdictCache({ now?, maxEntries? })` : crée un cache borné de verdicts ; retourne un objet avec `remember(key, probe)`, qui partage les sondes en cours et mémorise leur résultat. Les échecs expirent plus tôt que les succès. Une sonde qui lève n’est pas mémorisée.
+  - `organizationChecks(app, { cache, budgetMs?, now? })` : retourne une promesse de constats pour l’organisation (clés et fournisseurs IA, actions, identifiants OAuth, MyBrain, tarifs, identité). Interroge les réglages et peut sonder les services externes. Les sondes dépassant le budget sont omises de la réponse, mais continuent en arrière-plan.
+  - `accountChecks(app, user, { cache, budgetMs? })` : retourne une promesse de constats pour le compte (`user.email`, `user.emailLower`) concernant la connexion et les destinations de dépôt personnelles ou par tag. Sonde le Drive en lecture seule ; les résultats hors budget sont omis.
+- Points d’attention :
+  - Les diagnostics d’organisation et de compte sont séparés : les premiers concernent l’administration, les seconds le titulaire du compte.
+  - Les clés de cache utilisent des empreintes SHA-256 tronquées, jamais les secrets en clair. Le changement de clé, jeton ou destination produit une entrée distincte.
+  - Seuls certains échecs de configuration deviennent des alertes ; les pannes transitoires ne doivent pas être présentées comme des problèmes à corriger.
+  - `accountChecks` reste silencieuse si le stockage n’est pas activé, si aucune destination utile n’est configurée ou si les identifiants OAuth d’organisation manquent. Les dossiers de tags supprimés sont ignorés.
+  - Dépend des services Fastify (`settings`, `connections`, `driveBrowser`, `myBrain`, `pricing`, etc.) et des helpers locaux pour les fournisseurs, tarifs, actions, permissions et portée utilisateur.
+
+### services/api/lib/costs/assumptions.js
+
+- **Rôle** : centralise les hypothèses utilisées pour estimer les coûts à partir des volumes mesurés. Ces estimations ne sont pas des factures ; certaines consommations ne sont pas suivies par la base.
+- **Export** : `ASSUMPTIONS` — objet figé (`Object.freeze`), sans paramètres. Fournit les constantes de conversion et de volume estimé pour les résumés, titres, détection d’actions et infographies. Aucun effet de bord notable.
+- **Points d’attention** :
+  - Les jetons produits et le rythme de détection sont des hypothèses à recaler avec des factures OpenAI ; les consignes sont mesurées à partir de prompts du dépôt.
+  - `charsPerToken` et `speechCharsPerSecond` sont des valeurs de repli ; le débit réel d’une installation peut être utilisé ailleurs.
+  - Le coût estimé exclut notamment l’import audio, certaines relectures et essais d’administration. En visio, deux flux audio peuvent porter la transcription jusqu’au double.
+  - Dépend de `../prompts.js` et `../actionDetectionSettings.js` : les longueurs de consignes et la fenêtre de détection sont calculées à l’import, selon ces valeurs.
+
+### services/api/lib/costs/catalog.js
+
+- Fournit le catalogue intégré de tarifs et de caractéristiques des modèles, utilisé avant actualisation et en repli pour les modèles inconnus des sources en ligne. Les montants sont en dollars.
+- Exports :
+  - `CATALOG_CHECKED_AT` : date du relevé intégré (`YYYY-MM-DD`).
+  - `PRICE_FIELDS` : noms des champs tarifaires remplacés lors d’une actualisation.
+  - `MODEL_KINDS` : familles de modèles (`audio`, `text`, `image`).
+  - `PRICE_CATALOG` : objet indexé par identifiant de modèle ; chaque entrée indique `provider`, `kind` et les tarifs applicables. `imageTokens` est une caractéristique conservée lors d’une actualisation.
+  - `FX_FALLBACK` : taux de conversion USD→EUR de repli, avec date et source ; remplacé par le taux BCE après une actualisation réussie.
+- Effet de bord : aucun ; le fichier exporte des constantes de données.
+- Points d’attention :
+  - Les champs tarifaires et `imageTokens` n’ont pas le même cycle de mise à jour ; `imageTokens` est une estimation documentée, non publiée dans les grilles.
+  - Les unités varient selon le champ : prix par minute audio, million de jetons ou image. AssemblyAI facture la durée de session, silences compris.
+  - Les tarifs et modèles sont maintenus dans ce catalogue ; les sources en ligne, notamment LiteLLM, sont gérées par `refresh.js` et `sources/`.
+  - La conversion en euros utilise le taux de repli puis le taux BCE ; les dépendances de calcul associées sont `estimate.js` (compteurs) et `refresh.js` (actualisation).
+
+### services/api/lib/costs/estimate.js
+- Estime les dépenses d’IA à partir des volumes d’usage, des tarifs et d’hypothèses de consommation. Déclare les compteurs (`METERS`) et les postes de coût (`COST_LINES`), puis produit des montants en EUR. Le calcul est conçu comme pur : pas d’écriture ni d’appel réseau.
+- Exports :
+  - `DAYS_PER_MONTH` — durée moyenne d’un mois en jours (`365,25 / 12`).
+  - `METERS` — associe chaque unité de consommation à son champ de tarif et à son diviseur.
+  - `COST_LINES` — postes configurés (transcription, résumés, infographies, assistants) ; décrit leurs modèles, unités, volumes et tirages. Les fonctions de comptage et de tirage n’ont pas d’effet de bord.
+  - `activeModels(aiDoc = {}, envModels = {})` — résout les modèles actifs depuis les réglages d’administration, l’environnement ou les valeurs par défaut ; retourne les identifiants des modèles. Aucun effet de bord.
+  - `modelsToPrice(models)` — retourne les modèles du catalogue, les modèles actifs et ceux proposés dans l’interface, sous forme `{ id, provider }`. Aucun effet de bord.
+  - `spanDaysOf({ from, to, firstMeetingAt })` — retourne la durée en jours entre les dates, limitée à la date de première réunion et avec un minimum d’un jour. Aucun effet de bord.
+  - `priceDraw(draw, price)` — retourne le coût d’un tirage en USD, ou `null` si une quantité non nulle n’a pas de tarif fini. Aucun effet de bord.
+  - `estimateCosts({ usage, models, pricing, spanDays, assumptions = ASSUMPTIONS })` — retourne le détail des coûts en EUR (période, mensualisation, par heure, par réunion, postes, alternatives, modèles sans tarif et hypothèses). Aucun effet de bord.
+  - `referencePrices(lineId, { models, pricing, assumptions = ASSUMPTIONS })` — retourne le prix unitaire estimé sur une réunion type pour les modèles proposés d’un poste sélectionnable ; `[]` si le poste n’existe pas ou n’a pas de choix. Aucun effet de bord.
+- Points d’attention :
+  - Un tarif manquant n’est pas assimilé à zéro : le tirage est exclu du coût et signalé dans `unpriced` ; `referencePrices` renvoie alors `unitEur: null`.
+  - Les quantités nulles ou falsy sont ignorées par `priceDraw`. Les tarifs au jeton sont ramenés au million via `METERS`.
+  - La mensualisation utilise `DAYS_PER_MONTH` et `spanDays` ; `spanDaysOf` impose au moins un jour. Des dates invalides peuvent toutefois produire `NaN`.
+  - `estimateCosts` suppose des structures `usage`, `models` et `pricing` cohérentes ; certains postes dépendent des hypothèses (`ASSUMPTIONS`) et de prix d’image pouvant être facturés à l’image ou aux jetons.
+  - Dépend de `transcriptionModels.js`, `summaryModels.js`, `infographicModels.js`, `assumptions.js`, `catalog.js` et `pricing.js` (notamment pour la résolution des modèles, les tarifs et leur présentation).
+
+### services/api/lib/costs/pricing.js
+
+- **Rôle** : construit les tarifs appliqués en fusionnant le catalogue intégré et les tarifs enregistrés. Pour chaque modèle, conserve la donnée valide la plus récente. Valide les tarifs et taux de change reçus avant leur utilisation.
+- **Fonctions exportées** :
+  - `sanitizePrice(raw)` — prend un objet brut ; retourne un tarif assaini ou `null`. Ne modifie pas l’objet d’origine. Ignore les prix inconnus, invalides ou supérieurs au plafond, ainsi que les champs facultatifs mal formés.
+  - `sanitizeFx(raw)` — prend un objet contenant `usdToEur`, `date` et éventuellement `fetchedAt` et `source` ; retourne un taux assaini ou `null`. Ne modifie pas l’objet d’origine ; exige un taux entre 0,3 et 3 et une date analysable.
+  - `effectivePricing(stored, options?)` — prend les réglages enregistrés et, en option, `catalog`, `checkedAt` et `fxFallback` ; retourne `{ models, fx, refreshedAt, refreshedBy }`. Fusionne par date de relevé ; conserve les caractéristiques du catalogue absentes du relevé. Aucun effet de bord notable.
+  - `pricingProvenance(pricing, modelIds)` — prend les tarifs effectifs et les identifiants de modèles ; retourne la provenance du relevé le plus ancien parmi les modèles trouvés, ainsi que les métadonnées de rafraîchissement et du taux de change. Les identifiants sont dédupliqués ; les modèles inconnus sont ignorés.
+  - `publicTariff(price)` — prend un tarif ou `null` ; retourne ses prix publics en dollars, ou `null`. Si aucun prix `image` n’existe, calcule éventuellement `imageUsd` à partir de `imageTokens` et `imageOutputMTok`.
+- **Points d’attention** :
+  - Les dates illisibles ne permettent pas à un tarif enregistré de remplacer une date valide ; le taux de change est comparé selon `fetchedAt`, puis `date`, face à la date du taux de repli.
+  - Les fonctions ne modifient pas les données fournies. Le catalogue, les champs de prix et les valeurs de repli dépendent de `./catalog.js`.
+  - `pricingProvenance` renvoie `null` pour `checkedAt` et `source` si aucun modèle demandé n’est trouvé.
+
+### services/api/lib/costs/refresh.js
+
+- **Rôle :** actualise à la demande les tarifs des modèles et le taux de change, puis fusionne les valeurs récupérées avec le dernier relevé. Une source en échec ne supprime pas les valeurs précédentes.
+- **Fonction exportée — `refreshPricing({ requests, sources, previous = null, now = new Date() })`**
+  - **Paramètres :** `requests`, modèles à tarifer (`id`, `provider` facultatif) ; `sources`, fournisseurs de prix et de taux de change ; `previous`, relevé antérieur facultatif ; `now`, date de vérification facultative.
+  - **Retour :** promesse d’un objet contenant `snapshot` (modèles et taux retenus), `updated` (nombre de tarifs et présence d’un nouveau taux), `missing` (identifiants sans tarif) et `errors` (source et message).
+  - **Effet de bord notable :** appelle séquentiellement les sources configurées ; ne modifie pas directement le relevé persistant.
+- **Points d’attention :**
+  - Les requêtes sont dédoublonnées par `id`. Chaque source de prix ne reçoit que les modèles encore sans tarif ; une erreur est enregistrée et les sources suivantes sont quand même essayées.
+  - Les prix et taux passent par `sanitizePrice` et `sanitizeFx`. Un taux refusé est signalé comme « taux hors bornes » ; sans taux valide, celui du relevé précédent est conservé.
+  - Dépend de `./pricing.js` pour la validation et du contrat des sources (`fetchPrices`, `fetchRate`, `id`). Les listes de sources absentes sont traitées comme vides.
+
+### services/api/lib/costs/sources/currencyApi.js
+
+- Fournit une source de secours pour le taux quotidien USD/EUR via le jeu de données `currency-api` sur jsDelivr ; la BCE est interrogée en premier.
+- Exports :
+  - `CURRENCY_API_URL` — URL par défaut du JSON de taux.
+  - `parseCurrencyApi(json)` — prend la réponse JSON ; retourne `{ usdToEur, date }`. Lève une erreur si le taux USD/EUR n’est pas strictement positif ou si la date ne correspond pas au format `YYYY-MM-DD`.
+  - `createCurrencyApiSource({ fetchImpl, url, timeoutMs } = {})` — retourne une source `{ id, fetchRate }`. `fetchRate()` effectue une requête GET avec l’en-tête `Accept: application/json`, puis retourne le résultat parsé ; lève une erreur en cas de réponse HTTP non OK ou de JSON invalide. Effet de bord : requête réseau, interrompue après `timeoutMs` (10 s par défaut).
+- Points d’attention : dépend de `fetch` global par défaut et de `AbortSignal.timeout`; `fetchImpl`, l’URL et le délai peuvent être remplacés.
+
+### services/api/lib/costs/sources/ecb.js
+
+- Fournit le taux de change quotidien USD → EUR à partir du fichier XML de la Banque centrale européenne. Le taux publié étant exprimé par euro, le taux USD → EUR est son inverse.
+- Exporte `ECB_DAILY_URL` : URL par défaut du fichier `eurofxref-daily.xml`.
+- Exporte `parseEcbDaily(xml)` :
+  - Paramètre : texte XML.
+  - Retour : `{ usdToEur, date }`, avec le taux numérique et la date de publication.
+  - Lève une erreur si la date ou le taux USD positif est introuvable. L’extraction repose sur des expressions régulières, pas sur un parseur XML.
+- Exporte `createEcbSource({ fetchImpl, url, timeoutMs } = {})` :
+  - Paramètres optionnels : fonction `fetch` (par défaut `globalThis.fetch`), URL et délai d’expiration en ms (10 000 par défaut).
+  - Retour : source `{ id: 'ecb', fetchRate }`. `fetchRate()` télécharge le XML, vérifie le statut HTTP, puis retourne le résultat de `parseEcbDaily`.
+  - Effets de bord : requête réseau avec expiration via `AbortSignal.timeout`; lève une erreur en cas d’échec HTTP, réseau ou de parsing.
+- Attention : la source dépend de `fetch`, de `AbortSignal.timeout` et du format actuel du XML BCE. Le taux publié peut être daté du dernier jour ouvré, notamment les week-ends et jours fériés.
+
+### services/api/lib/costs/sources/index.js
+
+- Assemble et expose les sources de tarifs et de taux de change, dans leur ordre d’essai.
+- `createPriceSources({ fetchImpl = globalThis.fetch } = {})` — retourne `{ prices, fx }`, deux tableaux de sources créés avec le même `fetchImpl` :
+  - `prices` contient la source LiteLLM.
+  - `fx` contient les sources BCE puis CurrencyAPI ; le change s’arrête à la première source qui répond.
+- Effet de bord notable : aucun appel réseau à la création ; `fetchImpl` est transmis aux fabriques de sources.
+- Points d’attention : les tarifs sont recherchés source par source, uniquement pour les modèles encore manquants. Sans `fetchImpl` fourni, le code dépend de `globalThis.fetch`.
+
+### services/api/lib/costs/sources/litellm.js
+
+- Fournit une source de tarifs depuis le JSON public de LiteLLM : convertit ses prix unitaires en dollars au format attendu par myBrief. Le fichier distant est téléchargé uniquement lors de l’appel à `fetchPrices`.
+- Fonctions exportées :
+  - `normalizeLiteLlmEntry(entry)` — prend une entrée LiteLLM ; retourne un tarif normalisé, ou `null` si le mode ou les prix exploitables manquent. Aucun effet de bord.
+  - `findLiteLlmEntry(data, id, provider = 'openai')` — cherche l’entrée du modèle dans les données LiteLLM ; retourne l’entrée ou `null`. Vérifie que le fournisseur déclaré correspond au fournisseur demandé.
+  - `createLiteLlmSource({ fetchImpl, url, timeoutMs } = {})` — retourne une source `{ id, fetchPrices }`. `fetchImpl` (par défaut `globalThis.fetch`), `url` et `timeoutMs` sont configurables ; aucun accès réseau n’a lieu à la création.
+    - `fetchPrices(requests)` — prend une liste de `{ id, provider? }` ; retourne une promesse de tarifs trouvés, indexés par `id`, avec le fournisseur dans chaque tarif. Effectue une requête HTTP, avec en-tête JSON et délai maximal ; lève une erreur si la réponse HTTP échoue ou si `content-length` dépasse 50 Mo.
+- Points d’attention :
+  - Modes pris en charge : `chat`, `responses`, `completion`, `audio_transcription` et `image_generation`. Les tarifs sont convertis en minute ou par million de tokens selon le type ; les tarifs négatifs, non numériques ou non finis sont ignorés.
+  - Une entrée sans prix exploitable retourne `null` ; les modèles absents ne figurent pas dans le résultat. Une transcription tarifée uniquement au jeton audio est donc ignorée.
+  - La recherche tente d’abord `id`, puis `provider/id` ; les fournisseurs par défaut sont `openai`. Les entrées déclarant un autre fournisseur sont écartées.
+  - Dépend de `fetch`, `AbortSignal.timeout` et de la réponse JSON LiteLLM. La limite de taille s’appuie sur l’en-tête `content-length` lorsqu’il est disponible.
+
+### services/api/lib/costs/usage.js
+
+- Calcule la consommation d’IA d’une période à partir des réunions en base, sans modifier les données. Les dates de réunion déterminent l’audio et la détection d’actions, `generatedAt` les comptes rendus, et `infographic.updatedAt` les infographies.
+- `speechRateOf(meetings)` — prend un tableau de réunions et retourne le débit mesuré en caractères par seconde, ou `null` si les données plausibles cumulées représentent moins d’une heure. Ignore les durées ou textes absents, non positifs et les débits hors de 2–40 caractères/s. Sans effet de bord.
+- `measureUsage({ meetings, from, to, detectionOff, assumptions })` — retourne les compteurs d’usage (réunions, secondes audio et de détection, durées déduites ou non mesurées, comptes rendus et infographies, volumes de texte), ainsi que le débit retenu et `measuredSpeechRate`. Sans effet de bord.
+- Points d’attention :
+  - Les durées ou tailles de transcription manquantes sont estimées avec le débit mesuré, ou avec `assumptions.speechCharsPerSecond`. Les réunions sans durée ni texte sont comptées dans `unmeasured`.
+  - `detectionOff` exclut les comptes concernés de la détection, mais pas de l’audio. Les dates de période sont inclusives.
+  - `versions` absent déclenche un compte rendu à la date de réunion ; `versions: []` n’en compte aucun. Chaque version est datée par `generatedAt`, avec repli sur la date de réunion.
+  - Seules les infographies `ready` ou `pending` sont comptées ; une seule dernière infographie par réunion est prise en compte. Les versions de compte rendu supprimées ne sont pas comptabilisées.
+  - Dépend de `meetingDate` et `ownerKey` (`../stats.js`) et de `ASSUMPTIONS` (`./assumptions.js`).
+
+### services/api/lib/infographic.js
+
+- Génère en arrière-plan une infographie pour un compte rendu. Enregistre l’image dans la collection `infographics` et l’état (`ready` ou `error`) dans le document `resume`.
+- Exports :
+  - `INFOGRAPHICS_COLLECTION` : nom de la collection de stockage des images (`'infographics'`).
+  - `INFOGRAPHIC_IMAGE_SIZE` : format fixe de l’image (`'1024x1536'`, portrait).
+  - `generateAndSaveInfographic({ app, log, email, meetingId, body })` : fonction asynchrone, sans valeur de retour utile. Prépare les matériaux depuis la transcription, les actions, les notes, la langue et le style configuré ; fait réécrire le prompt par le modèle texte, puis génère et enregistre l’image. Effet de bord : écrit l’image et ses métadonnées dans `infographics`, puis met à jour `resume.infographic.status`.
+- Points d’attention :
+  - La réécriture du prompt est facultative : en cas d’échec ou de résultat vide, la génération utilise les matériaux bruts. Le prompt réécrit est limité à `INFOGRAPHIC_PROMPT_MAX`.
+  - Si la génération échoue ou ne renvoie pas d’image, le statut passe à `error`. L’image est enregistrée avant le statut `ready`.
+  - Le modèle d’image et le style sont relus depuis les réglages à chaque génération ; le format reste fixe.
+  - Dépend de `app.db`, `app.openai`, `app.settings`, `app.config`, des utilitaires `ownerFilter`/`ownerFields` et des prompts de `prompts.js`. Les écritures sont limitées au propriétaire via `email`.
+  - L’image est stockée séparément du document `resume` ; ce dernier ne contient que l’état.
+
+### services/api/lib/infographicModels.js
+
+- Définit les modèles d’image d’infographie proposés à l’administration, distincts du modèle texte qui réécrit le prompt.
+- Exports :
+  - `DEFAULT_INFOGRAPHIC_IMAGE_MODEL` : modèle par défaut (`gpt-image-2.5-flare`).
+  - `INFOGRAPHIC_IMAGE_MODELS` : liste fermée des modèles proposés, dans l’ordre d’affichage (`gpt-image-2.5-flare`, `gpt-image-2`).
+  - `isInfographicImageModel(id)` : prend un identifiant ; retourne `true` s’il figure dans la liste, sinon `false`. Aucun effet de bord.
+  - `resolveInfographicImageModel(stored, envModel)` : prend la valeur enregistrée en administration et le modèle d’environnement déjà résolu ; retourne le modèle effectif. Priorité : valeur enregistrée valide, puis valeur d’environnement non vide après conversion en chaîne et suppression des espaces, puis valeur par défaut. Aucun effet de bord.
+- Points d’attention :
+  - Une valeur enregistrée hors liste est ignorée ; une valeur d’environnement hors liste est conservée, notamment pour permettre des modèles non proposés dans l’écran.
+  - La liste concerne le modèle qui dessine l’image, pas celui qui réécrit le prompt. Le format d’image reste fixe et est défini ailleurs (`lib/infographic.js`).
+  - Aucune dépendance externe dans ce fichier ; `envModel` est fourni par `lib/config.js`.
+
+### services/api/lib/legacyVersion.js
+
+- Convertit un compte rendu stocké dans `resume`, sans versions enregistrées, en version persistable. Sert notamment à préserver les anciens résumés avant leur remplacement et à permettre leur retouche.
+- Exports :
+  - `LEGACY_VERSION_ID` : identifiant fixe `'v_legacy'`, commun à l’affichage et au stockage.
+  - `WITHOUT_VERSIONS` : filtres MongoDB pour les documents dont `versions` est absent, nul ou vide.
+  - `legacyVersionOf(doc)` : reçoit un document ou `null`; retourne la version à inscrire (`id`, `html`, `template`, métadonnées nulles et `generatedAt`), ou `null` si le document est absent, contient déjà des versions non vides, ou n’a pas de `resume` non blanc. Aucun effet de bord.
+- Points d’attention :
+  - Un tableau `versions` vide est accepté; une valeur non nulle qui n’est pas un tableau vide est refusée.
+  - `template` et `now` deviennent `null` s’ils sont absents ou nuls. `generatedAt` reprend `doc.now`.
+  - `WITHOUT_VERSIONS` n’inclut pas les valeurs de `versions` d’une forme inattendue.
+  - Dépendances : opérateurs de filtre MongoDB; identifiant partagé avec `src/utils/summary.js`.
+
+### services/api/lib/myBrain/client.js
+
+- Client HTTP de l’API myBrain (`/api/v1`), authentifiée par clé Bearer. Les redirections ne sont pas suivies afin de ne pas transmettre la clé à un autre hôte.
+- Exports :
+  - `MYBRAIN_TIMEOUT_MS` : délai par défaut, **15 000 ms**.
+  - `MyBrainError(code, details?)` : erreur avec `code`, `status`, `upstreamMessage`, `retryable`, `ambiguous` et `location`. `details()` fournit les informations transmissibles à une route d’administration, sans la clé API.
+  - `createMyBrainClient({ fetchImpl?, timeoutMs? }?)` : retourne un client. `fetchImpl` est injectable pour les tests ; utilise `globalThis.fetch` par défaut.
+    - `whoami({ url, apiKey })` : `Promise<{ application, droits, api }>` ; appelle `GET /api/v1` et valide la forme de la réponse.
+    - `feed({ url, apiKey, deposit })` : `Promise<{ job, pour, avertissements }>` ; appelle `POST /api/v1/nourrir` avec le dépôt. Un corps 2xx absent ou illisible est considéré accepté : `job` vaut `''` et `pour` vaut `undefined`.
+- Points d’attention :
+  - Les erreurs distinguent les échecs relançables (`retryable`) des dépôts potentiellement déjà reçus (`ambiguous`) ; un HTTP 500 est ambigu et non relançable.
+  - Les réponses d’erreur myBrain sont lues dans le champ JSON `erreur`, limité à 300 caractères. Une réponse 2xx mal formée fait échouer `whoami`, mais pas `feed`.
+  - Les erreurs réseau classent les causes de connexion initiale comme relançables ; délai dépassé et perte de connexion en cours de requête sont ambigus.
+  - Dépend de `fetch`, `AbortSignal.timeout` et des réponses JSON de myBrain ; les erreurs HTTP sont converties en slugs `mybrain_*`.
+
+### services/api/lib/myBrain/document.js
+
+- Construit les dépôts Markdown envoyés à myBrain à partir d’un document de réunion : métadonnées, notes, actions visibles, compte rendu et transcription. N’inclut pas la provenance de l’outil.
+- Exports :
+  - `MYBRAIN_TEXT_MAX`, `MYBRAIN_PARTS_MAX`, `MYBRAIN_TITLE_MAX` : plafonds respectifs de 120 000 caractères par texte, 8 parties et 300 caractères par titre.
+  - `htmlToText(html)` : convertit un compte rendu HTML en texte Markdown en conservant une structure simplifiée ; retourne le texte nettoyé. Un contenu sans balises est conservé.
+  - `formatMeetingDuration(seconds)` : retourne une durée lisible ou `''` si la valeur est absente, invalide ou non positive.
+  - `meetingDateOf(meeting)` : retourne la première date valide parmi `meetingStartTime`, `lastConnecion`, `lastConnection` et `now`, ou `null`.
+  - `buildMyBrainDeposits(meeting, context?)` : retourne un tableau de dépôts `{ titre, texte, pour?, end }`, ou `[]` si aucun contenu utile. `context` accepte `authorName`, `authorEmail`, `tagLabel`, `maxChars`, `maxParts` et `cuts`.
+- `buildMyBrainDeposits` découpe les longues transcriptions aux fins de ligne, répète l’en-tête dans chaque partie et réserve notes, actions et compte rendu à la première. `end` indique la fin de transcription de la partie ; `cuts` permet de rejouer des frontières déjà enregistrées. Les sections d’appoint sont plafonnées à 20 000, 15 000 et 40 000 caractères.
+- Points d’attention :
+  - Au-delà de 8 parties, la transcription restante n’est pas envoyée et le texte l’indique. Une ligne plus longue que la place disponible peut être coupée.
+  - Les titres sont limités à 300 caractères ; `pour` n’est ajouté que si l’adresse auteur contient `@`.
+  - Les actions masquées (`show: false`) et les valeurs de remplacement historiques sont ignorées.
+  - Dates formatées avec le fuseau `Europe/Paris`. Dépend de `UNTITLED_MEETING` (`../prompts.js`) et de `isLegacyActionPlaceholder` (`../notesActions.js`). Les fonctions de ce module ne font pas d’appel réseau.
+
+### services/api/lib/myBrain/feed.js
+
+- **Rôle :** gère l’éligibilité, l’envoi des réunions à myBrain, l’état d’envoi en base et les relances. Les erreurs d’envoi ne font pas échouer l’action qui les déclenche.
+- **Exports :**
+  - `MYBRAIN_MAX_ATTEMPTS` — nombre maximal de tentatives automatiques : `5`.
+  - `MYBRAIN_SENDING_STALE_MS` — délai avant qu’un envoi bloqué soit considéré comme interrompu : `15 min`.
+  - `MYBRAIN_RETRY_INTERVAL_MS` — intervalle par défaut de la boucle de relance : `10 min`.
+  - `myBrainEligibility(app, email)` — retourne une `Promise` contenant disponibilité, activation, politique, préférence du compte, date d’activation et paramètres. Lit les réglages d’installation et du compte.
+  - `feedMeetingToMyBrain({ app, log, email, meetingId, manual = false })` — retourne une `Promise` avec le statut `inactive`, `skipped`, `empty`, `sent` ou `error`. Réclame atomiquement la réunion, compose et envoie ses dépôts, puis met à jour `resume.myBrain`. Ne rejette pas. `manual` autorise la reprise d’un échec ambigu ou d’un envoi bloqué.
+  - `retryMyBrainFeeds({ app, log, now = new Date(), limit = 10 })` — retourne une `Promise<number>` indiquant le nombre de réunions échues traitées. Marque les envois bloqués comme ambigus, puis traite les relances dues en série. Ne rejette pas.
+  - `startMyBrainRetryLoop(app, { intervalMs = MYBRAIN_RETRY_INTERVAL_MS } = {})` — démarre la boucle de relance et retourne `{ stop }`. Programme un premier passage après 60 s, empêche les passages simultanés et rend les timers non bloquants (`unref` si disponible).
+- **Points d’attention :**
+  - Un envoi automatique n’est permis que pour une réunion commencée après l’activation applicable (`activeSince`, et `enabledSince` si le compte choisit l’envoi). Les réglages d’installation sont relus à chaque envoi.
+  - La réclamation atomique évite les doublons entre déclencheurs concurrents. Les dépôts partiels conservent leurs identifiants (`jobs`) et frontières (`cuts`) pour reprendre sans renvoyer les parties acceptées.
+  - Seuls les échecs explicitement relançables sont réessayés automatiquement, avec au plus cinq tentatives. Les issues ambiguës ne sont jamais relancées automatiquement ; une reprise manuelle peut créer un doublon.
+  - Une réunion sans contenu exploitable retourne `empty` et son état `myBrain` est supprimé. Les réunions encore en enregistrement sont exclues.
+  - Dépend de MongoDB (`resume`, `userTags`), du contexte `app` (`myBrainSettings`, `userActions`, `myBrain.feed`, utilisateurs, suivi des tâches), ainsi que de `ownerFilter`, `isMyBrainActive`, `MyBrainError`, `buildMyBrainDeposits` et `meetingDateOf`.
+
+### services/api/lib/notesActions.js
+- Centralise le schéma et les règles de validation des notes et actions acceptées par les routes d’historique et par le résumé.
+- Exporte :
+  - `isLegacyActionPlaceholder(value)` — prend une valeur quelconque, retourne un booléen indiquant si son texte correspond à un placeholder historique, après conversion en chaîne, suppression des espaces périphériques et comparaison sans casse. Utilise une liste figée de libellés.
+  - `notesSchema` — schéma Ajv acceptant une chaîne pour les notes.
+  - `actionsSchema` — schéma Ajv acceptant un tableau d’objets action avec les propriétés déclarées (`id`, `title`, `owner`, `dueDate`, `description`, `newBadge`, `show`) ; les propriétés supplémentaires sont interdites. Les actions masquées restent valides.
+  - `notesActionsFields(body = {})` — prend un corps de requête, retourne un fragment `$set` contenant uniquement `notes` si c’est une chaîne et `actions` si c’est un tableau. N’efface donc pas un champ absent ; ne modifie pas la base directement.
+  - `withoutLegacyPlaceholders(actions)` — prend une valeur quelconque, retourne une liste d’actions où les champs de contenu vides ou égaux à un placeholder historique sont remplacés par `''`. Une entrée non-tableau donne `[]` ; les éléments non-objets sont conservés.
+  - `hasNotesActionsContent({ notes, actions } = {})` — retourne un booléen : vrai si les notes contiennent du texte ou si une action a du contenu dans `title`, `owner`, `dueDate` ou `description`. Une action vierge ou contenant seulement des placeholders ne compte pas.
+- Points d’attention : Ajv/Fastify peut retirer les propriétés d’action inconnues (`removeAdditional`) plutôt que rejeter la requête. Le schéma vérifie la forme, pas la taille ; la limite de corps de l’API est appliquée ailleurs. `newBadge` et `show` ne comptent pas comme contenu ; les placeholders sont comparés après normalisation, sans distinction de casse.
+
+### services/api/lib/pageMeter.js
+
+- **Rôle** — Mesure la longueur du résumé IA en pages estimées selon la mise en page PDF, et fournit au serveur les outils pour borner et vérifier cette longueur. Jumeau de `src/lib/pageMeter.js` : toute modification de la logique de mesure doit être répercutée des deux côtés.
+- **Constantes exportées** — `PAGE_STEPS` (positions acceptées), `MIN_PAGES` et `MAX_PAGES` (bornes), `WORDS_PER_PAGE` (450), `MATERIAL_RATIO` (0,45) et `TOLERANCE` (0,2). Aucun effet de bord.
+- **Fonctions exportées** :
+  - `normalizePages(value)` — convertit une chaîne ou un nombre en position valide la plus proche, ou renvoie `null` si absent, non fini ou hors bornes. Accepte la virgule décimale.
+  - `stepIndex(pages)` — renvoie l’index de la position normalisée ; si elle est invalide, renvoie l’index de 1 page.
+  - `stepAtOrBelow(pages)` — renvoie la plus grande position de `PAGE_STEPS` qui ne dépasse pas la valeur.
+  - `countWords(text)` — compte les mots après retrait des balises HTML et des entités ; convertit les valeurs falsy en chaîne vide.
+  - `wordsForPages(pages)` — renvoie `pages × 450`, arrondi à l’entier.
+  - `materialCapPages(transcriptWords)` — estime le plafond en pages selon la matière disponible, borné à `MIN_PAGES`–`MAX_PAGES` ; une transcription non positive ou inconnue donne `MAX_PAGES`.
+  - `effectivePages(requested, transcriptWords)` — renvoie la demande normalisée, plafonnée par la matière, ou `null` si invalide.
+  - `lengthVerdict(measured, target)` — renvoie `'short'`, `'long'` ou `'ok'` selon une tolérance de 20 % avec plancher absolu de 0,05 page.
+  - `estimatePages(html)` — estime les pages occupées par un fragment HTML dans le PDF, sans en-tête ; renvoie `0` si aucun bloc de texte n’est détecté.
+  - `splitAtAnchors(html, anchors)` — découpe le HTML en `{head, body, tail}` autour des ancres ; renvoie `null` si une ancre requise est introuvable ou mal ordonnée.
+- **Effets de bord** — Aucun : les fonctions calculent et renvoient des valeurs, sans modifier le HTML ni effectuer d’E/S.
+- **Points d’attention** — Le parseur HTML et le calcul de mise en page sont volontairement simplifiés et calibrés pour le HTML de résumé (titres, paragraphes, listes, gras), pas pour du HTML arbitraire. Les mesures reposent sur des dimensions PDF, des tables de largeur de glyphes et des règles de rendu internes ; les caractères absents des tables utilisent une largeur moyenne. `splitAtAnchors` dépend des chaînes d’ancrage fournies par les templates : en cas d’échec, le serveur évite de mesurer ou de reprendre le résumé.
+
+### services/api/lib/pageTarget.js
+- Pilote le **Pagimètre côté serveur** : mesure la longueur du résumé principal et tente de le rapprocher de la cible, sans faire échouer le compte rendu si une reprise échoue. Seul le résumé entre les ancres est repris ; le reste du HTML est préservé.
+- Fonctions exportées :
+  - `parsePagePlan(raw, transcription)` — valide le plan reçu du client et renvoie `null` si la cible est absente ou invalide ; sinon retourne les pages demandées, la cible recalculée depuis la transcription, les ancres et les consignes de reprise. Ne modifie pas les entrées.
+  - `mainVerbosity(target)` — retourne `'low'`, `'medium'` ou `'high'` selon la cible.
+  - `enforcePageTarget({ html, plan, transcription, chat, log, maxPasses, canRetry })` — retourne une promesse `{ html, report }`. Mesure le résumé, puis peut appeler `chat({ system, user, verbosity })` pour le développer ou le condenser. Le HTML initial est conservé si la reprise échoue, déborde sur les ancres ou n’améliore pas l’écart à la cible. Effets notables : appels au modèle et journalisation via `log.info` / `log.warn`.
+  - `SECOND_PASS_BUDGET_MS` — constante exportée : `150_000` ms, budget destiné à autoriser ou non une seconde reprise via `canRetry`.
+- Points d’attention :
+  - Dépend de `pageMeter.js` pour normaliser la cible, découper aux ancres, mesurer le texte et déterminer l’écart à la cible.
+  - Les chaînes d’ancres sont limitées à 500 caractères ; chaque consigne de reprise à 60 000 caractères. Les ancres absentes ou non exploitables entraînent un retour sans reprise.
+  - `maxPasses` vaut `1` par défaut ; `canRetry` n’est consulté qu’à partir de la deuxième passe. La constante de budget n’est pas appliquée directement par le fichier.
+  - Une reprise doit faire évoluer la mesure dans le bon sens et réduire l’écart relatif à la cible ; sinon elle est écartée.
+
+### services/api/lib/personalStats.js
+
+- **Rôle** : calcule les statistiques d’usage d’un seul compte, avec le crédit du mois civil. Ne projette que des volumes et des métadonnées de modèles, jamais le contenu des réunions.
+- **Fonctions exportées** :
+  - `rangeWindow(range, period)` — retourne `{ days, since }` pour `90`, `365`, `all` ou, par défaut, le mois de crédit (`period.start`).
+  - `summaryCounts(meetings)` — retourne `{ count, regenerated }`. Un document sans tableau `versions` compte comme un compte rendu ; `versions: []` n’en compte aucun.
+  - `labelsByTemplate(orgTemplates, userTemplates)` — retourne une `Map` des valeurs de modèles vers leurs libellés français et anglais. Les modèles du compte remplacent ceux de l’organisation.
+  - `computePersonalStats({ meetings, labels, range, period, now })` — fonction pure ; retourne les périodes, totaux, séries, jours de la semaine, tranches de durée et statistiques par modèle, sans crédit. `labels` est facultatif.
+  - `personalStats({ db, quota }, identity, range, now)` — lit les réunions et les modèles, calcule les statistiques et ajoute `credit` à l’objet retourné. Effets de bord : lectures MongoDB et appel à `quota.creditFor(identity, now)`.
+- **Points d’attention** :
+  - `PERSONAL_RANGES` expose `month`, `90`, `365`, `all`. Toute valeur inconnue est traitée comme `month` par `rangeWindow`.
+  - `personalStats` choisit l’adresse via `identity.doc?.email || identity.email` et filtre les réunions et modèles du compte avec `ownerFilter`.
+  - Dépendances : `ownerScope.js`, `stats.js` (`computeUsageStats`, `meetingDate`) et `quota.js` (`currentPeriod`).
+  - Les projections MongoDB sont strictes : seuls les champs nécessaires aux calculs et aux libellés sont lus.
+
+### services/api/lib/quota.js
+
+- **Rôle** : calcule le quota mensuel de transcription par compte, en minutes de réunions commencées pendant le mois civil à Paris. Agrège l’historique et les traces de réunions supprimées ; expose aussi les données de consommation pour les statistiques.
+- **Constantes exportées** :
+  - `QUOTA_TIME_ZONE` : fuseau des périodes, `Europe/Paris`.
+  - `DELETED_USAGE_COLLECTION` : nom de la collection des traces de consommation supprimée (`deletedMeetingUsage`).
+  - `PACE_ALERT_THRESHOLD` : seuil d’alerte d’avance sur le rythme régulier (`0.15`).
+- **Fonctions exportées** :
+  - `zonedMidnight(year, month, day, timeZone = QUOTA_TIME_ZONE)` → `Date` : convertit un minuit civil en instant ; accepte les débordements de mois et de jour.
+  - `currentPeriod(now = new Date(), timeZone = QUOTA_TIME_ZONE)` → `{start, end, timeZone}` : bornes ISO UTC du mois civil contenant `now` dans le fuseau indiqué ; `end` est exclu.
+  - `effectiveLimit(groups)` → `{minutes, group}` : sélectionne le quota de groupe le plus élevé ; `null` signifie illimité. Sans groupe, renvoie aussi une limite illimitée.
+  - `sumDurations(docs)` → `number` : somme les durées validées ; pour un même `meetingId`, ne retient que la plus longue. Les documents sans identifiant sont comptés séparément.
+  - `deletedUsageTrace(email, doc, now)` → `object | null` : prépare la trace de consommation à conserver avant suppression. Renvoie `null` si la durée est absente et la réunion n’est pas en cours, si la date est invalide ou si son mois est terminé. Ne réalise aucune écriture.
+  - `buildQuotaStatus({minutes, group, usedSeconds, period})` → `object` : construit l’état du quota (utilisation, minutes restantes, limite atteinte). Une limite est considérée atteinte s’il reste moins de 60 secondes.
+  - `dayKey(date, timeZone = QUOTA_TIME_ZONE)` → `string` : jour civil au format `YYYY-MM-DD` dans le fuseau indiqué.
+  - `dailyUsage(docs, period)` → tableau `{date, usedSeconds}` : consommation de chaque jour du mois, jours sans réunion inclus ; déduplique par réunion selon sa durée maximale.
+  - `exhaustedDay(days, limitMinutes)` → `string | null` : premier jour où le crédit est épuisé selon la règle de la minute restante.
+  - `creditPace(status, now = new Date())` → objet de prévision ou `null` : estime le rythme, la date d’épuisement et l’éventuelle alerte ; renvoie `null` sans période ou pour un compte illimité.
+  - `createQuotaService({db, users, groups})` → service asynchrone :
+    - `statusFor(identity, now = new Date())` → état du quota ; lit les réunions conservées et supprimées, sauf si le compte est illimité ou sans email.
+    - `creditFor(identity, now = new Date())` → état enrichi des statistiques mensuelles : consommation par jour, part supprimée, rythme et jour d’épuisement. Lit les réunions même sans limite pour calculer `monthSeconds`.
+    - `keepDeletedUsage(email, meetingId, now = new Date())` → nombre de traces créées ; doit être appelé **avant** la suppression. L’écriture des traces peut faire échouer la suppression.
+    - `recordLateStop(email, meetingId, seconds)` → booléen indiquant si une trace existante a été mise à jour. Ignore une durée nulle ; `$max` rend les arrêts rejoués idempotents.
+- **Points d’attention** :
+  - La durée est attribuée au mois et au jour de début (`lastConnecion`, nom de champ conservé tel quel), pas à la date d’arrêt. Les bornes de période sont calculées dans le fuseau demandé, puis stockées/comparées en ISO UTC.
+  - `createQuotaService` dépend de MongoDB (`db`), des dépôts `users` et `groups`, ainsi que de `ownerScope.js`, `meetingDuration.js` et `repositories/groups.js`.
+  - Les traces portent les champs de propriété et de réunion nécessaires au filtrage et sont destinées à expirer en fin de mois via un index TTL sur `expiresAt`. Tout nouveau chemin de suppression doit appeler `keepDeletedUsage` auparavant.
+  - Une réunion supprimée pendant l’enregistrement peut laisser une trace sans durée ; `recordLateStop` y inscrit ensuite la durée. Une suppression avant
+
+### services/api/lib/repositories/groups.js
+
+- **Rôle :** accès MongoDB à la collection `userGroups` et normalisation des groupes, appartenances, quotas et droits. C’est le seul module qui connaît le schéma de cette collection.
+- **Constantes exportées :** `GROUPS_COLLECTION`, identifiants et noms des groupes fixes, palette et limites (`GROUP_COLORS`, `GROUP_NAME_MAX`, `GROUP_DESCRIPTION_MAX`, `GROUPS_MAX`, `QUOTA_MINUTES_MAX`).
+- **Fonctions exportées :**
+  - `normalizeQuotaMinutes(value)` — retourne un entier entre 0 et le plafond, sinon `null` (quota illimité). Aucune écriture.
+  - `normalizeInfographicAllowed(doc)` — retourne le droit effectif ; un champ absent vaut `true` pour le groupe par défaut, `false` pour les autres. Aucune écriture.
+  - `rightsOf(groupDocs)` — retourne `{ infographic }` à partir des groupes fournis ; aucun groupe résolu donne le droit par défaut (`true`).
+  - `groupIdOf(ids)` / `normalizeGroupIds(ids)` — normalisent l’appartenance en un identifiant, avec repli sur `default` ; la seconde retourne `[id]`.
+  - `groupAfterRoleChange(currentId, role)` / `groupForRole(role)` — déterminent le groupe après changement de rôle ou à la création, sans effet de bord.
+  - `pickGroupId(all, ids)` — choisit, parmi les groupes actuels, celui qui préserve le quota le plus généreux ; départage par droit aux infographies, préférence pour un groupe autre que `default`, puis ordre fourni.
+  - `groupNameKey(name)` — retourne une clé de nom insensible à la casse et aux espaces répétés.
+  - `toPublicGroup(doc, memberCount = 0)` — projette un document pour l’administration ; retourne `null` si `doc` est absent. Le nombre de membres est fourni par l’appelant.
+  - `toUserGroup(doc)` — projette les champs `id`, `name` et `color` pour l’utilisateur.
+  - `groupsOfUser(all, doc)` — retourne une liste d’un document de groupe ; groupe inconnu ou supprimé : repli sur `default`, ou liste vide si celui-ci manque.
+  - `createGroupsRepo(db)` — construit le dépôt MongoDB. Méthodes :
+    - `list()` — tous les groupes, défaut en tête puis ordre par nom.
+    - `findById(id)` — document ou `null`.
+    - `count()` — nombre de documents.
+    - `unknownIds(ids)` — identifiants normalisés qui ne sont pas présents en base.
+    - `docsForUser(doc)`, `forUser(doc)`, `rightsForUser(doc)` — groupe(s), projection utilisateur ou droits du compte ; effectuent une lecture du catalogue.
+    - `create(input)` — crée un groupe avec UUID et dates ; insère le document et le retourne. Le droit aux infographies vaut `false` par défaut ; couleur et quota sont normalisés.
+    - `update(id, fields)` — met à jour les champs fournis, actualise `updatedAt`, puis retourne le document relu ou `null`. Un quota `null` signifie illimité ; une couleur invalide est ignorée.
+    - `remove(id)` — supprime le document. **Ne détache pas ses membres** : l’appelant doit les réaffecter avant suppression.
+    - `ensureDefault()` / `ensureAdmin()` — crée le groupe fixe manquant par upsert idempotent ; retourne `true` uniquement s’il vient d’être créé. `ensureAdmin` évite un conflit de nom avec un autre groupe.
+- **Points d’attention :**
+  - Un compte est interprété comme appartenant à un seul groupe ; les tableaux historiques multiples sont réduits au premier identifiant, sauf lors de la reprise `pickGroupId`.
+  - `GROUP_NAME_MAX`, `GROUP_DESCRIPTION_MAX` et `GROUPS_MAX` sont des constantes ; ce fichier ne les applique pas lui-même.
+  - `createGroupsRepo` dépend d’une base MongoDB (`db.collection`) et de `node:crypto` pour les UUID. Les fonctions de normalisation et de projection sont pures.
+
+### services/api/lib/repositories/myBrainSettings.js
+
+- **Rôle** : gérer les réglages d’organisation myBrain dans `appSettings` (`key: 'myBrain'`), sceller la clé API au repos et fournir une projection publique qui ne révèle jamais le secret.
+- **Constantes exportées** : `MYBRAIN_SETTINGS_KEY` (`'myBrain'`), `MYBRAIN_POLICIES` (`off`, `optin`, `forced`), `MYBRAIN_URL_MAX` (500) et `MYBRAIN_KEY_PATTERN` (format des clés `mbk_…`).
+- **`normalizeMyBrainUrl(raw)`** : normalise une URL HTTP(S) et renvoie `{ url, problem }`. Refuse identifiants, requête, ancre et URL trop longue ; retire le suffixe `/api/v1` et les barres finales. Une valeur vide est acceptée.
+- **`normalizeMyBrainKey(raw)`** : retire espaces et préfixe `Bearer`, puis renvoie `{ key, problem }`. Une valeur vide est acceptée ; une clé mal formée est signalée sans appel réseau.
+- **`myBrainKeyHint(key)`** : renvoie l’aperçu `8 premiers caractères…4 derniers`, ou une chaîne vide.
+- **`isMyBrainActive(settings)`** : renvoie `true` si URL et clé sont présentes et que la politique n’est pas `off`.
+- **`toPublicMyBrainSettings(settings)`** : construit la projection d’administration (configuration, état actif, aperçu, vérification et métadonnées), sans inclure la clé.
+- **`createMyBrainSettingsRepo(db, secretBox = PLAIN_BOX)`** : crée le dépôt MongoDB ; dépend de `SETTINGS_COLLECTION` et du coffre `seal/open`. Le coffre par défaut est en clair, prévu pour les tests.
+  - **`get()`** : lit les réglages et ouvre la clé ; renvoie les valeurs par défaut si le document ou certains champs manquent. Si la clé ne peut pas être ouverte, renvoie `apiKey: ''` et `keyUnreadable: true`.
+  - **`toPublic(settings)`** : expose la projection publique.
+  - **`update(patch, context)`** : valide et met à jour uniquement les champs fournis ; un champ `apiKey` vide retire la clé, un champ absent la conserve. Scelle toute clé non vide, met à jour `updatedAt`/`updatedBy` et renvoie les réglages relus. Réinitialise `activeSince` quand l’envoi devient actif ou que la politique change alors qu’il est actif ; une rotation de clé ou d’URL seule ne le modifie pas.
+  - **`saveVerification(verified)`** : enregistre ou efface le résultat du dernier test réussi, sans modifier l’auteur des réglages ; renvoie les réglages relus.
+- **Points d’attention** :
+  - `update` lève une erreur si l’URL, la clé ou la politique est invalide ; la validation est faite dans le dépôt, pas seulement dans la route.
+  - `activeSince` évite les envois rétroactifs. Pour les anciens documents, il retombe sur `updatedAt`.
+  - `verified` est effacé seulement si `update` reçoit explicitement `verified: null` ; `saveVerification(null)` l’efface directement.
+  - L’AAD de chiffrement est fixe (`appSettings:myBrain`) : une clé copiée dans un autre emplacement ne peut pas être ouverte.
+  - Le coffre réel utilise `CONNECTIONS_ENC_KEY` via `secretBox.js` ; sans coffre fourni, le dépôt stocke la clé en clair.
+
+### services/api/lib/repositories/pricing.js
+
+- **Rôle** : dépôt MongoDB du dernier relevé de tarifs d’IA, stocké dans `appSettings` sous la clé `pricing`. Ce relevé complète le catalogue intégré ; il contient les tarifs fusionnés et le taux de change.
+- **`createPricingRepo(db)`**
+  - Paramètre : `db`, connexion à la base de données.
+  - Retour : dépôt exposant `get()` et `save()`.
+  - Effet de bord : aucun à la création ; les opérations utilisent la collection `SETTINGS_COLLECTION`, importée de `settings.js`.
+- **`get()`**
+  - Paramètre : aucun.
+  - Retour : `Promise<object|null>` — relevé sans `_id`, ou `null` s’il n’existe pas.
+  - Effet de bord : aucun.
+- **`save({ models, fx }, { actor = null } = {})`**
+  - Paramètres : `models` (tarifs par modèle), `fx` (taux de change ou `null`) ; contexte facultatif avec `actor` (email de l’administrateur ou `null`).
+  - Retour : `Promise<object|null>` — résultat de `get()` après écriture.
+  - Effet de bord : remplace les champs du relevé, renseigne `refreshedAt` et `refreshedBy`, et crée le document si nécessaire (`upsert`). `createdAt` n’est défini qu’à la création.
+- **Points d’attention**
+  - La fusion avec le relevé précédent et le nettoyage sont effectués en amont ; ce dépôt écrit les données reçues sans les recalculer.
+  - La suppression du document fait revenir à l’utilisation du catalogue intégré.
+  - Les tarifs stockés sont publics ; aucune donnée secrète n’est concernée.
+
+### services/api/lib/teamCredits.js
+
+- Calcule les crédits de temps de l’équipe pour une période, sans effet de bord. Exclut les comptes désactivés et trie les comptes par urgence : crédits épuisés, alerte de rythme, autres comptes limités, puis comptes sans limite.
+- **`computeTeamCredits({ users, groups, kept, deleted, history, period, now })`**
+  - Paramètres : comptes servis, catalogue des groupes, réunions conservées et supprimées de la période, historique complet, période `{ start, end, timeZone }` et date courante `now`.
+  - Retour : `{ period, groups, summary, accounts }`. Chaque compte inclut son groupe, sa limite, son utilisation, le solde, l’état d’épuisement, l’alerte de rythme, le nombre de réunions conservées et la date de sa dernière réunion.
+  - Effet de bord : aucun. Les réunions supprimées de la période contribuent à l’utilisation, mais pas au nombre de réunions.
+- **Points d’attention**
+  - Applique les règles de quota de `quota.js`, notamment la limite effective des groupes et la période civile définie par `period`.
+  - Une réunion est attribuée à son propriétaire via `ownerKey`; les durées et dates dépendent de `sumDurations`, `meetingDate` et des fonctions de quota importées.
+  - Dépend aussi de `groupsOfUser` et `toUserGroup` (`repositories/groups.js`).
+  - Le tri utilise `name` ou `email` pour départager les comptes; les comptes sans limite sont classés par consommation décroissante.
+
+### services/api/lib/text.js
+
+- Fournit des utilitaires partagés d’échappement et de normalisation de texte.
+- `escapeRegExp(value)` : convertit `value` en chaîne et échappe les métacaractères des expressions régulières. Aucun effet de bord.
+- `escapeHtml(value)` : convertit `value` en chaîne, remplace `null` et `undefined` par `''`, puis échappe `&`, `<`, `>`, `"`. Convient au contenu HTML et aux attributs entre guillemets doubles. Aucun effet de bord.
+- `normalizeLang(raw)` : renvoie le code langue nettoyé s’il correspond au format accepté (`fr`, `en`, `pt-BR`, etc.), sinon `'fr'`. Aucun effet de bord.
+- Points d’attention : `escapeHtml` n’échappe pas les apostrophes ; `normalizeLang` valide la forme du code, pas sa prise en charge. Dépend uniquement des fonctions natives de JavaScript.
+
+### services/api/lib/transcriptCorrections.js
+
+- Centralise le nettoyage et le bornage des corrections de transcription configurées pour tous les comptes. Le serveur les conserve et les fournit ; leur application en direct est faite côté navigateur.
+- Constantes exportées : `CORRECTIONS_MAX` (50 lignes), `VARIANTS_MAX` (10 variantes par ligne), `TERM_MAX` (60 caractères) et `REPLACEMENT_MAX` (80 caractères).
+- `foldKey(s)` — convertit `s` en clé de comparaison normalisée ; retourne une chaîne. Ignore casse et accents, harmonise apostrophes, espaces et traits d’union.
+- `sanitizeTranscriptCorrections(raw)` — prend une valeur inconnue ; retourne une liste `{ from: string[], to: string }`. Nettoie et borne les termes, retire les variantes de moins de deux caractères alphanumériques, identiques à la correction ou déjà vues, puis ignore les lignes sans variante valide. Ne modifie pas `raw`.
+- Points d’attention : une entrée qui n’est pas un tableau retourne `[]` ; les doublons sont détectés entre toutes les lignes, selon `foldKey`. `cleanTerm` et `letterCount` sont internes. Utilise `String.prototype.normalize` et les expressions régulières Unicode (`\p{…}`), à prendre en compte selon l’environnement JS.
+
+### services/api/routes/admin/configChecks.js
+
+- Enregistre la route `GET /api/admin/config-checks`, réservée aux administrateurs, pour fournir les problèmes de configuration de l’organisation.
+- Fonction exportée par défaut `adminConfigChecksRoutes(app)` :
+  - Paramètre : `app`, instance de l’application Fastify.
+  - Retour : aucun retour explicite.
+  - Effet notable : crée un cache de verdicts partagé entre les appels à la route pendant la durée de vie de l’application, puis enregistre la route.
+- La route vérifie les droits avec `requireAdmin(req, reply)` ; si l’accès est refusé, elle renvoie `undefined`. Sinon, elle renvoie `{ issues }`, où `issues` provient de `organizationChecks(app, { cache })`.
+- Dépendances : `requireAdmin` (`lib/rbac.js`), `organizationChecks` et `createVerdictCache` (`lib/configChecks.js`), qui porte la logique des vérifications.
+- Point d’attention : les contrôles sont exécutés à chaque requête ; seul leur cache de verdicts est réutilisé.
+
+### services/api/routes/admin/groups.js
+
+- Enregistre les routes d’administration des groupes. L’accès est contrôlé par `requireAdmin`; les erreurs utilisent `fail`.
+- **Export par défaut — `adminGroupsRoutes(app)`** : reçoit l’instance Fastify, enregistre les routes et ne renvoie pas de valeur. Les routes modifient les groupes et les appartenances des comptes.
+  - `GET /groups` : renvoie le catalogue, l’effectif de chaque groupe et les paramètres utiles à l’interface (palette, plafond, identifiants fixes).
+  - `POST /groups/create` : crée un groupe et renvoie `{ group }` avec le statut `201`. Refuse les noms en doublon et le dépassement du plafond.
+  - `POST /groups/update` : met à jour un groupe et renvoie `{ group }` avec son effectif. La mise à jour est partielle; le groupe par défaut reste modifiable.
+  - `POST /groups/delete` : supprime un groupe et renvoie `204`. Avant suppression, réaffecte ses membres au groupe par défaut; les groupes par défaut et administrateurs sont protégés.
+  - `POST /groups/members` : ajoute et retire des comptes par adresse, puis renvoie le groupe et le résultat de `changeGroupMembers`. Toute adresse inconnue fait échouer l’appel avant écriture.
+- **Points d’attention**
+  - Les corps sont validés par les schémas `adminGroup*Body`; la validation locale contrôle nom, description et couleur. Les noms sont comparés via `groupNameKey`.
+  - Les adresses sont normalisées avec `normalizeEmail` et dédupliquées. Une entrée dans un groupe remplace l’appartenance précédente; un retrait renvoie au groupe par défaut.
+  - Les opérations s’appuient sur `app.groups` et `app.users`. Les membres se consultent via `GET /admin/users?group=<id>`, et non par une route dédiée.
+
+### services/api/routes/admin/myBrain.js
+
+- **Rôle :** routes d’administration pour consulter et configurer la connexion de myBrief au myBrain de l’organisation, tester cette connexion et vérifier le droit `nourrir`. Réservé aux administrateurs.
+- **Export par défaut — `adminMyBrainRoutes(app)`**
+  - **Paramètre :** instance Fastify `app`.
+  - **Retour :** aucun retour explicite ; enregistre les routes.
+  - **Effets de bord :** expose `GET /settings/mybrain`, `POST /settings/mybrain` et `POST /settings/mybrain/test` ; lit ou met à jour les réglages et leur vérification.
+
+- **Routes :**
+  - `GET /settings/mybrain` : renvoie les réglages publics, sans clé.
+  - `POST /settings/mybrain` : applique un patch de connexion et/ou de politique. Vérifie la connexion si l’URL ou la clé change, puis enregistre le patch et les résultats de vérification.
+  - `POST /settings/mybrain/test` : teste les valeurs fournies, complétées par celles enregistrées ; ne persiste pas un brouillon. Met à jour la vérification uniquement si les valeurs testées sont celles enregistrées. Un corps absent est traité comme `{}`.
+
+- **Points d’attention :**
+  - Champ absent = inchangé ; pour l’enregistrement, une clé vide la retire. Dans le test, un champ vide signifie « utiliser la valeur enregistrée ».
+  - Changer d’hôte sans fournir une nouvelle clé est refusé (`mybrain_key_required`) afin d’éviter d’envoyer la clé enregistrée à une nouvelle adresse.
+  - Une connexion configurée exige le droit `nourrir`. Les erreurs `MyBrainError`, y compris les réponses myBrain 401/403, sont renvoyées en 400 avec un slug.
+  - Le corps rejette les propriétés supplémentaires et borne les longueurs de l’URL et de la clé. Les normalisations et limites dépendent de `myBrainSettings.js`.
+  - Dépendances : `requireAdmin`, `fail`, `MyBrainError`, `app.myBrain`, `app.myBrainSettings` ; `app.myBrainSettings.toPublic` garantit que la clé ne ressort pas.
+
+### services/api/routes/configChecks.js
+
+- Enregistre la route `GET /config-checks` pour diagnostiquer la configuration du compte du demandeur, sans permettre de cibler un autre compte.
+- Fonction exportée par défaut `configChecksRoutes(app)` :
+  - **Paramètre :** `app`, instance de l’application.
+  - **Retour :** valeur de retour de l’enregistrement de la route.
+  - **Effet de bord :** crée un cache de verdicts partagé entre les requêtes de cette route et enregistre le handler.
+- Le handler authentifie l’utilisateur avec `requireUser(req, reply)` ; si aucun utilisateur n’est retourné, il s’arrête et renvoie `undefined`. Sinon, il répond avec `{ issues: await accountChecks(app, user, { cache }) }`.
+- **Points d’attention :** les vérifications et leur logique sont déléguées à `lib/configChecks.js`. Le cache est créé une fois à l’enregistrement des routes.
+
+### services/api/routes/myBrain.js
+
+- **Rôle** : expose les réglages et les envois MyBrain côté utilisateur. Les données de réunion sont relues en base sous le scope du compte ; la destination provient des réglages d’organisation.
+- **Export par défaut — `myBrainRoutes(app)`** : enregistre les routes Fastify et le limiteur d’envois par compte. À la fermeture de l’application, arrête ce limiteur.
+  - `GET /mybrain/settings` : authentifie l’utilisateur et retourne sa vue MyBrain (`available`, `policy`, `enabled`, `active`, `reviewUrl`, derniers envois). Les envois récents sont limités à 8 et ne contiennent pas le contenu des réunions.
+  - `POST /mybrain/settings` — `{ enabled: boolean }` : vérifie l’origine, l’activation et la politique, puis met à jour le choix de l’utilisateur et retourne la vue actualisée. Répond `409` si MyBrain est désactivé ou imposé.
+  - `POST /mybrain/send` — `{ meetingId: string }` : vérifie l’origine, applique une limitation par compte, contrôle l’éligibilité et la propriété de la réunion, puis tente un nouvel envoi et retourne la vue actualisée. Répond notamment `409` si la réunion est déjà envoyée, en cours d’enregistrement ou non réessayable ; `404` si elle est introuvable ; `429` si le quota est dépassé ; `502` en cas d’erreur MyBrain.
+- **Points d’attention** :
+  - Authentification via `requireUser` ; les écritures contrôlent aussi l’origine via `isSameOrigin`.
+  - Le choix utilisateur n’est modifiable qu’avec la politique `optin` ; les politiques `forced` ou fermée produisent un conflit `409`, pas une erreur d’authentification.
+  - Un renvoi est réservé aux réunions ayant déjà un état d’envoi, non envoyées et non ambiguës ; l’envoi n’est pas rétroactif. Un envoi déjà réclamé par un autre déclencheur répond `409`.
+  - Dépend des réglages et dépôts MyBrain, de `feedMeetingToMyBrain`, du scope propriétaire `ownerFilter`, du limiteur configuré dans `app.config.rateLimits.myBrainSendByAccount` et de la base MongoDB (`resume`).
+
+### services/api/routes/quota.js
+
+- Enregistre la route `GET /quota`, qui fournit le statut du quota de minutes de réunion du compte courant, notamment pour les rafraîchissements de l’interface.
+- Fonction exportée par défaut : `quotaRoutes(app)` — ne retourne pas de valeur utile ; enregistre la route sur `app`.
+  - La route vérifie l’identité avec `requireEmail(req, reply)`. Si la vérification échoue, elle interrompt le traitement.
+  - Sinon, retourne le résultat de `app.quota.statusFor(req.user)`.
+- Points d’attention :
+  - Cette route expose le statut du quota, mais ne refuse pas les opérations ; les contrôles de refus sont dans `routes/ai.js`.
+  - Le calcul du quota est délégué à `lib/quota.js`. La forme initiale est fournie par `/init` (`routes/core.js`).
+
+### services/api/routes/stats.js
+
+- Enregistre la route `GET /stats/me` pour fournir les statistiques personnelles et le crédit de temps du compte courant, sur la période demandée.
+- Fonction exportée par défaut `statsRoutes(app)` :
+  - `app` : instance Fastify, avec `db` et `quota`.
+  - Retour : aucun retour explicite ; enregistre la route.
+  - Effet de bord : ajoute la route `GET /stats/me`.
+- La route valide la query avec `personalStatsQuery`, obtient l’adresse via `requireEmail`, puis appelle `personalStats` avec `db`, `quota`, l’email, `req.user?.doc` et `range` (par défaut `month`). Si l’email est absent, elle s’arrête après l’appel à `requireEmail`.
+- Points d’attention : le calcul est délégué à `lib/personalStats.js`, partagé avec la route d’administration ; le comportement pour les périodes acceptées dépend du schéma `personalStatsQuery`.
+
+### services/api/lib/mistral.js
+
+- Client minimal de l’API Mistral : jeton pour la transcription en direct, transcription de fichiers et génération de comptes rendus. Utilise `createKeyedRequester` et `UpstreamError` de `openai.js` ; URL par défaut : `https://api.mistral.ai/v1`.
+- Fonctions exportées :
+  - `chatText(content)` — extrait et concatène les morceaux `text` d’une réponse de chat, ou retourne la chaîne reçue. Ignore les morceaux de raisonnement et retourne `''` si le contenu n’est ni une chaîne ni une liste exploitable.
+  - `verifyMistralKey({ apiKey, baseUrl?, fetchImpl?, timeoutMs? })` — teste la clé avec `GET /models` ; résout en `{ ok: true }` ou lève `UpstreamError` avec le statut et le corps de l’erreur. Délai par défaut : 15 s.
+  - `createMistralClient({ apiKey, baseUrl?, timeoutMs?, fetchImpl? })` — crée un client et expose :
+    - `realtimeClientSecret(model, { key? }?)` — demande un jeton court via `POST /client/sessions` ; retourne la réponse de l’API (`client_secret`). `key` permet d’utiliser une clé candidate sans l’enregistrer.
+    - `chat({ model, messages, verbosity?, reasoningEffort?, timeoutMs?, key? })` — appelle `POST /chat/completions` et retourne le texte extrait de la première réponse, ou `''` si absent. `verbosity` et `reasoningEffort` sont ignorés ; `key` permet une clé candidate.
+    - `transcribe({ path?, buffer?, filename?, mimetype?, model })` — envoie le fichier à `POST /audio/transcriptions` et retourne `{ text }` (chaîne vide si absent). Lit `path` avec `openAsBlob`, sinon construit un `Blob` depuis `buffer`.
+- Points d’attention :
+  - `apiKey` peut être une chaîne ou une fonction relue à chaque appel ; la clé reste côté serveur. `fetchImpl` est injectable pour les tests.
+  - Pour la transcription, fournir `path` ou `buffer` ; le modèle est requis. Aucun paramètre de langue n’est envoyé : Voxtral la détecte. Les redirections sont refusées.
+  - Le jeton temps réel est lié au modèle ; la langue est transmise séparément par le navigateur.
+
+### services/api/lib/assemblyai.js
+
+- Client AssemblyAI pour la transcription de fichiers et l’obtention de jetons temporaires pour le direct. L’authentification transmet la clé telle quelle dans `Authorization` (sans `Bearer`).
+- Fonctions exportées :
+  - `verifyAssemblyAiKey({ apiKey, fetchImpl? })` — demande un jeton pour vérifier la clé candidate ; retourne `{ ok: true }` ou lève une erreur amont. N’effectue pas de transcription.
+  - `createAssemblyAiClient({ apiKey, timeoutMs?, fetchImpl?, sleep?, now? })` — retourne un client ; `apiKey` peut être une chaîne ou une fonction relue à chaque requête. Les dépendances injectables permettent les tests.
+    - `realtimeClientSecret(_model, { key? }?)` — retourne `{ client_secret: { value } }`, enveloppe commune du jeton temporaire ; `key` permet de tester une clé candidate. Lève une erreur si aucun jeton n’est renvoyé. Le modèle n’est pas utilisé.
+    - `transcribe({ path?, buffer?, mimetype?, model })` — envoie le fichier, lance la transcription avec le modèle demandé et `universal-2` en repli, puis interroge son état ; retourne `{ text }`. Effet notable : lectures réseau répétées toutes les 3 s, pendant au plus 10 min.
+- Points d’attention :
+  - Fournir `path` ou `buffer` ; si les deux sont fournis, `path` est prioritaire. `mimetype` vaut par défaut `application/octet-stream`.
+  - La transcription utilise la détection automatique de langue. Les statuts en erreur ou l’absence d’URL d’envoi / d’identifiant entraînent une erreur amont ; l’échéance dépassée entraîne une erreur 504.
+  - Dépend de `node:fs` (`openAsBlob`) et de `./upstream.js` (requêtes authentifiées, erreurs et temporisation). Utilise les hôtes AssemblyAI globaux, sans bascule européenne.
+
+### services/api/lib/speechProviders.js
+
+- Regroupe les clients de transcription Mistral, Speechmatics et AssemblyAI, la vérification de leurs clés et le nettoyage des clés saisies. Les clients respectent le contrat de transcription et de création de secret temps réel ; Mistral fournit aussi `chat()`.
+- `createSpeechClients(resolveKey)` — reçoit une fonction asynchrone `(provider) => Promise<string>` et retourne un objet `{ mistral, speechmatics, assemblyai }` de clients. Chaque client relit sa clé via `resolveKey` à chaque appel, pour appliquer les changements sans redémarrage.
+- `verifyProviderKey(provider, key)` — vérifie une clé candidate auprès du fournisseur et retourne le résultat de son vérificateur. Peut rejeter avec une `UpstreamError` en cas de refus du fournisseur. Un nom de fournisseur inconnu ne dispose pas de vérificateur.
+- `normalizeProviderKey(raw)` — convertit l’entrée en chaîne, retire tous les espaces et retourne `{ key, problem }`. `problem` vaut `''` pour une clé plausible, `provider_key_looks_openai` pour une clé `sk-…`, ou `provider_key_malformed` si elle compte moins de 20 caractères. Ne valide pas la clé auprès du fournisseur.
+- **Dépendances :** clients et vérificateurs importés de `mistral.js`, `speechmatics.js` et `assemblyai.js` ; les erreurs amont sont des `UpstreamError` définies dans `openai.js`.
+
+### services/api/lib/speechmatics.js
+
+- Client Speechmatics pour obtenir une clé temporaire de transcription en direct et transcrire des fichiers via l’API de tâches, hébergée dans l’UE.
+- Fonctions exportées :
+  - `verifySpeechmaticsKey({ apiKey, fetchImpl? })` — vérifie la clé en demandant une clé temporaire ; retourne `{ ok: true }`. Effet notable : appel réseau, sans créer de transcription.
+  - `createSpeechmaticsClient({ apiKey, timeoutMs?, fetchImpl?, sleep?, now? })` — crée un client ; `apiKey` peut être une chaîne ou une fonction relue à chaque requête. Retourne :
+    - `realtimeClientSecret(_model, { key? }?)` — retourne `{ client_secret: { value } }`, clé temporaire valable 60 s. `key` permet de tester une clé candidate.
+    - `transcribe({ path?, buffer?, filename?, mimetype?, model, lang? })` — retourne `Promise<{ text: string }>` ; téléverse le fichier, crée une tâche puis attend son achèvement. Utilise `path` s’il est fourni, sinon `buffer`.
+- Points d’attention :
+  - `transcribe` accepte les modèles `melia-1` et `enhanced` ; la langue par défaut est `fr`.
+  - La tâche est interrogée avec une attente serveur de 30 s, jusqu’à une limite de 10 min ; les états `rejected`, `deleted` et `expired` échouent. Une tâche sans identifiant ou sans clé temporaire produit aussi une erreur amont.
+  - Si le texte n’est pas inclus dans la réponse finale, il est relu via `/transcript`.
+  - Dépendances : `node:fs` (`openAsBlob`), `FormData`, `Blob`, `fetch` et les utilitaires de `./upstream.js`. Les options `fetchImpl`, `sleep` et `now` sont injectables pour les tests.
+
+### services/api/lib/upstream.js
+
+- Fournit des utilitaires communs aux clients de fournisseurs TIERS : résolution de clé à chaque appel, authentification, relances et transmission des erreurs amont sous forme d’`UpstreamError`.
+- Fonctions exportées :
+  - `retryOnUpstream(err)` — indique si l’erreur doit être relancée : panne réseau, statut 429 ou statut 5xx.
+  - `missingKeyBody(label, provider)` — renvoie en JSON le corps d’erreur indiquant qu’une clé manque. N’effectue aucune requête.
+  - `upstreamFailure(status, message, code)` — construit une `UpstreamError` avec un corps JSON synthétique.
+  - `createKeyedRequester({...})` — crée une fonction `request(path, init?, options?)`, qui renvoie une `Promise` de JSON ou de texte. Lit la clé via `resolveKey`, sauf si une clé candidate est fournie dans `options`; ajoute les en-têtes d’authentification et appelle `fetchImpl`. Une réponse non réussie devient une `UpstreamError`; les erreurs réseau, 429 et 5xx sont relancées selon `withRetry`.
+  - `defaultSleep(ms)` — renvoie une `Promise` résolue après `ms` millisecondes.
+- Points d’attention :
+  - Sans clé, `request` lève une `UpstreamError` de statut 503 **hors** des relances.
+  - `path` peut être relatif à `baseUrl` ou être une URL absolue. `options.timeoutMs` remplace le délai par défaut pour cet appel.
+  - Une clé candidate sert aux tests et n’est pas stockée. `fetchImpl` est injectable; par défaut, il s’agit de `fetch`.
+  - Dépend de `retry.js` (`withRetry`, `isNetworkError`) et de `openai.js` (`UpstreamError`). Les erreurs HTTP amont conservent leur statut, leur corps texte et leur type de contenu.
+
+### services/api/lib/summaryModels.js
+
+- Centralise les modèles disponibles pour la rédaction des comptes rendus, leur fournisseur et la résolution du modèle effectif.
+- Exports :
+  - `DEFAULT_SUMMARY_MODEL` : identifiant du modèle par défaut (`gpt-5.4`), seul modèle mesuré.
+  - `SUMMARY_PROVIDERS` : objet associant chaque identifiant accepté à `openai` ou `mistral`, dans l’ordre d’affichage.
+  - `SUMMARY_MODELS` : tableau des identifiants acceptés, dérivé des clés de `SUMMARY_PROVIDERS`.
+  - `isSummaryModel(id)` : retourne `true` si `id` est une clé propre de `SUMMARY_PROVIDERS`, sinon `false`.
+  - `summaryProvider(id)` : retourne le fournisseur du modèle ; retourne `openai` si l’identifiant n’est pas listé.
+  - `summaryClient(app, model)` : retourne `app.openai` ou `app.speech[provider]`, le client utilisé pour rédiger. Dépend des clients fournis dans `app`.
+  - `resolveSummaryModel(stored, envModel)` : retourne le modèle enregistré s’il est accepté, sinon la valeur d’environnement `OPENAI_MODEL_SUMMARY` (nettoyée), sinon `DEFAULT_SUMMARY_MODEL`.
+- Points d’attention :
+  - La liste est un garde-fou pour les valeurs de l’administration ; une valeur d’environnement non vide est conservée même si elle n’est pas listée.
+  - Un identifiant non listé est associé à OpenAI par `summaryProvider`.
+  - Les performances et la fidélité au scaffold des modèles ajoutés sans mesure restent à valider en recette ; le défaut demeure le seul modèle mesuré.
+  - Le filtrage des paramètres propres aux modèles est géré par `lib/openai.js`, pas par ce fichier.

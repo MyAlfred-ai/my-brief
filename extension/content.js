@@ -3,7 +3,7 @@
  * (src/stores/extensionBridge.js, côté app).
  *
  *  - Il se SIGNALE (`hello`) à l'injection et sur `ping` : la page
- *    « Extension Chrome » de « Ma configuration » passe au vert.
+ *    « Extension Chrome » de « Réglages » passe au vert.
  *  - Il RELAIE au service worker les messages `state` de l'app (enregistrement
  *    en cours, en pause, depuis quand), qui en fait le badge « REC ». L'app
  *    répond `state` au `hello` : rien à demander de plus.

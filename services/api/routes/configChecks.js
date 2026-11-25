@@ -1,7 +1,7 @@
 /**
  * Diagnostic de configuration du COMPTE — `GET /api/config-checks`.
  *
- * Ce que le titulaire peut corriger lui-même dans « Ma configuration » : son
+ * Ce que le titulaire peut corriger lui-même dans « Réglages » : son
  * compte relié, son dossier de dépôt, ses dossiers par tag. Le pendant
  * d'organisation vit sous /api/admin (routes/admin/configChecks.js). La logique,
  * et le pourquoi des vérifications réelles, sont dans lib/configChecks.js.

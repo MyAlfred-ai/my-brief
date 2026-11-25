@@ -3,8 +3,8 @@
  * la capsule de compte et le bloc « Ce mois-ci » de son menu, et ce qui
  * retient « Démarrer » quand il n'y a plus de minutes.
  *
- * La règle vit côté serveur (services/api/lib/quota.js) : le plus généreux des
- * groupes du compte, par mois civil, réunions comptées à leur arrêt. Ce store
+ * La règle vit côté serveur (services/api/lib/quota.js) : le quota du groupe
+ * du compte, par mois civil, réunions comptées à leur arrêt. Ce store
  * ne fait que porter l'état que le serveur a calculé : il arrive avec /init
  * (`applyQuota`) et se relit quand il change — après chaque fin de réunion
  * (`refreshQuota`), au renouvellement du 1er du mois (`watchRenewal`) — et
@@ -29,7 +29,7 @@ const EMPTY = {
   loaded: false,
   /** Aucune limite : rien à afficher, rien à retenir. */
   unlimited: true,
-  /** Minutes par mois du groupe le plus généreux, ou null. */
+  /** Minutes par mois du groupe du compte, ou null. */
   limitMinutes: null,
   /** Consommé ce mois-ci, tel que le serveur l'a compté (réunions terminées). */
   usedSeconds: 0,

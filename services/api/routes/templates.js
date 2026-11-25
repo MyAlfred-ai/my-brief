@@ -61,9 +61,12 @@ export default function templatesRoutes(app) {
    * `transcriptCorrections` (corrections automatiques de la transcription)
    * suit le même chemin, pour la même raison : le navigateur les applique au
    * direct, et ce sont aussi des noms de clients et de produits.
+   * `userTranscriptCorrections` — les « Mots remplacés » du compte — voyage
+   * avec elle : les deux listes ne font qu'un correcteur dans le navigateur.
    */
   app.get('/templates', async (req, reply) => {
-    if (!requireEmail(req, reply)) return;
+    const email = requireEmail(req, reply);
+    if (!email) return;
     const templates = await app.db
       .collection('templates')
       .find({})
@@ -73,7 +76,12 @@ export default function templatesRoutes(app) {
     const { rules } = app.settings.toPublicTranscriptCorrections(
       await app.settings.getTranscriptCorrections(),
     );
-    return { templates, orgContext: context, transcriptCorrections: rules };
+    return {
+      templates,
+      orgContext: context,
+      transcriptCorrections: rules,
+      userTranscriptCorrections: await app.userActions.getTranscriptCorrections(email),
+    };
   });
 
   /** Upsert par `value` : delete puis insert, défauts identiques à n8n. */

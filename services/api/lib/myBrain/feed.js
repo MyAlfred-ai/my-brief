@@ -40,7 +40,7 @@
  * ── Les relances ─────────────────────────────────────────────────────────────
  * Seulement quand rien n'a pu arriver chez myBrain (connexion jamais établie,
  * 429, 502/503/504) : cinq tentatives espacées, puis la main passe à
- * l'utilisateur (« Réessayer » dans Ma configuration → MyBrain). Une issue
+ * l'utilisateur (« Réessayer » dans Réglages → Après la réunion → MyBrain). Une issue
  * AMBIGUË — la requête est partie, la réponse s'est perdue : délai dépassé,
  * connexion coupée en route, 500, processus arrêté — n'est jamais relancée
  * sans lui (`myBrain.ambiguous`) : une relance doublerait la proposition dans

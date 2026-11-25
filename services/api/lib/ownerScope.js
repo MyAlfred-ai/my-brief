@@ -128,6 +128,9 @@ export const OWNED_COLLECTIONS = [
   // plusieurs Mo par réunion, qui dit ce qui s'y est dit. Absente d'ici, elle
   // survivait à la suppression du compte.
   'infographics',
+  // Logos des tags (routes/tags.js) : rangés à part de `userTags`, que
+  // GET /tags renvoie en entier à chaque ouverture.
+  'userTagLogos',
 ];
 
 /**

@@ -44,7 +44,7 @@
     "message": "Historique"
   },
   "config": {
-    "message": "Ma configuration"
+    "message": "Réglages"
   },
   "signedIn": {
     "message": "Connecté · $NAME$",
@@ -103,5 +103,21 @@
   },
   "titleVideoCall": {
     "message": "MyBrief — une visio est ouverte : démarrer une réunion ?"
+  },
+  "reauthHint": {
+    "message": "L'extension n'a pas accès à $HOST$ sur cet ordinateur : pas de badge REC, et votre onglet MyBrief ouvert n'est pas retrouvé.",
+    "placeholders": {
+      "host": {
+        "content": "$1"
+      }
+    }
+  },
+  "reauthUse": {
+    "message": "Autoriser $HOST$",
+    "placeholders": {
+      "host": {
+        "content": "$1"
+      }
+    }
   }
 }

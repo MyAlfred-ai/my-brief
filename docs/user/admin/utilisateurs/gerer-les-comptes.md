@@ -5,7 +5,7 @@ sidebar:
   order: 1
 ---
 
-**Administration → Utilisateurs.**
+**Administration → Personnes → Comptes.**
 
 ## Créer un compte
 
@@ -15,7 +15,8 @@ sidebar:
    - **Adresse email** — elle ne se modifie plus ensuite ;
    - **Nom affiché** — facultatif ; vide, myBrief prend le début de l'adresse ;
    - **Rôle** : **Utilisateur** ou **Administrateur** ;
-   - **Groupes** : le groupe par défaut est coché ; cochez les autres groupes du compte — voir
+   - **Groupe** : le groupe par défaut est choisi, celui des administrateurs si vous avez choisi le
+     rôle **Administrateur** ; un compte n'a qu'un groupe — voir
      [Gérer les groupes](gerer-les-groupes.md) ;
    - **Mot de passe initial** — vide, myBrief en génère un ;
    - **Demander le changement de mot de passe à la première connexion** — cochée par défaut : laissez-la.
@@ -30,9 +31,14 @@ crée à la première connexion.
 
 ## Modifier
 
-Cliquez la ligne du compte : sa fiche s'ouvre. Modifiez le **Nom affiché**, le **Rôle**, les
-**Groupes** ou **Compte désactivé**, et **Enregistrer**. Changer le rôle ferme les sessions de la
-personne : elle se reconnecte avec ses nouveaux droits. Changer ses groupes ne la déconnecte pas.
+Cliquez la ligne du compte : sa fiche s'ouvre. Modifiez le **Nom affiché**, le **Rôle**, le
+**Groupe** ou **Compte désactivé**, et **Enregistrer**. Changer le rôle ferme les sessions de la
+personne : elle se reconnecte avec ses nouveaux droits. Changer son groupe ne la déconnecte pas.
+
+**Le rôle déplace le groupe.** Passer un compte en **Administrateur** le met dans le groupe des
+administrateurs, illimité au départ ; le repasser en **Utilisateur** le renvoie dans le groupe par
+défaut. La fiche le montre dès que vous changez le rôle, et vous pouvez choisir un autre groupe avant
+d'enregistrer.
 
 Pour retrouver les comptes d'un groupe, le filtre **Tous les groupes**, à côté de la recherche, se
 règle sur un groupe.

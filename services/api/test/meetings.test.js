@@ -163,7 +163,8 @@ describe('/api/resume', () => {
   it('nouvelle réunion : répond {resume, meetingId, versionId} puis insère le doc complet avec V1', async () => {
     const { app, db, ai } = buildTestApp({
       openai: {
-        chat: (params) => (isTitleCall(params) ? '"Projet INITECH."' : '<h1>CR</h1><p>Contenu.</p>'),
+        chat: (params) =>
+          isTitleCall(params) ? '"Projet INITECH."' : '<h1>CR</h1><p>Contenu.</p>',
       },
     });
     const res = await postJson(app, '/api/resume', resumePayload());
@@ -565,6 +566,109 @@ describe('/api/history', () => {
 });
 
 /**
+ * Liste allégée et ouverture d'une réunion. Ce qui compte : la liste
+ * (`?view=list`) ne transporte plus la transcription ni le HTML des comptes
+ * rendus — ils faisaient l'essentiel du poids, relus pour TOUTES les réunions
+ * à chaque rafraîchissement — et GET /history/item rend, pour UNE réunion,
+ * exactement l'élément complet d'avant. Sans `?view=list`, rien ne change :
+ * un onglet resté sur l'ancienne version ouvre encore ses réunions.
+ */
+describe('/api/history?view=list, /history/item, /history/status', () => {
+  const full = {
+    email: EMAIL,
+    meetingId: 'm1',
+    title: 'Point budget',
+    lastConnecion: new Date().toISOString(),
+    now: new Date().toISOString(),
+    transcription: 'Alice : on revoit le budget.\nBob : d’accord.',
+    resume: '<p>Compte rendu v2</p>',
+    versions: [
+      { id: 'v1', label: 'V1', template: 'standard', html: '<p>Compte rendu v1</p>' },
+      { id: 'v2', label: 'V2', template: 'standard', html: '<p>Compte rendu v2</p>' },
+    ],
+    notes: 'Relancer Bob',
+    actions: [{ id: 'a1', text: 'Envoyer le budget' }],
+    tagId: 't-1',
+    titlePending: true,
+  };
+  const seed = () => ({
+    resume: [
+      { _id: 'x1', ...full },
+      { _id: 'x2', ...full, email: 'autre@ailleurs.fr', meetingId: 'm9', title: 'Pas à moi' },
+    ],
+  });
+  const get = (app, url) => app.inject({ method: 'GET', url, headers: identityHeaders(EMAIL) });
+
+  it('la liste garde tout ce qu’elle affiche, sans transcription ni HTML', async () => {
+    const { app } = buildTestApp({ seed: seed() });
+    const items = (await get(app, '/api/history?view=list')).json();
+    expect(items).toHaveLength(1);
+    const [item] = items;
+    expect(item.transcription).toBeUndefined();
+    expect(item.resume).toBeUndefined();
+    expect(item.versions).toEqual([
+      { id: 'v1', label: 'V1', template: 'standard' },
+      { id: 'v2', label: 'V2', template: 'standard' },
+    ]);
+    expect(item).toMatchObject({
+      meetingId: 'm1',
+      title: 'Point budget',
+      tagId: 't-1',
+      notes: 'Relancer Bob',
+      actions: [{ id: 'a1', text: 'Envoyer le budget' }],
+      weekLabel: 'Cette semaine',
+      titlePending: true,
+    });
+    expect(item._id).toBeUndefined();
+  });
+
+  it('sans ?view=list : la réponse complète d’avant, inchangée', async () => {
+    const { app } = buildTestApp({ seed: seed() });
+    const [item] = (await get(app, '/api/history')).json();
+    expect(item.transcription).toBe(full.transcription);
+    expect(item.resume).toBe(full.resume);
+    expect(item.versions[1].html).toBe('<p>Compte rendu v2</p>');
+  });
+
+  it('/history/item rend l’élément complet — le même que la liste complète', async () => {
+    const { app } = buildTestApp({ seed: seed() });
+    const [fromList] = (await get(app, '/api/history')).json();
+    const res = await get(app, '/api/history/item?meetingId=m1');
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual(fromList);
+  });
+
+  it('/history/item : réunion d’un autre compte ou inconnue → 404, sans id → 400', async () => {
+    const { app } = buildTestApp({ seed: seed() });
+    expect((await get(app, '/api/history/item?meetingId=m9')).statusCode).toBe(404);
+    expect((await get(app, '/api/history/item?meetingId=nope')).json()).toEqual({
+      error: 'meeting_not_found',
+    });
+    expect((await get(app, '/api/history/item')).statusCode).toBe(400);
+    // Un objet dans la requête (`meetingId[$ne]=`) n'est pas un identifiant.
+    expect((await get(app, '/api/history/item?meetingId[$ne]=x')).statusCode).toBe(400);
+  });
+
+  it('/history/status : titre et drapeau seulement', async () => {
+    const { app } = buildTestApp({ seed: seed() });
+    const res = await get(app, '/api/history/status?meetingId=m1');
+    expect(res.json()).toEqual({ meetingId: 'm1', title: 'Point budget', titlePending: true });
+    expect((await get(app, '/api/history/status?meetingId=m9')).statusCode).toBe(404);
+  });
+
+  it('sans identité : 401 partout', async () => {
+    const { app } = buildTestApp({ seed: seed() });
+    for (const url of [
+      '/api/history?view=list',
+      '/api/history/item?meetingId=m1',
+      '/api/history/status?meetingId=m1',
+    ]) {
+      expect((await app.inject({ method: 'GET', url })).statusCode).toBe(401);
+    }
+  });
+});
+
+/**
  * Rangement d'une conversation. Le contrôle qui compte : le tag visé doit
  * appartenir au demandeur — ces tags porteront des règles d'envoi, une
  * référence croisée deviendrait un routage vers la mauvaise destination.
@@ -616,6 +720,43 @@ describe('/api/history/start — la réunion existe dès le premier mot', () => 
     expect(docs).toHaveLength(1); // pas de second document
     expect(docs[0].title).toBe('Titre déjà généré');
     expect(docs[0].transcription).toBe('Trois phrases déjà dites.');
+  });
+
+  it('réunion TERMINÉE reprise : elle repasse « recording », datée de la reprise, rien d’autre ne bouge', async () => {
+    // « Reprendre » après l'arrêt, ou depuis l'historique : la suite s'écrit
+    // dans le MÊME document. L'Aide IA et myBrain lisent `status` ; la date
+    // affichée, le titre, la transcription et la durée déjà comptée restent.
+    const { app, db } = buildTestApp({
+      seed: {
+        resume: [
+          {
+            email: EMAIL,
+            meetingId: 'done-1',
+            title: 'Point hebdo',
+            transcription: 'La première partie.',
+            lastConnecion: '2026-11-10T09:00:00.000Z',
+            meetingStartTime: '2026-11-10T09:00:00.000Z',
+            meetingDuration: 1200,
+            status: 'ended',
+          },
+        ],
+      },
+    });
+    const before = Date.now();
+    const res = await postJson(app, '/api/history/start', { meetingId: 'done-1' });
+    expect(res.json()).toEqual({ ok: true, meetingId: 'done-1' });
+
+    const docs = await db.collection('resume').find({ meetingId: 'done-1' }).toArray();
+    expect(docs).toHaveLength(1);
+    expect(docs[0]).toMatchObject({
+      status: 'recording',
+      title: 'Point hebdo',
+      transcription: 'La première partie.',
+      lastConnecion: '2026-11-10T09:00:00.000Z',
+      meetingStartTime: '2026-11-10T09:00:00.000Z',
+      meetingDuration: 1200,
+    });
+    expect(Date.parse(docs[0].resumedAt)).toBeGreaterThanOrEqual(before);
   });
 
   it("horodatage illisible : l'heure serveur, jamais une date invalide en base", async () => {

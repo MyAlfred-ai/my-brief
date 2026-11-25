@@ -277,7 +277,19 @@ describe('modèle de transcription', () => {
       'gpt-realtime-whisper',
       'gpt-live-transcribe',
       'gpt-transcribe',
+      'voxtral-mini-transcribe-realtime-2602',
+      'voxtral-mini-transcribe-realtime-3-0',
+      'speechmatics-melia-1',
+      'speechmatics-enhanced',
+      'universal-3-6-pro',
+      'universal-streaming-multilingual',
     ]);
+    // Le fournisseur de chacun : l'écran en tire son étiquette et sait quand
+    // demander la clé Mistral.
+    expect(res.json().settings.transcriptionProviders).toMatchObject({
+      'gpt-transcribe': 'openai',
+      'voxtral-mini-transcribe-realtime-2602': 'mistral',
+    });
   });
 
   it("le modèle du déploiement sert de défaut tant que rien n'est choisi", async () => {

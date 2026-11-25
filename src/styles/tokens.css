@@ -134,6 +134,26 @@
   --alert-error: oklch(58% 0.21 27);
   --alert-warning: oklch(77% 0.16 70);
   --alert-tip: oklch(62% 0.13 250);
+  /* Aide IA d'une réunion (components/aiHelp/) : UNE teinte que rien d'autre ne
+     porte dans l'interface, pour que tout ce qui vient de l'IA — son orbe, ses
+     cartes, sa pastille dans le dock — se reconnaisse d'un coup d'œil pendant
+     une réunion. Hors marque, comme l'ambre et les pastilles ci-dessus : sous
+     une marque orange comme sous une violette, une intervention de l'IA ne
+     doit pas se lire comme un bouton de l'application. Elle ne se règle donc
+     pas avec le branding.
+
+     Tout dérive de --ai-rgb (un sRGB, pour que les alphas s'écrivent en
+     `rgb(var(--ai-rgb) / X)`). Blanc sur --ai : 6,1:1 ; --ai-ink sur
+     --ai-soft : au-delà de 9:1. La teinte n'est jamais seule à porter le
+     sens : l'orbe, le nom et l'icône du type l'accompagnent toujours. */
+  --ai-rgb: 90 79 207;
+  --ai: rgb(var(--ai-rgb));
+  --ai-ink: color-mix(in srgb, var(--ai) 72%, #000);
+  --ai-soft: color-mix(in srgb, var(--ai) 8%, #fff);
+  --ai-soft-strong: color-mix(in srgb, var(--ai) 16%, #fff);
+  --ai-line: color-mix(in srgb, var(--ai) 38%, #fff);
+  --ai-glow: rgb(var(--ai-rgb) / 0.38);
+  --ai-halo: rgb(var(--ai-rgb) / 0.1);
 
   /* Typo utilitaire */
   --font-mono: 'SF Mono', 'Fira Code', ui-monospace, monospace;

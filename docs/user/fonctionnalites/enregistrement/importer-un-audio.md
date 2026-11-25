@@ -19,10 +19,10 @@ le compte rendu comme pour une réunion enregistrée en direct.
 
 ## Étapes
 
-1. Ouvrez **Ma configuration → Importer un audio**.
+1. Ouvrez **Réglages → Outils** : le bloc **Importer un audio** est en tête de page.
 2. Cliquez **Choisir un fichier audio** et sélectionnez le fichier. Le traitement démarre aussitôt :
    l'écran affiche « Import audio en cours ».
-3. Fermez **Ma configuration** pour voir le résultat : la transcription apparaît, en un seul bloc.
+3. Fermez **Réglages** pour voir le résultat : la transcription apparaît, en un seul bloc.
 4. Cliquez **Résumer →**, dans la barre du bas, choisissez le template, puis **Générer →** — voir
    [Générer un résumé](../resumes/generer-un-resume.md).
 

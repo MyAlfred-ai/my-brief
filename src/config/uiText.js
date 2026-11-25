@@ -105,7 +105,7 @@ export const uiTextData = {
     // bulle a pour convaincre d'aller corriger.
     configChecks: {
       adminTitle: "À régler dans l'administration",
-      configTitle: 'À régler dans votre configuration',
+      configTitle: 'À régler dans vos réglages',
       more: '+ {count} autre(s) point(s)',
       unknown: 'Un réglage est à revoir ici.',
       issues: {
@@ -113,6 +113,14 @@ export const uiTextData = {
           "Aucune clé OpenAI : les réunions sont enregistrées, mais rien n'est transcrit ni résumé.",
         ai_key_rejected:
           "OpenAI refuse la clé enregistrée : transcription et comptes rendus sont à l'arrêt.",
+        ai_provider_key_missing:
+          "{provider} est choisi pour la transcription, mais sa clé n'est pas enregistrée : rien n'est transcrit.",
+        ai_provider_key_rejected:
+          "{provider} refuse la clé enregistrée : la transcription est à l'arrêt.",
+        ai_summary_provider_key_missing:
+          "{provider} est choisi pour les comptes rendus, mais sa clé n'est pas enregistrée : aucun compte rendu n'est rédigé.",
+        ai_summary_provider_key_rejected:
+          "{provider} refuse la clé enregistrée : les comptes rendus sont à l'arrêt.",
         storage_provider_missing:
           "« Entreposer » est proposé, mais aucun fournisseur (Google ou Microsoft) n'est choisi : le bouton n'apparaît pas.",
         mail_unavailable:
@@ -129,6 +137,8 @@ export const uiTextData = {
         prices_stale:
           "Tarifs d'IA relevés il y a {days} jours : actualisez-les pour des estimations justes.",
         branding_default: "Logo, phrase d'accueil et couleurs sont encore ceux d'origine.",
+        company_logo_missing:
+          "Logo de l'entreprise non renseigné : les infographies portent celui de l'application à sa place.",
         org_context_empty:
           "Aucun vocabulaire d'organisation : noms de clients, de projets et sigles risquent d'être mal écrits dans les comptes rendus.",
         connection_missing:
@@ -149,32 +159,36 @@ export const uiTextData = {
     },
     adminAuth: {
       tabLabel: 'Authentification',
-      intro: 'Choisissez comment vos utilisateurs se connectent à myBrief.',
-      // ── Carte « Page de connexion » : les modes tels qu'affichés ──
+      // ── Carte « Page de connexion » : une pastille par mode, son détail au clic ──
       loginModesTitle: 'Page de connexion',
       loginModesIntro:
-        'Les modes de connexion proposés à vos utilisateurs, tels qu’ils apparaissent sur la page de connexion. Seuls les modes affichés ici leur sont proposés.',
+        'Les modes de connexion proposés à vos utilisateurs, tels qu’ils apparaissent sur la page de connexion. Un point vert : le mode est affiché. Cliquez une pastille pour régler son mode.',
+      modesCount: '{count} sur {total} affichés',
+      // Noms courts des pastilles ; le détail déplié reprend le nom complet.
+      modeNames: {
+        password: 'Email et mot de passe',
+        google: 'Google',
+        entra: 'Microsoft',
+        legacy: 'SSO historique',
+      },
       modeShown: 'Affiché',
       modeHidden: 'Masqué',
-      modeToggle: 'Afficher',
+      modeChanged: 'Modifié',
+      modeOffer: 'Proposer sur la page de connexion',
       modePassword: 'Email et mot de passe',
+      modePasswordUsage: 'Pour les comptes qui ont un mot de passe myBrief.',
       modePasswordEnvOff:
         'Désactivé par la configuration du déploiement (PASSWORD_LOGIN_ENABLED) : ce mode reste masqué quel que soit ce réglage.',
-      modeProviderHint:
-        'Un fournisseur s’affiche une fois activé dans sa carte ci-dessous, identifiants complets et enregistrés.',
       modeLegacy: 'SSO historique (plugin Traefik)',
       modeLegacyHint:
         'Bouton servi par le plugin du déploiement, en parallèle de la connexion native. Masquez-le une fois la bascule native faite pour clarifier la page.',
       modeTest: 'Tester',
+      modeTestInfoLabel: 'Ce que fait le test',
       modeTestHint:
         '« Tester » joue le vrai flux de connexion dans un nouvel onglet — le seul test qui prouve la configuration de bout en bout (secret, URI de redirection, annuaire). Terminer le flux avec un autre compte bascule votre session sur ce compte.',
       noModeLeft:
         'Au moins un mode de connexion doit rester affiché, sinon plus personne ne peut se connecter — vous compris.',
-      providersTitle: "Fournisseurs d'identité",
-      statusOn: 'Actif',
-      statusOff: 'Inactif',
       googleTitle: 'Connexion avec Google',
-      googleEnable: 'Activer',
       googleIntro:
         "Créez un identifiant OAuth « Application Web » dans Google Cloud Console, puis reportez ici l'ID client et le secret.",
       // ── Entra ID (fournisseur natif, joué par l'API) ──
@@ -197,6 +211,7 @@ export const uiTextData = {
       secretEmpty: 'Collez le secret client',
       secretKeepHint: 'Laissez vide pour conserver le secret actuel.',
       secretRequiredHint: 'Le secret est requis pour activer la connexion Google.',
+      entraSecretRequiredHint: 'Le secret est requis pour activer la connexion Microsoft.',
       redirectUri: 'URI de redirection autorisée',
       redirectHint:
         'À copier telle quelle dans « URI de redirection autorisés » de votre identifiant Google Cloud.',
@@ -205,7 +220,12 @@ export const uiTextData = {
         "Deuxième URI du même identifiant Google Cloud : elle sert au flux « Envoyer par mail » (connexion Gmail des utilisateurs). Sans elle, la connexion échoue en redirect_uri_mismatch. L'API Gmail doit aussi être activée dans le projet.",
       credentialsRequired:
         "Renseignez l'ID client et le secret avant d'activer la connexion Google.",
+      entraCredentialsRequired:
+        'Il manque un identifiant Entra — secret, ID client ou annuaire : la connexion Microsoft ne peut pas être activée.',
       domainsTitle: 'Domaines autorisés',
+      domainsNone: 'Aucun',
+      domainsOne: '1 domaine',
+      domainsMany: '{count} domaines',
       domainsIntro:
         "Un utilisateur qui se connecte avec Google ou Microsoft depuis l'un de ces domaines obtient automatiquement un compte. Les autres sont refusés.",
       domainPlaceholder: 'exemple.fr',
@@ -213,26 +233,57 @@ export const uiTextData = {
       domainRemove: 'Retirer le domaine',
       domainEmpty:
         'Aucun domaine autorisé : personne ne peut créer de compte via Google ou Microsoft. Les comptes déjà créés par un administrateur continuent de fonctionner.',
+      unsavedHint: 'Modifications non enregistrées',
+      discardChanges: 'Annuler',
       saved: 'Enregistré',
     },
     adminAi: {
-      tabLabel: 'IA',
-      intro:
-        "La clé OpenAI alimente la transcription, les résumés et la détection d'actions. Sans elle, l'enregistrement fonctionne mais rien n'est généré.",
+      tabLabel: 'Clés API',
+      // Seconde page de la rubrique « Modèles IA » (AiTab, vue `models`).
+      modelsTabLabel: 'Modèles',
+      // Carte « Fournisseurs d'IA » : une pastille par fournisseur, sa clé au clic.
+      providersTitle: "Fournisseurs d'IA",
+      providersCount: '{count} sur {total} connectés',
+      // Tuiles : ce qui tourne, un réglage déplié au clic.
+      tileSummary: 'Comptes rendus',
+      tileTranscription: 'Transcription',
+      tileInfographic: 'Infographie',
+      tileChanged: 'Modifié',
+      tileKeyNeeded: 'Clé requise',
+      // Liste des modèles de transcription.
+      filterLabel: 'Fournisseur',
+      filterAll: 'Tous',
+      pricesInfoLabel: 'Comment lire les prix',
+      lockedModel: 'Verrouillé : la clé de son fournisseur manque',
+      openaiUsage: 'Comptes rendus, actions, titres, infographie et transcription',
+      // Rôle de chaque fournisseur tiers, sous son nom (ProviderKey).
+      providerUsage: {
+        mistral:
+          'Transcription du direct et des fichiers importés (Voxtral), et rédaction des comptes rendus',
+        speechmatics: 'Transcription du direct et des fichiers importés, traitée en Europe',
+        assemblyai: 'Transcription du direct et des fichiers importés',
+      },
+      // Où créer la clé, cité par l'aide du champ.
+      providerConsoles: {
+        mistral: 'console.mistral.ai',
+        speechmatics: 'portal.speechmatics.com',
+        assemblyai: 'assemblyai.com/dashboard',
+      },
       keyTitle: 'Clé API OpenAI',
       keyIntro:
-        'Créez une clé sur platform.openai.com, puis collez-la ici. Elle ne quitte jamais le serveur.',
+        "Créez une clé sur platform.openai.com, puis collez-la ici : elle est vérifiée auprès d'OpenAI avant d'être enregistrée, et ne quitte jamais le serveur.",
+      keyReplace: 'Remplacer',
+      keyAdd: 'Ajouter une clé',
       statusOn: 'Configurée',
       statusOff: 'Absente',
+      statusRequired: 'Requise',
+      statusOptional: 'Facultative',
       sourceSettings: 'Clé enregistrée depuis cet écran :',
       sourceEnv: 'Clé fournie par la configuration du serveur :',
       sourceNone: 'Aucune clé configurée : la transcription et les résumés sont indisponibles.',
       updatedBy: 'Enregistrée par',
-      keyLabel: 'Nouvelle clé',
       keyPlaceholderNew: 'sk-…',
       keyPlaceholderReplace: 'sk-… (remplace la clé actuelle)',
-      keyHelp:
-        "La clé est vérifiée auprès d'OpenAI avant d'être enregistrée : une clé invalide est refusée ici plutôt que de casser l'application.",
       overrideEnvWarning: 'Cette clé remplacera celle du fichier de configuration du serveur.',
       test: 'Tester la clé',
       testing: 'Test en cours…',
@@ -240,7 +291,7 @@ export const uiTextData = {
       clear: 'Retirer la clé',
       clearConfirm:
         "Retirer la clé enregistrée ? L'application reviendra à celle du fichier de configuration du serveur, s'il y en a une.",
-      saved: 'Clé enregistrée',
+      saved: 'Clé OpenAI enregistrée',
       modelTitle: 'Modèle de transcription',
       modelIntro:
         "Modèle qui transcrit la parole en direct pendant l'enregistrement. Il ne change ni les résumés ni la détection d'actions.",
@@ -260,7 +311,7 @@ export const uiTextData = {
       modelSaved: 'Modèle enregistré',
       // Prix de chaque modèle de transcription (ModelPicker) : un niveau en
       // « € », relatif aux modèles proposés (utils/modelPrices.js), et le coût
-      // d'une heure en euros, aux tarifs de l'écran Statistiques.
+      // d'une heure en euros, aux tarifs de la page Consommation.
       modelInService: 'En service',
       pricePerHour: '/h',
       priceLevel: 'Niveau de prix : {tier} sur {levels}',
@@ -269,8 +320,17 @@ export const uiTextData = {
       priceDeltaMore: '{amount} de plus par heure que le modèle en service.',
       priceDeltaSame: 'Même prix par heure que le modèle en service.',
       pricesBasis:
-        "Coût d'une heure de transcription, au tarif public d'OpenAI converti en euros. Chaque € de plus : un prix environ deux fois plus élevé. En visio, le son de vos interlocuteurs est transcrit à part : jusqu'à deux fois ce coût.",
-      pricesRefreshLink: 'Actualiser les tarifs dans Statistiques',
+        "Coût d'une heure de transcription, au tarif public de son fournisseur converti en euros. Chaque € de plus : un prix environ deux fois plus élevé. En visio, le son de vos interlocuteurs est transcrit à part : jusqu'à deux fois ce coût.",
+      pricesRefreshLink: 'Actualiser les tarifs dans Consommation',
+      // Prix de chaque modèle de rédaction : le coût ESTIMÉ d'un compte rendu,
+      // sur les hypothèses de la page Consommation (lib/costs/assumptions.js).
+      pricePerSummary: '/résumé',
+      summaryPriceCaption: "Coût estimé d'un résumé · réunion d'une heure",
+      summaryPricesBasis:
+        "Le coût indiqué est celui d'un compte rendu d'une réunion d'une heure, estimé avec les hypothèses de la page Consommation et le tarif public du fournisseur converti en euros. Il est approximatif : il suit la durée de la réunion et la longueur de ce que le modèle écrit. Chaque € de plus : un prix environ quatre fois plus élevé.",
+      summaryDeltaLess: '{amount} de moins par compte rendu que le modèle en service.',
+      summaryDeltaMore: '{amount} de plus par compte rendu que le modèle en service.',
+      summaryDeltaSame: 'Même prix par compte rendu que le modèle en service.',
       summaryTitle: 'Modèle de rédaction du compte rendu',
       summaryIntro:
         "Modèle qui rédige le compte rendu à partir de la transcription. C'est lui qui décide de la longueur, de la clarté et de la structure du résultat — le réglage le plus visible de cet écran.",
@@ -290,27 +350,16 @@ export const uiTextData = {
       summarySaved: 'Modèle de rédaction enregistré',
       infographicTitle: 'Infographie de compte rendu',
       infographicIntro:
-        "Propose, à la génération d'un résumé, de créer une infographie de la réunion — une image générée par OpenAI à partir de la transcription, des actions et des notes.",
+        "Propose, à la génération d'un résumé, de créer l'infographie de la réunion : l'IA en écrit le contenu à partir de la transcription, des actions et des notes, et choisit l'un des six gabarits — Synthèse, Décision, Feuille de route, Tableau de bord, Atelier, Bilan.",
       infographicToggleLabel: "Proposer l'infographie",
       infographicHelp:
-        'Désactivée, la case « Générer une infographie » disparaît pour tous les comptes. Activée, chaque groupe décide qui peut s’en servir, dans l’onglet Groupes. Chaque image demandée est facturée sur la clé OpenAI ci-dessus.',
+        'Désactivée, l’option « Infographie » disparaît de la carte de génération pour tous les comptes. Activée, chaque groupe décide qui peut s’en servir, dans Personnes → Groupes. Chaque infographie demandée est un appel au modèle de texte, facturé sur la clé OpenAI (page Clés API).',
       infographicOn: 'Proposée',
+      infographicTileSub: 'Six gabarits',
+      infographicLookHelp:
+        "Le logo et les couleurs des infographies sont ceux d'Organisation → Marque & apparence : les modifier change aussi l'allure des infographies existantes.",
       infographicOff: 'Masquée',
       infographicSaved: 'Réglage infographie enregistré',
-      infographicModelLabel: "Modèle qui dessine l'image",
-      infographicModelSourceEnv: 'Modèle imposé par la configuration du serveur.',
-      infographicModelSourceDefault: "Modèle par défaut de l'application.",
-      infographicModelOffList:
-        'Ce modèle vient de la configuration du serveur et ne figure pas parmi les choix proposés ici. En choisir un dans cette liste le remplacerait, sans retour possible depuis cet écran.',
-      infographicModelHelp:
-        'Chaque image est facturée à la génération : un modèle plus rapide coûte aussi moins cher. Le format reste la page portrait, quel que soit le modèle.',
-      infographicModelSaved: 'Modèle d’infographie enregistré',
-      infographicStyleLabel: 'Style graphique (facultatif)',
-      infographicStylePlaceholder:
-        'Ex. : les couleurs à respecter sont le violet, l’orange et le rose. Les schémas sont clairs et professionnels. Le nom de notre société en haut à gauche.',
-      infographicStyleHelp:
-        'Consigne de charte jointe à chaque image : couleurs, ton des schémas, mentions à faire figurer. Laissé vide, le modèle choisit lui-même sa palette et sa mise en page.',
-      infographicStyleSaved: 'Style graphique enregistré',
       unsavedHint: 'Modifications non enregistrées',
       discardChanges: 'Annuler',
       // Repère de coût/qualité, pas une fiche technique : ce qui aide à choisir.
@@ -318,22 +367,74 @@ export const uiTextData = {
         'gpt-realtime-whisper': 'Défaut historique — mot à mot, éprouvé sur les longues réunions',
         'gpt-live-transcribe': 'Conçu pour le direct — mot à mot, même famille que le défaut',
         'gpt-transcribe': 'Le plus récent — mot à mot, texte final reponctué par segment',
+        'voxtral-mini-transcribe-realtime-2602':
+          'Mot à mot, ponctué au fil de la parole. Version stable',
+        'voxtral-mini-transcribe-realtime-3-0':
+          'Le plus récent de Mistral, plus de langues. En aperçu public',
+        'speechmatics-melia-1': 'Le plus récent de Speechmatics, passe seul d’une langue à l’autre',
+        'speechmatics-enhanced': 'Le plus éprouvé de Speechmatics, très juste en français',
+        'universal-3-6-pro':
+          'Le plus juste d’AssemblyAI, 32 langues. Facturé à la durée de la réunion, pauses comprises',
+        'universal-streaming-multilingual':
+          'Le moins cher d’AssemblyAI, 6 langues dont le français. Facturé à la durée de la réunion',
       },
+      // Nom lisible de chaque modèle, de transcription comme de rédaction ;
+      // l'identifiant passe dans l'infobulle de sa ligne.
+      modelNames: {
+        'gpt-6-astra': 'GPT-6 Astra',
+        'gpt-6.1-sol': 'GPT-6.1 Sol',
+        'gpt-6-luna': 'GPT-6 Luna',
+        'gpt-5.6-sol': 'GPT-5.6 Sol',
+        'gpt-5.4': 'GPT-5.4',
+        'gpt-5.4-mini': 'GPT-5.4 mini',
+        'mistral-large-4': 'Mistral Large 4',
+        'mistral-medium-3-5': 'Mistral Medium 3.5',
+        'mistral-large-2512': 'Mistral Large 3',
+        'mistral-small-2603': 'Mistral Small 4',
+        'gpt-realtime-whisper': 'GPT Realtime Whisper',
+        'gpt-live-transcribe': 'GPT Live Transcribe',
+        'gpt-transcribe': 'GPT Transcribe',
+        'voxtral-mini-transcribe-realtime-2602': 'Voxtral Realtime',
+        'voxtral-mini-transcribe-realtime-3-0': 'Voxtral Realtime 3',
+        'speechmatics-melia-1': 'Melia 1',
+        'speechmatics-enhanced': 'Enhanced',
+        'universal-3-6-pro': 'Universal-3.6 Pro',
+        'universal-streaming-multilingual': 'Universal-Streaming Multilingual',
+      },
+      // En-têtes des groupes de modèles, et noms des lignes de fournisseurs.
+      providers: {
+        openai: 'OpenAI',
+        mistral: 'Mistral',
+        speechmatics: 'Speechmatics',
+        assemblyai: 'AssemblyAI',
+      },
+      // Clés tierces : un gabarit pour tous, `{provider}` = nom du fournisseur.
+      providerLocked: 'Ajoutez une clé {provider} pour choisir ces modèles.',
+      providerUnlock: 'Ajouter la clé {provider}',
+      providerKeyLabel: 'Clé API {provider}',
+      providerKeyHelp:
+        'Créez une clé sur {console}, puis collez-la ici : elle est vérifiée auprès de {provider} avant d’être enregistrée, et ne quitte jamais le serveur.',
+      providerKeyPlaceholderNew: 'Collez votre clé {provider}',
+      providerKeyPlaceholderReplace: 'Remplacer par une nouvelle clé',
+      providerKeyNeeded: 'Ce modèle a besoin d’une clé {provider}.',
+      providerKeyClearConfirm:
+        'Retirer la clé {provider} ? Ses modèles ne pourront plus être choisis sans en recoller une.',
+      providerKeyStored: 'Clé {provider} enregistrée',
       // Repère de coût/qualité, comme pour la transcription : ce qui aide à
       // choisir, pas une fiche technique.
       summaryModels: {
-        'gpt-5.6-sol':
-          'GPT-5.6 Sol — le palier le plus capable, raisonnement le plus profond. Le plus cher.',
-        'gpt-5.4': 'Recommandé — le meilleur rapport qualité/prix pour un compte rendu',
-        'gpt-5.4-mini':
-          'Le plus économique et le plus rapide — compte rendu plus ramassé, moins de nuances',
-      },
-      // Même repère de coût/qualité pour le modèle qui DESSINE.
-      infographicModels: {
-        'gpt-image-2.5-flare':
-          'Recommandé — GPT-Image-2.5 Flare : images plus nettes que la génération précédente, et environ deux fois plus rapides.',
-        'gpt-image-2':
-          'La génération précédente — plus lente, éprouvée sur les infographies de réunion.',
+        'gpt-6-astra':
+          'Le plus capable d’OpenAI, raisonnement le plus poussé — et de loin le plus cher',
+        'gpt-6.1-sol': 'Proche d’Astra sur les réunions complexes, pour cinq fois moins cher',
+        'gpt-5.6-sol': 'Génération précédente, son palier le plus capable',
+        'gpt-5.4':
+          'Recommandé — éprouvé sur nos comptes rendus : la meilleure structure pour le prix',
+        'gpt-5.4-mini': 'Économique et rapide — compte rendu plus ramassé, moins de nuances',
+        'gpt-6-luna': 'Le plus léger et le moins cher d’OpenAI — pour des réunions simples',
+        'mistral-large-4': 'Le plus capable de Mistral. En aperçu public',
+        'mistral-medium-3-5': 'Le plus récent de Mistral en version stable, polyvalent',
+        'mistral-large-2512': 'Grand modèle éprouvé de Mistral, à petit prix',
+        'mistral-small-2603': 'Le plus léger et le moins cher de Mistral',
       },
       errors: {
         openai_key_doubled_prefix:
@@ -345,15 +446,56 @@ export const uiTextData = {
         transcription_model_rejected: 'OpenAI a refusé ce modèle de transcription.',
         summary_model_rejected:
           "OpenAI a refusé ce modèle de rédaction — votre organisation n'y a probablement pas accès.",
+        provider_key_missing:
+          'Ce modèle a besoin d’une clé {provider} : enregistrez-la sur la page Clés API, puis choisissez-le.',
+        provider_key_in_use:
+          'Un modèle {provider} est encore en service avec cette clé (transcription ou comptes rendus) : choisissez d’abord un modèle d’un autre fournisseur, puis retirez-la.',
+        provider_key_rejected: '{provider} a refusé cette clé.',
+        provider_key_malformed: 'Cette clé ne ressemble pas à une clé {provider}.',
+        provider_key_looks_openai:
+          'C’est une clé OpenAI (« sk-… ») : collez ici la clé créée chez {provider}.',
+        provider_model_rejected:
+          '{provider} a refusé ce modèle — votre compte n’y a probablement pas accès.',
       },
     },
     adminBranding: {
-      tabLabel: 'Configuration',
-      intro:
-        "Ce qui vaut pour toute l'installation : le vocabulaire de votre organisation, joint à chaque compte rendu, les corrections automatiques de la transcription, et l'apparence de myBrief — logo, phrase d'accueil de la barre latérale, couleurs de l'interface.",
-      logoTitle: 'Logo',
+      tabLabel: 'Marque & apparence',
+      // Première page de la rubrique « Organisation » (BrandingTab, vue `company`).
+      companyTabLabel: 'Entreprise',
+      // ── Tableau de bord replié : deux groupes de tuiles, un réglage déplié au clic ──
+      groupWords: "Les mots de l'organisation",
+      groupLook: 'Apparence',
+      tileContext: 'Vocabulaire',
+      tileContextEmpty: 'Joint à chaque compte rendu',
+      tileCorrections: 'Corrections',
+      tileCorrectionsEmpty: 'Mots remplacés pendant les réunions',
+      tileCompanyLogo: "Logo de l'entreprise",
+      tileCompanyLogoSub: 'En tête des infographies',
+      tileCompanyLogoMissing: 'À renseigner',
+      tileLogo: "Logo de l'application",
+      tileLogoSub: 'Barre latérale, connexion, accueil, pied des infographies',
+      tileTagline: "Phrase d'accueil",
+      tileTaglineDefault: 'Phrase par défaut',
+      tileTaglineSub: 'Sous le nom, dans la barre latérale',
+      tileTaglineEn: 'En anglais : {text}',
+      tileColors: 'Couleurs',
+      tileColorsCustom: 'Personnalisées',
+      tileColorsDefault: "Couleurs d'origine",
+      tileChanged: 'Modifié',
+      tileInvalid: 'À corriger',
+      companyLogoTitle: "Logo de l'entreprise",
+      companyLogoIntro:
+        "Ouvre chaque infographie et chaque compte rendu en PDF, en haut à gauche. Un logo en longueur y tient mieux qu'un logo carré.",
+      companyLogoSetBadge: 'Renseigné',
+      companyLogoMissingBadge: 'Manquant',
+      companyLogoFallback:
+        "En attendant, les infographies portent le logo de l'application à sa place.",
+      companyLogoPreviewAlt: "Aperçu du logo de l'entreprise",
+      companyLogoReset: "Retirer le logo de l'entreprise",
+      companyLogoHint: 'PNG, JPEG, WebP ou SVG, {max} Ko maximum. Format en longueur recommandé.',
+      logoTitle: "Logo de l'application",
       logoIntro:
-        "Affiché dans la barre latérale, sur l'écran de connexion et sur l'écran d'accueil.",
+        "Affiché dans la barre latérale, sur l'écran de connexion, sur l'écran d'accueil, et en pied de chaque infographie.",
       logoCustomBadge: 'Personnalisé',
       logoDefaultBadge: 'Logo intégré',
       logoPreviewAlt: 'Aperçu du logo',
@@ -465,7 +607,7 @@ export const uiTextData = {
     adminTemplates: {
       tabLabel: 'Templates',
       intro:
-        'Les templates de compte rendu proposés à tous les comptes : les templates par défaut de l’application — modifiables ci-dessous — et ceux que vous créez. Chacun peut aussi ajouter les siens dans « Ma configuration ».',
+        'Les templates de compte rendu proposés à tous les comptes : les templates par défaut de l’application — modifiables ci-dessous — et ceux que vous créez. Chacun peut aussi ajouter les siens dans « Réglages → Mes templates ».',
       loading: 'Chargement…',
       empty: 'Aucun template personnalisé. Les templates par défaut du code sont utilisés.',
       defaultBadge: 'défaut',
@@ -540,6 +682,50 @@ export const uiTextData = {
       copySuffix: '(copie)',
       copySuffixEn: '(copy)',
     },
+    // Réglages → Pendant la réunion → Mots remplacés (settings/CorrectionsSection) :
+    // la liste de corrections du COMPTE. `card` surcharge les textes de la carte
+    // partagée avec l'administration (adminTranscriptCorrections) : ce qui n'y
+    // est pas redit vaut pour les deux.
+    configCorrections: {
+      intro:
+        'Les mots que la transcription écrit mal dans VOS réunions, remplacés d’office dès la fin de chaque phrase. Ils s’ajoutent à ceux que votre administrateur a réglés pour tout le monde.',
+      learnTitle: 'Retenir les remplacements de mes notes',
+      learnHint:
+        'Écrire « Remplace Durend par Durand » dans les notes d’une réunion ajoute le remplacement à votre liste : inutile de le réécrire à la réunion suivante.',
+      learnLabel: 'Ajouter à ma liste les remplacements écrits dans mes notes',
+      learnScope:
+        'Sont retenus les remplacements dont les deux mots se prononcent presque pareil — la marque d’un mot mal transcrit. Un remplacement comme « Remplace Bob par Robert » ne vaut que pour sa réunion : ajoutez-le ci-dessous si vous le voulez partout.',
+      learnOff: 'Désactivé : un remplacement écrit dans vos notes ne vaut que pour sa réunion.',
+      card: {
+        title: 'Mes mots remplacés',
+        intro:
+          'Ce que la transcription écrit mal dans vos réunions, et ce qu’il faut écrire à la place.',
+        scopeTitle: 'Valable pour vos réunions seulement.',
+        scopeText:
+          'Retirez un remplacement qui ne valait que pour une réunion : il s’applique à toutes les suivantes, même là où le mot était juste.',
+        fromPlaceholder: 'Ex. : Durend, Durant',
+        toPlaceholder: 'Ex. : Durand',
+        rowLabel: 'Remplacement {n}',
+        remove: 'Retirer ce remplacement',
+        add: 'Ajouter un remplacement',
+        limitReached:
+          'Limite de {max} remplacements atteinte : retirez-en un pour en ajouter un autre. D’ici là, ceux de vos notes ne sont plus retenus.',
+        emptyTitle: 'Aucun mot remplacé pour l’instant.',
+        emptyText:
+          'Ajoutez-en un quand un nom revient mal écrit de réunion en réunion — ou écrivez le remplacement dans vos notes. Par exemple :',
+        emptyFrom: 'Durend',
+        emptyTo: 'Durand',
+        tryPlaceholder: 'Ex. : On a revu M. Durend hier.',
+      },
+      discardChanges: 'Annuler',
+      save: 'Enregistrer',
+      saving: 'Enregistrement…',
+      saved: 'Enregistré',
+      errors: {
+        network: 'Connexion impossible. Vérifiez votre réseau, puis réessayez.',
+        unknown: 'L’enregistrement a échoué. Réessayez.',
+      },
+    },
     configActionDetection: {
       tabLabel: "Détection d'actions",
       intro:
@@ -555,11 +741,11 @@ export const uiTextData = {
       sensitivityLabel: 'Sensibilité',
       sensitivity: {
         explicit: {
-          label: 'Stricte',
+          label: 'Stricte (par défaut)',
           hint: "Seulement ce qui est annoncé comme une action. Peu de bruit, mais un engagement pris au détour d'une phrase passe inaperçu.",
         },
         balanced: {
-          label: 'Équilibrée (recommandé)',
+          label: 'Équilibrée',
           hint: 'Les actions annoncées, et celles que quelqu’un prend en charge ou se voit confier — « je m’en occupe », « tu peux relancer le client ? ». Un besoin lancé en l’air, que personne ne reprend, est ignoré.',
         },
         wide: {
@@ -619,7 +805,7 @@ export const uiTextData = {
       },
     },
     adminStats: {
-      tabLabel: 'Statistiques',
+      tabLabel: 'Consommation',
       intro:
         "L'usage de myBrief sur la période choisie : réunions, temps enregistré, comptes actifs. Des chiffres d'ensemble, jamais le contenu des réunions.",
       rangeLabel: 'Période observée',
@@ -891,7 +1077,7 @@ export const uiTextData = {
         colShare: 'Part',
         compareTitle: 'Comparer les modèles',
         compareIntro:
-          "Ce que la même activité aurait coûté avec chacun des modèles proposés dans l'onglet IA. Seul le prix change : la qualité, elle, se juge à l'essai.",
+          "Ce que la même activité aurait coûté avec chacun des modèles proposés dans l'administration (Modèles IA). Seul le prix change : la qualité, elle, se juge à l'essai.",
         colModel: 'Modèle',
         colTariff: 'Tarif public',
         colDelta: 'Écart par mois',
@@ -915,9 +1101,9 @@ export const uiTextData = {
           detection:
             "Détection d'actions : environ {calls} analyses par heure d'enregistrement, pour les comptes qui l'ont activée.",
           image:
-            "Infographie : une page portrait en qualité haute, soit {tokens} jetons d'image. Seule la dernière image d'une réunion est comptée.",
+            "Infographie : un appel au modèle de texte, soit environ {tokens} jetons écrits — sa mise en page ne coûte rien. Seule la dernière infographie d'une réunion est comptée.",
           excluded:
-            "Non comptés : l'import de fichiers audio, la relecture de la transcription par les notes et les essais de l'onglet IA.",
+            "Non comptés : l'import de fichiers audio, la relecture de la transcription par les notes et les essais de Modèles IA.",
         },
         sources: {
           builtin: 'relevé intégré à myBrief',
@@ -947,8 +1133,6 @@ export const uiTextData = {
     },
     adminActions: {
       tabLabel: 'Actions',
-      intro:
-        "Choisissez les actions proposées aux utilisateurs à l'issue de chaque réunion et après chaque génération de résumé.",
       meetingTitle: 'Après chaque réunion',
       summaryTitle: 'Après chaque résumé',
       summaryIntro: 'Boutons proposés sur chaque résumé généré.',
@@ -1024,6 +1208,29 @@ export const uiTextData = {
         'Nom des fichiers quand l’utilisateur n’a rien réglé de son côté. Cliquez sur une variable pour l’insérer.',
       testEmailDisabled: 'Aucun relais SMTP configuré sur ce serveur.',
       testStorageDisabled: 'Choisissez d’abord un fournisseur.',
+      chooseAccount: 'Choisir le compte relié',
+      // ── Tableau de bord replié : l'aperçu, une tuile par bouton et par réglage commun ──
+      groupButtons: 'Les boutons proposés',
+      groupShared: 'Réglages communs',
+      tileScopeBoth: 'Réunion et résumé',
+      tileScopeMeeting: 'Après la réunion',
+      tileScopeSummary: 'Après le résumé',
+      tileScopeNone: 'Désactivé',
+      tileMailSub: '{max} destinataires au plus',
+      tileMailBlocked: 'Aucun relais',
+      tileStorageBlocked: 'Compte requis',
+      tileFolder: 'Dossier : {folder}',
+      tileFolderDefault: 'Dossier « myBrief »',
+      tileNoAccount: 'Aucun compte relié',
+      tileDownloadSub: 'Sans compte ni relais',
+      tileAccountSub: 'Envoi des mails et dépôt',
+      tileAccountNone: 'Mails par le relais du serveur, pas de dépôt',
+      tileSharePointOn: 'Bibliothèques SharePoint proposées',
+      tileSharePointOff: 'OneDrive seulement',
+      tileNaming: 'Nom des fichiers',
+      tileNamingDefault: 'Format habituel',
+      tileNamingSub: 'Quand l’utilisateur n’a rien réglé',
+      tileChanged: 'Modifié',
       unsavedHint: 'Modifications non enregistrées',
       discardChanges: 'Annuler',
     },
@@ -1075,11 +1282,11 @@ export const uiTextData = {
         off: { label: 'Désactivé', hint: 'Aucune réunion n’est envoyée à MyBrain.' },
         optin: {
           label: 'Au choix de chaque utilisateur',
-          hint: 'Chacun active l’envoi dans Ma configuration → MyBrain. Rien ne part tant qu’il ne l’a pas activé.',
+          hint: 'Chacun active l’envoi dans Réglages → Après la réunion → MyBrain. Rien ne part tant qu’il ne l’a pas activé.',
         },
         forced: {
           label: 'Imposé à tous',
-          hint: 'Les réunions de tous les comptes sont envoyées. Chacun le voit dans Ma configuration → MyBrain, sans pouvoir le désactiver.',
+          hint: 'Les réunions de tous les comptes sont envoyées. Chacun le voit dans Réglages → Après la réunion → MyBrain, sans pouvoir le désactiver.',
         },
       },
       policyNotConfigured: 'Rien ne part tant que la connexion à MyBrain n’est pas configurée.',
@@ -1119,7 +1326,7 @@ export const uiTextData = {
         mybrain_connection_lost: 'La connexion à MyBrain a été coupée en route. Réessayez.',
       },
     },
-    // Ma configuration → MyBrain (components/settings/MyBrainSection.svelte).
+    // Réglages → Après la réunion → MyBrain (components/settings/MyBrainSection.svelte).
     configMyBrain: {
       sectionLabel: 'MyBrain',
       intro:
@@ -1215,25 +1422,25 @@ export const uiTextData = {
         oidc: 'Connecté par SSO',
         sso: 'Connecté par SSO',
       },
-      // Avatar de la barre d'app (téléphone) : ouvre le menu de compte.
+      // Avatar de la barre d'app (téléphone) : ouvre la carte du compte.
       menuLabel: 'Mon compte',
       // Nom affiché quand le compte n'en porte aucun.
       guest: 'Invité',
       changePasswordTitle: 'Changer de mot de passe',
-      // Groupes du compte (menu de compte) : attribués par l'administration,
-      // l'utilisateur les lit, il ne les change pas.
-      groupsLabel: 'Vos groupes',
-      groupsHint: 'Attribués par votre administrateur.',
+      // Groupe du compte (« Mon profil ») : attribué par l'administration,
+      // l'utilisateur le lit, il ne le change pas.
+      groupsLabel: 'Votre groupe',
+      groupsHint: 'Attribué par votre administrateur.',
       // Capsule du bas de la colonne de gauche : sous le nom, ce qu'il reste
       // du crédit de temps (sans quota, l'adresse).
       capsuleRemaining: '{remaining} restantes',
-      // Bloc « Ce mois-ci » du menu de compte : le crédit et trois chiffres du
-      // mois, le détail restant dans « Mes statistiques ».
+      // Bloc « Ce mois-ci » de la carte du compte (téléphone) : le crédit et trois chiffres du
+      // mois, le détail restant dans « Usage & crédits ».
       thisMonth: 'Ce mois-ci',
       monthMeetings: 'Réunions',
       monthRecorded: 'Enregistrées',
       monthSummaries: 'Comptes rendus',
-      seeStats: 'Voir mes statistiques',
+      seeStats: 'Voir le détail',
       language: 'Langue',
       forcedTitle: 'Choisissez votre mot de passe',
       forcedMessage:
@@ -1254,14 +1461,37 @@ export const uiTextData = {
       },
     },
     // Coquille du panneau d'administration (AdminPanel).
+    // Tableau de bord de l'administration (admin/DashboardTab.svelte) : les
+    // constats du diagnostic en phrases, puis l'activité récente.
+    adminDashboard: {
+      tabLabel: 'Tableau de bord',
+      intro: "Ce qui reste à régler dans l'organisation, et la page où le corriger.",
+      issuesTitle: 'Points à régler',
+      issuesEmpty: "Rien à régler : l'installation est en ordre.",
+      // La gravité en toutes lettres : la couleur n'est jamais seule à la dire.
+      levels: { error: 'Panne', warning: 'Réglage sans effet', tip: 'Conseil' },
+      activityTitle: 'Activité des 30 derniers jours',
+      activityLink: 'Voir la consommation',
+      meetings: 'Réunions',
+      recorded: 'Temps enregistré',
+      activeAccounts: 'Comptes actifs',
+      activeOf: '{active} sur {total}',
+      activityError: 'Les chiffres ne sont pas disponibles pour le moment.',
+    },
     adminPanel: {
       sectionsLabel: "Sections d'administration",
+      // Rubriques repliables de la colonne — les noms qu'elles portent dans MIA.
+      groupPeople: 'Personnes',
+      groupModels: 'Modèles IA',
+      groupCapabilities: 'Capacités',
+      groupCosts: 'Coûts',
+      groupOrganization: 'Organisation',
       restricted: 'Accès réservé aux administrateurs.',
       noAccess: "Le compte {email} n'a pas accès à l'administration.",
       signInRequired: "Connectez-vous pour accéder à l'administration.",
     },
     adminUsers: {
-      tabLabel: 'Utilisateurs',
+      tabLabel: 'Comptes',
       intro:
         'Les comptes qui accèdent à myBrief sur cette installation. Cliquez sur un compte pour le modifier.',
       searchPlaceholder: 'Rechercher un utilisateur…',
@@ -1319,17 +1549,17 @@ export const uiTextData = {
         'Cette action supprime le compte {email} ainsi que toutes ses réunions, ses templates personnels et sa configuration. Elle est irréversible.',
       deleteConfirmLabel: 'Saisissez {email} pour confirmer',
       deleteConfirm: 'Supprimer définitivement',
-      // Groupes du compte (cf. adminGroups) : cases à cocher dans la fiche,
-      // puces sur la ligne, filtre de la liste.
-      groupsLabel: 'Groupes',
+      // Groupe du compte (cf. adminGroups) : un choix unique dans la fiche,
+      // une puce sur la ligne, filtre de la liste.
+      groupsLabel: 'Groupe',
       groupsHint:
-        'Cochez les groupes du compte. Tout décoché : il reste dans le groupe par défaut.',
+        'Un seul groupe par compte. Passé administrateur, le compte rejoint le groupe des administrateurs ; redevenu utilisateur, il en sort pour le groupe par défaut.',
       groupFilterLabel: 'Filtrer par groupe',
       groupFilterAll: 'Tous les groupes',
       emptyForGroup: 'Aucun utilisateur dans ce groupe.',
       errors: {
         email_taken: 'Un compte existe déjà avec cette adresse.',
-        group_not_found: "Un des groupes choisis n'existe plus. Rechargez la page.",
+        group_not_found: "Le groupe choisi n'existe plus. Rechargez la page.",
         no_login_mode_left:
           "Impossible d'enregistrer : plus aucun mode de connexion ne serait affiché sur la page de connexion.",
         last_admin: "Impossible : c'est le dernier administrateur actif.",
@@ -1344,18 +1574,22 @@ export const uiTextData = {
     // Onglet « Groupes » de l'administration (components/admin/GroupsTab.svelte).
     // Le groupe par défaut y est nommé par son nom EN BASE (« Défaut » à la
     // naissance, renommable) : les libellés ci-dessous le désignent par
-    // {default}, jamais en dur.
+    // {default}, jamais en dur. Même chose pour celui des administrateurs
+    // (« Admin » à la naissance) : « le groupe des administrateurs ».
     adminGroups: {
       tabLabel: 'Groupes',
       intro:
-        "Des ensembles d'utilisateurs : services, équipes, profils. Chaque compte est dans au moins un groupe : celui par défaut accueille tout nouveau compte, et tout compte qui n'en a plus d'autre. Un groupe peut limiter les minutes de réunion de ses membres.",
+        "Des ensembles d'utilisateurs : services, équipes, profils. Chaque compte est dans un seul groupe : celui par défaut accueille tout nouveau compte, celui des administrateurs tout compte qui le devient. Un groupe peut limiter les minutes de réunion de ses membres.",
       counter: '{count} / {max}',
       createButton: '+ Nouveau groupe',
       loading: 'Chargement…',
       empty: 'Aucun groupe.',
       defaultBadge: 'Par défaut',
       defaultHint:
-        'Tout nouveau compte y entre, et un compte retiré de son dernier groupe y revient. Il se renomme, mais ne se supprime pas.',
+        'Tout nouveau compte y entre, et un compte retiré de son groupe y revient. Il se renomme, mais ne se supprime pas.',
+      adminBadge: 'Administrateurs',
+      adminHint:
+        "Tout administrateur promu y entre, et en sort s'il est rétrogradé. Il se renomme, mais ne se supprime pas.",
       membersNone: 'Aucun membre',
       membersOne: '1 membre',
       membersMany: '{n} membres',
@@ -1382,36 +1616,42 @@ export const uiTextData = {
       addMemberAllIn: 'Tous les comptes trouvés sont déjà dans ce groupe.',
       adding: 'Ajout…',
       remove: 'Retirer',
-      removeHint: 'Retirer de ce groupe',
-      removeLastHint: "C'est son dernier groupe : retiré d'ici, il revient dans « {default} ».",
-      removeOnlyDefaultHint: "C'est son seul groupe : il reste ici tant qu'il n'en a pas d'autre.",
+      removeLastHint: "Retiré d'ici, il revient dans « {default} ».",
+      removeOnlyDefaultHint: "On ne sort du groupe par défaut qu'en rejoignant un autre groupe.",
+      // Compte trouvé pour l'ajout : le groupe qu'il quittera en entrant ici.
+      currentGroup: 'Actuellement dans',
       noMembers:
         "Personne dans ce groupe pour l'instant. Ajoutez des membres ci-dessus, ou depuis la fiche de chaque compte.",
-      otherGroups: 'Aussi dans',
       deleteTitle: 'Supprimer ce groupe',
       deleteMessage:
-        "Supprimer « {name} » ? Ses membres restent dans leurs autres groupes ; ceux qui n'en ont pas d'autre reviennent dans « {default} ». Aucun compte n'est supprimé.",
+        "Supprimer « {name} » ? Ses membres reviennent dans « {default} ». Aucun compte n'est supprimé.",
       deleteConfirm: 'Supprimer le groupe',
       // Quota de minutes de réunion (cf. services/api/lib/quota.js) : par
-      // personne et par mois civil, le plus généreux des groupes d'un compte.
+      // personne et par mois civil, celui du groupe du compte.
       quotaLabel: 'Minutes de réunion par mois',
       quotaUnlimited: 'Illimité',
       quotaLimited: 'Limité à',
       quotaUnit: 'min par mois et par personne',
       quotaMinutesLabel: 'Minutes par mois',
       quotaHint:
-        "Un compte dans plusieurs groupes garde le quota le plus généreux, et « Illimité » l'emporte. Chacun voit son compteur en bas de la colonne de gauche.",
+        "Chaque membre a ce quota pour lui : changer quelqu'un de groupe change son quota. Chacun voit son compteur en bas de la colonne de gauche.",
       quotaPill: '{minutes} min / mois',
       quotaPillUnlimited: 'Illimité',
-      // Droits du groupe (cf. services/api/lib/repositories/groups.js) :
-      // cumulatifs, un seul groupe du compte suffit.
+      // Droits du groupe (cf. services/api/lib/repositories/groups.js) : ceux
+      // de chacun de ses membres.
       rightsLabel: 'Droits',
       infographicLabel: 'Générer des infographies',
-      infographicHint:
-        "Les membres peuvent créer l'infographie d'un compte rendu. Les droits s'additionnent : un seul de leurs groupes suffit.",
+      infographicHint: "Les membres peuvent créer l'infographie d'un compte rendu.",
       infographicPill: 'Infographies',
+      aiHelpLabel: 'Aide IA en réunion',
+      aiHelpHint: 'Les membres peuvent activer l’Aide IA pendant leurs réunions.',
+      aiHelpPill: 'Aide IA',
+      aiHelpMyBrainLabel: 'Aide IA avec myBrain',
+      aiHelpMyBrainHint:
+        'L’Aide IA de ces membres lit le wiki partagé de myBrain — le même accès pour tout le groupe.',
+      aiHelpMyBrainPill: 'Aide IA + myBrain',
       infographicGlobalOff:
-        "L'onglet IA ne propose pas l'infographie en ce moment : ce droit s'appliquera quand elle y sera activée.",
+        "Modèles IA ne propose pas l'infographie en ce moment : ce droit s'appliquera quand elle y sera activée.",
       // Colonne « Utilisateurs » et ajout par glisser-déposer (GroupPeople,
       // GroupCard). Au clavier et au doigt, le même ajout se fait en deux
       // temps : sélectionner le compte, puis choisir la carte.
@@ -1422,9 +1662,9 @@ export const uiTextData = {
       peopleTruncated: '{shown} comptes affichés sur {total} : cherchez pour trouver les autres.',
       pickedHint: 'Choisissez un groupe pour {name}.',
       dropHere: 'Déposer ici',
-      dropRelease: 'Relâchez pour ajouter',
-      dropAdd: 'Ajouter {name} ici',
-      dropAddTo: 'Ajouter {name} à {group}',
+      dropRelease: 'Relâchez pour placer',
+      dropAdd: 'Placer {name} ici',
+      dropAddTo: 'Placer {name} dans {group}',
       dropAlready: 'Déjà dans ce groupe',
       addedTo: '{name} est maintenant dans {group}.',
       errors: {
@@ -1437,6 +1677,7 @@ export const uiTextData = {
         limit_reached: 'Nombre maximal de groupes atteint ({max}).',
         group_not_found: "Ce groupe n'existe plus.",
         default_group: 'Le groupe par défaut ne se supprime pas.',
+        admin_group: 'Le groupe des administrateurs ne se supprime pas.',
         user_not_found: "Un des comptes n'existe plus. Rechargez la page.",
         invalid_body: 'Vérifiez les champs saisis.',
         forbidden: "Vous n'avez pas les droits nécessaires.",
@@ -1457,6 +1698,10 @@ export const uiTextData = {
       gapMarker: '⟨ Passage hors ligne — transcription différée dès le retour du réseau ⟩',
       markerAuthor: 'MyBrief',
       gapResolved: '✅ Passage hors ligne transcrit et réinséré',
+      // Trou de capture (appel téléphonique, application en arrière-plan,
+      // fermeture puis reprise) : rien n'a été capté, la ligne reste.
+      interruptionMarker: '⟨ Enregistrement interrompu pendant {duration} ⟩',
+      lostMarker: '⟨ Passage hors ligne non transcrit — l’application s’est fermée avant ⟩',
       pendingAtStop:
         "⏳ {count} passage(s) hors ligne en attente de transcription — envoi automatique au retour du réseau, gardez l'app ouverte",
     },
@@ -1489,7 +1734,10 @@ export const uiTextData = {
       administration: 'Administration',
       myTemplates: 'Mes templates',
       myTags: 'Mes tags',
-      configuration: 'Configuration',
+      configuration: 'Réglages',
+      // Bouton « Admin » de la carte du compte : le nom court tient à côté de
+      // « Réglages » ; le nom accessible reste `administration`.
+      adminShort: 'Admin',
     },
     sections: {
       summaryTitle: '📝 Résumé',
@@ -1536,20 +1784,22 @@ export const uiTextData = {
       recorderPrepError: "Erreur lors de la préparation de l'enregistrement local",
       recordingInProgress: 'Enregistrement en cours',
       recordingFinished: 'Enregistrement terminé',
-      microphoneMuted: '⚠️ Microphone muet détecté',
-      microphoneEnded: '❌ Microphone désactivé',
       connectionLost: '⚠️ Connexion perdue, reconnexion...',
       connectionRestored: '✅ Connexion rétablie',
       transcriptionInterrupted: '⚠️ Transcription interrompue, reconnexion...',
       transcriptionCreditExhausted: "❌ Crédit d'IA épuisé — transcription suspendue",
       transcriptionLimited: '⚠️ Service de transcription momentanément limité',
-      audioContextSuspended: '⚠️ Audio suspendu, réactivation...',
-      audioContextResumed: '✅ Audio réactivé',
-      appBackgrounded: '⚠️ App en arrière-plan - enregistrement peut être interrompu',
-      appResumed: '✅ App revenue au premier plan',
-      microphoneReactivated: '✅ Microphone réactivé',
-      microphoneReactivationFailed: '❌ Impossible de réactiver le microphone',
-      recordingInterrupted: '⚠️ Enregistrement interrompu - appuyez sur Reprendre',
+      captureResumed: '✅ Enregistrement repris après {duration} d’interruption',
+      // Remplacement écrit dans les notes, versé dans les « Mots remplacés » du
+      // compte (utils/noteLearning.js). {from} → {to} : la consigne ; {n}, {max}.
+      replacementLearned:
+        '✅ « {from} » sera remplacé par « {to} » dans vos prochaines réunions (Réglages → Pendant la réunion → Mots remplacés)',
+      replacementsLearned:
+        '✅ {n} remplacements de vos notes retenus pour vos prochaines réunions (Réglages → Pendant la réunion → Mots remplacés)',
+      replacementsFull:
+        '⚠️ Vos mots remplacés sont au complet ({max}) : retirez-en dans Réglages → Pendant la réunion → Mots remplacés pour que les suivants soient retenus',
+      recordingInterrupted:
+        '⚠️ Enregistrement interrompu (appel, autre application) — touchez l’écran pour le reprendre',
       summaryGenerating: 'Génération du résumé...',
       summaryReady: 'Résumé généré',
       summaryError: 'Erreur lors de la génération du résumé',
@@ -1610,7 +1860,7 @@ export const uiTextData = {
       micDenied:
         'Micro refusé : autorisez-le pour MyBrief dans les réglages du navigateur ou du téléphone, puis relancez l’enregistrement.',
       micNotFound:
-        'Aucun micro détecté. Branchez-en un, ou choisissez-en un autre dans Ma configuration, puis réessayez.',
+        'Aucun micro détecté. Branchez-en un, ou choisissez-en un autre dans Réglages → Pendant la réunion → Micro et son, puis réessayez.',
       micBusy: 'Le micro est déjà utilisé par une autre application. Fermez-la, puis réessayez.',
       recordingStartFailed: 'L’enregistrement n’a pas pu démarrer. Réessayez dans un instant.',
       notesActionsSaveError:
@@ -1685,6 +1935,13 @@ export const uiTextData = {
       tagNone: 'Aucun tag',
       tagManage: 'Gérer les tags…',
       tagNoneYet: 'Aucun tag créé',
+      // Recherche du sélecteur de tag — dans le nom ET le contexte des tags.
+      tagSearch: 'Rechercher un tag',
+      tagSearchCreate: 'Rechercher ou créer un tag…',
+      tagRecent: 'Récents',
+      tagAll: 'Tous les tags',
+      tagNoMatch: 'Aucun tag ne correspond.',
+      tagCreate: 'Créer « {label} »',
       filterAll: 'Tous',
       filterUntagged: 'Sans tag',
       filterLabel: 'Filtrer par tag',
@@ -1721,17 +1978,17 @@ export const uiTextData = {
       blockedShort: 'Quota atteint',
       exhaustedToast:
         'Vos minutes de réunion du mois sont épuisées : elles se renouvellent le 1er {month}. Votre administrateur peut relever le quota de votre groupe.',
+      // Atteint EN COURS de réunion (QuotaLiveAlert) : la réunion continue.
+      exhaustedLiveToast:
+        "Vos minutes de réunion du mois sont épuisées. L'enregistrement continue jusqu'à ce que vous l'arrêtiez, mais vous ne pourrez pas démarrer d'autre réunion avant le 1er {month}.",
       minutesOnly: '{m} min',
       hoursOnly: '{h} h',
       hoursMinutes: '{h} h {m}',
     },
-    // « Mes statistiques » (StatsPanel) : l'usage du compte et son crédit de
+    // « Usage & crédits » (stats/PersonalStats.svelte) : l'usage du compte et son crédit de
     // temps du mois — la jauge réutilise les mots du compteur (`quota`) ; et
     // Administration → Crédit de temps, qui réutilise la page pour un compte.
     myStats: {
-      title: 'Mes statistiques',
-      navTitle: 'Statistiques',
-      navMe: 'Mes statistiques',
       // Administration : le crédit de chaque compte (admin/CreditsTab).
       creditsTabLabel: 'Crédit de temps',
       intro:
@@ -1812,7 +2069,7 @@ export const uiTextData = {
       teamEmpty: 'Aucun compte dans ce groupe.',
       back: 'Tous les comptes',
       viewingTitle: 'Statistiques de {name}',
-      viewingHint: 'Ce que {name} voit dans « Mes statistiques ».',
+      viewingHint: 'Ce que {name} voit dans « Usage & crédits ».',
       openAccount: 'Voir les statistiques de {name}',
       errors: {
         user_not_found: "Ce compte n'existe plus.",
@@ -1824,6 +2081,406 @@ export const uiTextData = {
     // téléphone (MobileMeetingBar, boutons flottants nommés hors réunion), et
     // la feuille « Terminer la réunion ? » (EndMeetingSheet). Des noms courts :
     // sous les icônes du téléphone, quatre tiennent en 360 px.
+    // Aide IA d'une réunion (components/aiHelp/, stores/aiHelp.js). `{name}` est
+    // le mot d'appel réglé par l'administration (« Alfred »).
+    aiHelp: {
+      name: 'Aide IA',
+      setupSwitch: 'Aide IA pour cette réunion',
+      setupOn:
+        '{name} suit la réunion et intervient par écrit ; un son annonce ses alertes, ses idées et ce qu’elle fait pour vous.',
+      setupOff: 'Éteinte pour cette réunion.',
+      setupNote:
+        'Réglages repris de votre dernière réunion. Le projet est reconnu d’après le tag ou ce qui se dit. Tout se change en un clic pendant la réunion.',
+      setupNoteNoBrain:
+        'Réglages repris de votre dernière réunion. {name} s’appuie sur la réunion, vos notes et l’ordre du jour. Tout se change en un clic pendant la réunion.',
+      domainsLabel: 'Domaines d’intervention',
+      domains: {
+        project: {
+          title: 'Garde-fou du projet',
+          hint: 'Alerte si une décision contredit le projet.',
+        },
+        qa: {
+          title: 'Questions-réponses',
+          hint: 'Répond à vos questions. Sans elles, {name} fait encore ce que vous lui demandez.',
+        },
+        agenda: { title: 'Ordre du jour', hint: 'Retient les points, rappelle les oubliés.' },
+        ideas: { title: 'Boîte à idées', hint: 'Propose une piste de temps à autre.' },
+      },
+      agendaLabel: 'Points à traiter',
+      agendaHint: 'un par ligne',
+      agendaPlaceholder: 'Avancement du lot 2\nRisques\nBudget',
+      agendaVoiceHint:
+        'Ou annoncez-les en réunion — « à l’ordre du jour : … » — : {name} les retient.',
+      agendaEmpty:
+        'Aucun point pour l’instant. Annoncez-les à voix haute — « à l’ordre du jour : … » — ou ajoutez-en un.',
+      agendaAddLabel: 'Ajouter un point à l’ordre du jour',
+      agendaAddPlaceholder: 'Ajouter un point…',
+      agendaAdd: 'Ajouter ce point',
+      agendaRemove: 'Retirer « {point} » de l’ordre du jour',
+      agendaHeard: 'Retenu d’après ce qui s’est dit en réunion',
+      agendaEdit: 'Corriger',
+      agendaEvents: {
+        noted: 'J’ai noté l’ordre du jour',
+        closing: 'La réunion se termine : des points n’ont pas été abordés',
+      },
+      pillOn: 'Aide IA activée — cliquer pour l’éteindre',
+      pillOff: 'Aide IA éteinte — cliquer pour l’activer',
+      turnedOn: 'Aide IA activée',
+      turnedOff: 'Aide IA éteinte',
+      // Le mot d'appel, dit à côté de l'orbe : ce qu'on lit (`wakeSay`), et ce
+      // que disent l'infobulle et le lecteur d'écran (`wakeHint`).
+      wakeSay: '« {name}, … »',
+      wakeLabel: '« {name} »',
+      wakeHint: 'Pour lui parler, commencez votre phrase par « {name} »',
+      // Les domaines, rangés derrière un bouton de la pastille du dock.
+      domainsOpen: 'Choisir ce que suit l’Aide IA',
+      domainsSome: 'Choisir ce que suit l’Aide IA — {on} domaines sur {total} activés',
+      ask: 'Demander',
+      askTitle: 'Demander à {name}',
+      askLabel: 'Votre question à {name}',
+      askPlaceholder: 'Votre question…',
+      // Questions-réponses coupées : on lui demande encore des gestes.
+      askLabelCommands: 'Votre demande à {name}',
+      askPlaceholderCommands: 'Une demande : un tag, une note, un minuteur, une pause…',
+      commandsOnly:
+        'Questions-réponses coupées : {name} ne répond pas aux questions, mais fait ce que vous lui demandez.',
+      askSend: 'Envoyer la question',
+      // Quelques questions d'exemple, sous le fil du pupitre — de quoi montrer
+      // ce qu'on peut lui demander, pas un menu.
+      suggestions: [
+        'Fais une synthèse',
+        'Où en est l’ordre du jour ?',
+        'Quelles actions ont été décidées ?',
+        'Qu’a-t-on oublié ?',
+        'D’autres idées ?',
+      ],
+      chatEmpty:
+        'Demandez à {name} une synthèse, l’ordre du jour, les actions, des idées — ou de lancer un minuteur, de mettre en pause, de corriger la transcription, de rédiger le compte rendu. Ici, ou à voix haute : « {name}, … ».',
+      chatEmptyCommands:
+        'Demandez à {name} de poser un tag, de prendre une note, de lancer un minuteur, de mettre en pause, de corriger la transcription ou de rédiger le compte rendu. Ici, ou à voix haute : « {name}, … ».',
+      settings: 'Réglages de l’Aide IA',
+      // Le bouton du son, pendant la réunion (AiHelpSoundButton).
+      soundMute: 'Couper le son de l’Aide IA pour cette réunion',
+      soundUnmute: 'Rétablir le son de l’Aide IA',
+      soundLocked: 'Le navigateur bloque le son — cliquez pour l’activer',
+      soundMuted: 'Son coupé',
+      soundBack: 'Son rétabli',
+      soundUnlocked: 'Son activé',
+      openPreferences: 'Démarrage, sons et voix pour toutes vos réunions →',
+      // Lu à voix haute après « La réunion se termine… ».
+      voicePointsLeft: 'Points restants : {points}',
+      // Réglages → Aide IA (settings/AiHelpSection) : ce qui vaut pour TOUTES
+      // les réunions. Les mots du bouton de la pastille sont `sound…`.
+      prefs: {
+        intro:
+          'Ce que fait l’Aide IA de vos réunions, avant même qu’elles commencent. Pendant une réunion, tout se change pour elle seule : la cloche de sa pastille coupe le son.',
+        startTitle: 'Au démarrage d’une réunion',
+        startHint: 'L’Aide IA et ses domaines tels qu’ils sont à l’ouverture de chaque réunion.',
+        startSwitch: 'Aide IA allumée',
+        startOff:
+          'Vos réunions démarrent sans elle : son orbe, dans la barre du bas, l’allume en un clic.',
+        soundsTitle: 'Sons',
+        soundsHint: 'Un son par sens, pour savoir ce qui arrive sans regarder l’écran.',
+        sounds: {
+          alerts: {
+            label: 'Alertes',
+            hint: 'Trois notes montantes : contradiction, rappel, points oubliés en fin de réunion.',
+          },
+          ideas: { label: 'Idées', hint: 'Un coup de sonnette de comptoir.' },
+          actions: {
+            label: 'Gestes faits',
+            hint: 'Deux notes brèves : elle a compris, c’est fait.',
+          },
+          timer: {
+            label: 'Fin du minuteur',
+            hint: 'Une courte mélodie quand le décompte arrive à zéro.',
+          },
+        },
+        listen: 'Écouter',
+        listenTo: 'Écouter le son « {label} »',
+        voiceTitle: 'Voix',
+        voiceHint:
+          'Lire à voix haute ce qu’elle écrit. Couper le son pendant une réunion la fait taire aussi.',
+        voiceSwitch: 'Lire à voix haute',
+        readLabel: 'Ce qu’elle lit',
+        read: { answers: 'Ses réponses', alerts: 'Ses alertes et rappels', ideas: 'Ses idées' },
+        engineLabel: 'Moteur',
+        engines: {
+          browser: {
+            label: 'Votre navigateur',
+            hint: 'Gratuit, sur votre appareil : rien ne sort. Les voix sont celles de votre système.',
+          },
+          openai: {
+            label: 'OpenAI',
+            hint: 'Voix naturelles, facturées sur la clé de votre organisation.',
+          },
+          mistral: {
+            label: 'Mistral',
+            hint: 'Voxtral, facturé sur la clé Mistral de votre organisation.',
+          },
+        },
+        engineRetires: 'OpenAI arrête ces modèles le {date}.',
+        enginesChecking: 'Vérification des voix proposées…',
+        enginesNote:
+          'Les voix d’OpenAI et de Mistral apparaissent quand votre administrateur a renseigné leur clé, et seulement après un essai réussi.',
+        engineGone: 'Ce moteur n’est plus proposé : choisissez-en un autre.',
+        noBrowserVoice: 'Ce navigateur ne sait pas lire à voix haute.',
+        modelLabel: 'Modèle',
+        voiceLabel: 'Voix',
+        voiceDefault: 'Voix par défaut du système',
+        otherLanguages: 'Autres langues',
+        sample:
+          'Bonjour, je suis {name}. Voici comment je lirai ce que j’écris pendant vos réunions.',
+        sampleSpeaking: 'Lecture en cours…',
+        sampleDone: 'Voix essayée.',
+        save: 'Enregistrer',
+        saving: 'Enregistrement…',
+        saved: 'Enregistré',
+        discard: 'Annuler les changements',
+        errors: {
+          voice_blocked: 'Le navigateur bloque le son : cliquez dans la page, puis réessayez.',
+          voice_unavailable: 'Cette voix n’est pas disponible sur cet appareil.',
+          voice_failed: 'La voix n’a pas pu être lue.',
+          voice_unknown: 'Cette voix n’existe pas pour ce modèle.',
+          voice_model_unknown: 'Ce modèle de voix n’est pas proposé.',
+          too_many_requests: 'Trop d’essais en peu de temps : réessayez dans un moment.',
+          ai_help_not_allowed: 'Votre groupe n’a plus accès à l’Aide IA.',
+          default: 'L’opération a échoué. Réessayez.',
+        },
+      },
+      close: 'Fermer',
+      kinds: {
+        alert: 'Contradiction',
+        agenda: 'Ordre du jour',
+        idea: 'Idée',
+        answer: 'Réponse',
+        project: 'Question',
+        reminder: 'Rappel',
+      },
+      // Ce que l'IA a fait à la demande — dit par myBrief, pas par le modèle.
+      acts: {
+        tag: 'Tag « {label} » posé sur la réunion.',
+        tagMissing: 'Aucun de vos tags ne s’appelle « {label} » : créez-le dans Mes tags.',
+        note: 'Note ajoutée : {text}',
+        reminder: 'Rappel dans {minutes} min : {label}',
+        reminderBare: 'Rappel dans {minutes} min.',
+        // Le minuteur. `timerNone` : on lui demande de le changer, aucun ne tourne.
+        timerStart: 'Minuteur lancé : {time}.',
+        timerStartLabel: 'Minuteur lancé : {time} — {label}',
+        timerAdd: 'Minuteur rallongé de {time} : il reste {left}.',
+        timerCut: 'Minuteur raccourci de {time} : il reste {left}.',
+        timerStop: 'Minuteur arrêté.',
+        timerNone: 'Aucun minuteur ne tourne.',
+        // Sur la réunion elle-même. `…Noop` : rien n'était à faire, et on le dit.
+        pause:
+          'Réunion mise en pause. {name} n’entend plus rien : reprenez par « Reprendre », ou demandez-le-lui par écrit.',
+        pauseNoop: 'La réunion est déjà en pause.',
+        resume: 'Réunion reprise.',
+        resumeNoop: 'La réunion n’est pas en pause.',
+        end: 'Réunion terminée.',
+        summaryNow: 'Réunion terminée : compte rendu rédigé avec le template « {template} ».',
+        summaryNowDefault: 'Réunion terminée : compte rendu rédigé.',
+        summaryLater:
+          'Compte rendu commandé pour la fin de la réunion, avec le template « {template} ».',
+        summaryLaterDefault: 'Compte rendu commandé pour la fin de la réunion.',
+        templateMissing: 'Aucun template ne s’appelle « {template} » : rien n’a été lancé.',
+        replace: 'Transcription corrigée : « {find} » remplacé par « {with} ».',
+        replaceAll: 'Transcription corrigée : « {find} » remplacé partout par « {with} ».',
+        remove: 'Transcription corrigée : « {find} » retiré.',
+        replaceMissing: '« {find} » ne figure pas dans la transcription : rien n’a été changé.',
+      },
+      reminderTitle: 'C’est l’heure du rappel',
+      // Le minuteur demandé à l'IA (AiHelpTimer) : `left…` est lu par le
+      // lecteur d'écran, les chiffres seuls s'affichent.
+      timer: {
+        left: 'Minuteur : il reste {time}',
+        leftLabel: 'Minuteur « {label} » : il reste {time}',
+        done: 'Temps écoulé',
+        stop: 'Arrêter le minuteur',
+        close: 'Fermer le minuteur',
+      },
+      askedByVoice: 'Demandé à voix haute',
+      askedInWriting: 'Demandé par écrit',
+      thinking: '{name} cherche…',
+      wakeMark: 'Question à {name}',
+      acknowledge: 'Compris',
+      acknowledged: 'Vu',
+      dismiss: 'Ranger',
+      dismissLabel: 'Ranger cette intervention',
+      // D'autres interventions attendent derrière la carte : elles se lisent
+      // dans la conversation — une seule fenêtre, une seule fermeture.
+      othersOpenOne: '1 autre intervention — tout voir',
+      othersOpenMany: '{count} autres interventions — tout voir',
+      sizeUp: 'Agrandir la fenêtre et son texte',
+      sizeDown: 'Réduire la fenêtre et son texte',
+      agendaStates: { done: 'Traité', now: 'En cours', todo: 'Pas encore abordé' },
+      projectLabel: 'Projet de la réunion',
+      projectLinked: '{project} · myBrain',
+      projectUnknown: 'Projet à préciser',
+      projectNone: 'Sans projet',
+      projectChange: 'Changer',
+      projectAskTitle: 'De quel projet parle cette réunion ?',
+      projectAskBody: 'Je ne le reconnais ni au tag ni à ce qui se dit. Un clic suffit.',
+      projectNoneChoice: 'Aucun de ceux-là',
+      projectSearch: 'Chercher un projet dans myBrain',
+      projectEmpty: 'Aucune fiche de projet ne porte ce nom.',
+      // Le tag de la réunion ne mène pas à ce projet : le relier (stores/aiHelpTagLink.js).
+      tagLinkTitle: 'Relier le tag « {tag} » à ce projet ?',
+      tagLinkBody:
+        'Les prochaines réunions avec ce tag partiront directement sur « {project} », sans rien vous demander.',
+      tagRelinkBody:
+        'Ce tag mène aujourd’hui à « {linked} ». Le relier plutôt à « {project} » ? Les prochaines réunions avec ce tag partiront sur lui.',
+      tagLinkYes: 'Relier',
+      tagLinkNo: 'Pas maintenant',
+      tagLinkFailed: 'Le tag n’a pas pu être relié. Réessayez.',
+      openSheet: 'Ouvrir « {title} » dans myBrain',
+      stageLabel: 'Intervention de l’Aide IA',
+      notice: 'myBrain ne répond pas : {name} continue avec la réunion seule.',
+      // Sous une réponse tirée de la seule réunion : pourquoi myBrain n'y est pas
+      // (clé = `knowledge` de l'intervention, lib/aiHelp/session.js).
+      knowledgeNotes: {
+        empty: 'myBrain n’a rien sur cette question : réponse tirée de la réunion.',
+        down: 'myBrain n’a pas répondu : réponse tirée de la réunion.',
+        no_right:
+          'Votre groupe n’a pas le droit « Aide IA avec myBrain » : réponse tirée de la réunion.',
+        no_key_right: 'La clé de myBrain n’a pas le droit « lire » : réponse tirée de la réunion.',
+      },
+      noBrain:
+        'Votre compte ne lit pas myBrain : {name} répond d’après la réunion, vos notes et votre contexte.',
+      // Au pupitre, la même chose avec sa raison (clé = `myBrainReason` du serveur).
+      noBrainReasons: {
+        no_group_right:
+          'Votre groupe n’a pas le droit « Aide IA avec myBrain » : {name} répond d’après la réunion, vos notes et votre contexte.',
+        no_read_right:
+          'La clé de myBrain n’a pas le droit « lire » : {name} répond d’après la réunion, vos notes et votre contexte.',
+        not_connected:
+          'myBrain n’est pas relié à myBrief : {name} répond d’après la réunion, vos notes et votre contexte.',
+      },
+      // Bandeau d'une panne de myBrain en cours de réunion (clé = slug de la panne).
+      notices: {
+        mybrain_right_missing:
+          'myBrain refuse la lecture à la clé de myBrief : {name} continue avec la réunion seule.',
+        mybrain_key_rejected:
+          'myBrain ne reconnaît plus la clé de myBrief : {name} continue avec la réunion seule.',
+        mybrain_timeout:
+          'myBrain met trop de temps à répondre : {name} continue avec la réunion seule.',
+        // Une question à voix haute, alors que les réponses sont coupées.
+        questions_off:
+          'Questions-réponses coupées : {name} ne répond pas, mais fait ce que vous lui demandez — un tag, une note, une pause…',
+      },
+      errors: {
+        default: '{name} n’a pas pu répondre. Réessayez.',
+        network: 'Connexion perdue : la question n’est pas partie.',
+        too_many_requests: 'Trop de questions en peu de temps. Réessayez dans un instant.',
+        ai_help_no_answer: '{name} n’a pas trouvé de réponse.',
+        // Au pupitre, sous la règle (`commandsOnly`) : ce qu'il est advenu de CE message.
+        ai_help_domain_off:
+          'C’est une question : {name} n’y répond pas, les questions-réponses sont coupées.',
+        ai_help_mybrain_not_allowed: 'La lecture de myBrain n’est pas ouverte à votre compte.',
+        mybrain_unreachable: 'myBrain ne répond pas. Réessayez plus tard.',
+        mybrain_not_found: 'Cette fiche n’existe plus dans myBrain.',
+      },
+      tag: {
+        title: 'Projet dans myBrain',
+        hint: 'Quand une réunion porte ce tag, l’Aide IA sait de quel projet elle parle.',
+        suggested: 'Proposé d’après le nom du tag',
+        linked: 'Relié à ce tag',
+        none: 'Aucun projet relié. L’IA le reconnaîtra d’après ce qui se dit, ou le demandera.',
+        link: 'Relier',
+        unlink: 'Délier',
+      },
+    },
+    adminAiHelp: {
+      tabLabel: 'Aide IA',
+      intro:
+        'Pendant une réunion, l’IA suit ce qui se dit et intervient par écrit : réponses, alertes, idées. Réglez ici ce que l’installation propose. Qui s’en sert se décide dans Groupes.',
+      domainsTitle: 'Domaines d’intervention proposés',
+      domainsHint:
+        'Un domaine coupé ici n’apparaît chez personne. Les autres sont allumés d’office au début de chaque réunion.',
+      domains: {
+        project:
+          'Alerte si une décision contredit l’objectif, le périmètre ou une échéance du projet de la réunion.',
+        qa: 'Répond aux questions, à voix haute ou par écrit. Avec myBrain : les fiches. Sans : la réunion en cours. Coupé, on peut encore lui demander un geste : tag, note, pause…',
+        agenda:
+          'Retient les points à traiter, annoncés en réunion ou ajoutés au pupitre. Dit s’ils ont été tenus, signale ceux qu’on oublie et, à la fin, ceux qu’on n’a pas abordés.',
+        ideas: 'Propose de temps à autre une piste ou une question à se poser.',
+      },
+      needsMyBrain: 'myBrain',
+      domainLocked: 'Indisponible : la clé de myBrain n’a pas le droit « lire ».',
+      wakeTitle: 'Mot d’appel',
+      wakeHint:
+        'Le prénom que les participants donnent à l’IA pour lui parler à voix haute : une question, ou un geste à faire.',
+      wakeExample: 'En réunion : « {name}, rappelle-moi la date de livraison ? »',
+      paceTitle: 'Interventions spontanées',
+      paceHint: 'Ce que l’IA signale d’elle-même, sans qu’on l’appelle.',
+      paces: {
+        quiet: { label: 'Discrètes', hint: 'Seulement les contradictions nettes, aucune idée.' },
+        normal: {
+          label: 'Normales',
+          hint: 'Les contradictions, les points qu’on oublie, une idée toutes les dix minutes au plus et, en fin de réunion, les points qu’on n’a pas abordés.',
+        },
+        busy: {
+          label: 'Soutenues',
+          hint: 'Aussi les dérives légères, et une idée toutes les cinq minutes au plus — l’IA se manifeste plus souvent.',
+        },
+      },
+      brainTitle: 'Lecture de myBrain',
+      brainOk: 'Connexion vérifiée. La clé a le droit « lire ».',
+      brainNoRead:
+        'La clé de myBrain n’a pas le droit « lire » : l’Aide IA fonctionne sans myBrain. Si la clé vient de le recevoir, « Tester la connexion » dans l’onglet MyBrain le relit ; sinon, un administrateur de myBrain peut émettre une clé qui l’a.',
+      brainOff: 'myBrain n’est pas branché : l’Aide IA fonctionne sans lui (onglet MyBrain).',
+      brainScope:
+        'L’Aide IA lit le wiki partagé au nom de l’application, pas de la personne : tout compte autorisé y a le même accès. Les zones restreintes de myBrain lui restent fermées.',
+      accessTitle: 'Qui y a droit',
+      accessNoneBadge: 'Personne pour l’instant',
+      accessBadgeOne: '1 groupe',
+      accessBadgeMany: '{count} groupes',
+      accessNone:
+        'Aucun groupe n’a encore le droit « Aide IA en réunion » : personne ne la voit, vous compris. Donnez-le à un groupe dans l’onglet Groupes, sous Droits.',
+      accessSome: 'L’Aide IA apparaît aux membres de ces groupes. Les autres ne voient rien.',
+      accessNotYou:
+        'Votre compte n’est dans aucun de ces groupes : vous ne la verrez pas dans vos propres réunions.',
+      // Ce que le compte de l'administrateur obtient, lui (clé = `me.reason`).
+      meOk: 'Votre compte : l’Aide IA lit myBrain dans vos réunions.',
+      meReasons: {
+        no_group_right:
+          'Votre compte a l’Aide IA, mais son groupe n’a pas le droit « Aide IA avec myBrain » : dans vos réunions, elle ne consultera pas myBrain.',
+        no_read_right:
+          'Votre compte a l’Aide IA, mais la clé de myBrain n’a pas le droit « lire » : dans vos réunions, elle ne consultera pas myBrain.',
+        not_connected:
+          'Votre compte a l’Aide IA, mais myBrain n’est pas relié à myBrief : elle s’en tient à la réunion.',
+      },
+      accessWithBrain: 'avec myBrain',
+      accessOpenGroups: 'Ouvrir Groupes',
+      testTitle: 'Tester la lecture',
+      testHint:
+        'Posez une question comme en réunion : vous voyez ce que myBrain rend à myBrief pour y répondre.',
+      testPlaceholder: 'C’est quoi le projet … ?',
+      testButton: 'Tester',
+      testing: 'Lecture…',
+      testContextOne: 'myBrain a rendu 1 fiche en {ms} ms :',
+      testContextMany: 'myBrain a rendu {count} fiches en {ms} ms :',
+      testContextNone:
+        'myBrain n’a rendu aucune fiche pour cette question ({ms} ms). L’Aide IA se rabat alors sur la recherche par mots-clés ci-dessous.',
+      testSearch: 'Recherche par mots-clés « {keywords} » :',
+      testSearchNone: 'aucune fiche trouvée.',
+      testNoKeywords: 'Cette question ne contient aucun mot-clé à chercher.',
+      testFailed: 'myBrain a refusé cette lecture : {reason}',
+      save: 'Enregistrer',
+      saving: 'Enregistrement…',
+      saved: 'Enregistré',
+      errors: {
+        default: 'Les réglages n’ont pas pu être enregistrés.',
+        network: 'Connexion perdue. Réessayez.',
+        too_many_requests: 'Trop d’essais en peu de temps. Réessayez dans un instant.',
+        mybrain_not_connected: 'myBrain n’est pas relié : faites-le dans l’onglet MyBrain.',
+        mybrain_right_missing: 'la clé n’a pas le droit « lire ».',
+        mybrain_key_rejected: 'myBrain refuse la clé.',
+        mybrain_unreachable: 'myBrain est injoignable depuis le serveur de myBrief.',
+        mybrain_timeout: 'myBrain n’a pas répondu à temps.',
+        mybrain_unavailable: 'ce myBrain n’offre pas cette lecture.',
+      },
+    },
     meetingBar: {
       title: 'Commandes de la réunion',
       notes: 'Notes',
@@ -1846,6 +2503,16 @@ export const uiTextData = {
       endDeleteHint: 'Rien n’est gardé.',
       endCancel: 'Annuler',
     },
+    // Reprendre l’enregistrement d’une réunion TERMINÉE (utils/meetingResume.js) :
+    // « Reprendre » dans le dock juste après l’arrêt, le bouton en fin de
+    // transcription ailleurs (réunion rouverte, ou déjà résumée).
+    meetingResume: {
+      dock: 'Reprendre',
+      dockTitle: 'Reprendre l’enregistrement : la suite s’ajoute à cette réunion',
+      cta: 'Reprendre l’enregistrement',
+      ctaTitle: 'La suite s’ajoutera à la fin de cette transcription',
+      marker: '⟨ Enregistrement repris le {date} à {time} ⟩',
+    },
     dockCard: {
       templateUsed: 'Template utilisé',
       groupUserTemplates: 'Mes templates',
@@ -1853,8 +2520,14 @@ export const uiTextData = {
       instructionsLabel: 'Instructions supplémentaires',
       instructionsPlaceholder:
         'Dans cette zone, vous pouvez fournir des informations supplémentaires...',
-      infographicLabel: 'Générer une infographie',
-      infographicShort: 'Infographie',
+      // Options de CETTE génération : deux tuiles à interrupteur, sous le
+      // Pagimètre. Le nombre d'actions s'affiche à côté du titre.
+      optionsSection: 'Ajouter au compte rendu',
+      actionsOption: 'Actions détectées',
+      actionsOptionHint: 'Listées dans leur propre section',
+      actionsOptionNone: 'Aucune action détectée',
+      infographicOption: 'Infographie',
+      infographicOptionHint: 'Image de la réunion, en plus',
       cancel: 'Annuler',
       optional: 'facultatif',
     },
@@ -1888,7 +2561,7 @@ export const uiTextData = {
       pendingLabel: 'Infographie en cours…',
       errorLabel: 'Infographie en échec',
       errorHint:
-        "La génération de l'infographie n'a pas abouti. Régénérez un résumé avec la case cochée pour réessayer.",
+        "La génération de l'infographie n'a pas abouti. Régénérez un résumé avec l'option Infographie activée pour réessayer.",
       thumbAlt: 'Infographie de la réunion',
       openAria: "Voir l'infographie en grand",
       title: 'Infographie de la réunion',
@@ -1902,18 +2575,85 @@ export const uiTextData = {
       removeShort: 'Supprimer',
       createInvite: 'Créer une infographie',
       createInviteHint:
-        'Générer une infographie illustrée de cette réunion, à partir de la transcription, des actions et des notes.',
+        "Générer l'infographie de cette réunion — pictogrammes, graphiques, logo de l'organisation —, à partir de la transcription, des actions et des notes.",
       removeConfirm:
         "Supprimer l'infographie de cette réunion ? La réunion et son compte rendu ne bougent pas — vous pourrez en générer une nouvelle.",
       actionFailed: "L'action sur l'infographie a échoué. Réessayez.",
       disabledError: "L'infographie est désactivée par l'administration.",
-      notAllowedError: "Vos groupes ne vous permettent pas de créer d'infographie.",
+      notAllowedError: "Votre groupe ne vous permet pas de créer d'infographie.",
+      downloadPreparing: "Préparation de l'image…",
+      zoomIn: 'Agrandir',
+      zoomOut: "Ajuster à l'écran",
+      downloadFailed: "L'image de l'infographie n'a pas pu être préparée. Réessayez.",
+      // Libellés imprimés SUR l'infographie (gabarits). Choisis selon la langue
+      // de l'infographie — celle de sa génération —, pas celle de l'écran :
+      // ils doivent parler la même langue que les textes écrits par l'IA.
+      sheet: {
+        templates: {
+          synthese: 'Synthèse',
+          decision: 'Décision',
+          feuille_de_route: 'Feuille de route',
+          tableau_de_bord: 'Tableau de bord',
+          atelier: 'Atelier',
+          bilan: 'Bilan',
+        },
+        logoAlt: "Logo de l'organisation",
+        untitled: 'Réunion',
+        essential: "L'essentiel",
+        topics: 'Les sujets',
+        ideas: 'Les idées',
+        decision: 'Décision prise',
+        decisions: 'Décisions',
+        otherDecisions: 'Autres décisions',
+        vigilance: 'Points de vigilance',
+        options: 'Options étudiées',
+        retained: 'Retenue',
+        pros: 'Pour',
+        cons: 'Contre',
+        goal: 'Objectif',
+        milestones: 'Étapes',
+        done: 'Fait',
+        upcoming: 'À venir',
+        target: 'Objectif',
+        indicators: 'Indicateurs',
+        breakdown: 'Répartition',
+        ofTarget: '{pct} de {target}',
+        targetLabel: 'objectif {value}',
+        before: 'avant',
+        now: 'maintenant',
+        question: 'La question',
+        ideaOne: 'idée',
+        ideaMany: 'idées',
+        themeOne: 'thème',
+        themeMany: 'thèmes',
+        retainedOne: 'retenue',
+        retainedMany: 'retenues',
+        retainedIdeas: 'Idées retenues',
+        voteOne: '{count} vote',
+        voteMany: '{count} votes',
+        nextSteps: 'Suites décidées',
+        verdict: 'En bref',
+        worked: 'Ce qui a marché',
+        struggled: 'Ce qui a coincé',
+        tryNext: 'À essayer',
+        actions: 'Actions',
+        moreActionOne: '+ 1 autre action dans le compte rendu',
+        moreActionMany: '+ {count} autres actions dans le compte rendu',
+        participants: 'Participants',
+        morePeopleOne: 'et 1 autre',
+        morePeopleMany: 'et {count} autres',
+        nextStep: 'Prochaine étape',
+        // À côté du logo de l'application, en pied de chaque infographie.
+        madeWith: 'myBrief',
+        appLogoAlt: "Logo de l'application",
+        tagLogoAlt: 'Logo du client ou du projet',
+      },
     },
     tagsPanel: {
       title: 'Mes tags',
       close: 'Fermer',
       intro:
-        'Un tag range vos conversations par client, projet ou sujet. Il peut aussi décider où classer leurs comptes rendus et à qui les envoyer.',
+        'Un tag range vos conversations par client, projet ou sujet. Il peut aussi dire à l’IA de quoi il s’agit, où classer leurs comptes rendus et à qui les envoyer.',
       loading: 'Chargement…',
       empty: 'Aucun tag pour le moment. Créez-en un pour commencer à ranger vos conversations.',
       add: 'Nouveau tag',
@@ -1977,6 +2717,7 @@ export const uiTextData = {
       counterOne: '{n} tag sur {max}',
       counterMany: '{n} tags sur {max}',
       searchLabel: 'Rechercher un tag',
+      searchPlaceholder: 'Nom, personne, sigle…',
       searchEmpty: 'Aucun tag ne correspond.',
       taggedOne: '1 conversation',
       taggedMany: '{n} conversations',
@@ -1995,6 +2736,44 @@ export const uiTextData = {
       removeTag: 'Supprimer le tag',
       back: 'Mes tags',
       savedHint: 'Chaque choix est enregistré aussitôt.',
+      // ── Nom sur place, pastille rapide ──
+      rename: 'Renommer',
+      pastille: 'Couleur et forme',
+      pastilleMore: 'Motifs et couleur libre…',
+      // ── Logo du client ou du projet ──
+      logoQuestion: 'Quel logo sur ses documents ?',
+      logoWhen:
+        'Celui du client ou du projet : en médaillon sur l’infographie, en tête du compte rendu PDF, et dans cette liste.',
+      logoDrop: 'Déposer un logo',
+      logoBrowse: 'ou cliquer pour le choisir · PNG, JPG, SVG',
+      logoReplace: 'Remplacer…',
+      logoRemove: 'Retirer',
+      logoAlt: 'Logo du tag « {tag} »',
+      logoSaving: 'Envoi du logo…',
+      logoSaveError: 'Impossible d’enregistrer le logo. Réessayez.',
+      // ── Rangement et envoi, repliés ──
+      ruleEdit: 'Modifier',
+      ruleClose: 'Fermer',
+      peopleMore: '+ {n}',
+      // ── Contexte — ce que l'IA doit savoir du dossier (lib/tagContext.js) ──
+      contextQuestion: 'Que doit savoir l’IA ?',
+      contextWhen:
+        'Le projet, ses acteurs et leurs rôles, les sigles : de quoi comprendre une conversation taguée « {tag} ».',
+      contextPlaceholder:
+        'Ex. : rénovation du siège, livraison en juin. Acteurs : Claire Martin, cliente ; Hugo Bernard, bureau d’études. Sigles : PAC = pompe à chaleur.',
+      contextReadBy: 'Lu par',
+      contextReaders: {
+        summary: 'Compte rendu',
+        transcript: 'Transcription',
+        infographic: 'Infographie',
+        aiHelp: 'Aide IA',
+      },
+      contextCount: '{n} / {max}',
+      contextSaving: 'Enregistrement…',
+      contextSaved: 'Enregistré',
+      contextGuard:
+        'L’IA s’en sert pour comprendre qui est qui et ce que veulent dire les sigles. Elle ne le recopie pas dans le compte rendu comme s’il avait été dit en réunion.',
+      contextSaveError: 'Impossible d’enregistrer ce texte. Réessayez.',
       // ── Rangement — le lien tag → action « Entreposer » ──
       folderQuestion: 'Où ranger ses comptes rendus ?',
       folderWhen: 'Quand vous choisissez « Entreposer » après une conversation taguée « {tag} ».',
@@ -2009,9 +2788,9 @@ export const uiTextData = {
       storageClosed:
         'Le dépôt de fichiers est désactivé par votre organisation. Les destinations restent enregistrées et s’appliqueront s’il rouvre.',
       storageNotConnected:
-        'Reliez votre compte Google ou Microsoft (Ma configuration → Connexion) pour choisir des dossiers.',
+        'Reliez votre compte Google ou Microsoft (Réglages → Comptes connectés) pour choisir des dossiers.',
       storageDriveMissing:
-        'Votre compte est relié sans l’accès aux fichiers. Reliez-le à nouveau depuis Ma configuration pour autoriser le dépôt.',
+        'Votre compte est relié sans l’accès aux fichiers. Reliez-le à nouveau depuis Réglages → Comptes connectés pour autoriser le dépôt.',
       storageSaveError: 'Impossible d’enregistrer la destination. Réessayez.',
       // ── Envoi — le lien tag → action « Envoyer par mail » ──
       mailQuestion: 'À qui envoyer ses comptes rendus ?',
@@ -2056,6 +2835,10 @@ export const uiTextData = {
         label_too_long: 'Nom trop long ({max} caractères maximum).',
         color_invalid: 'Couleur inconnue.',
         shape_invalid: 'Forme inconnue.',
+        context_too_long: 'Texte trop long ({max} caractères maximum).',
+        logo_invalid: 'Ce fichier n’est pas une image : choisissez un PNG, un JPG ou un SVG.',
+        logo_too_big: 'Image trop lourde pour un logo : choisissez-en une plus simple.',
+        logo_unreadable: 'Image illisible : essayez un autre fichier.',
         tag_not_found: 'Ce tag n’existe plus. Rechargez la page.',
         meeting_not_found: 'Cette conversation est introuvable.',
         network: 'Opération impossible pour le moment. Réessayez.',
@@ -2145,11 +2928,11 @@ export const uiTextData = {
         'Cette version du résumé sera supprimée. Les autres versions sont conservées.',
       resumeInterruptedTitle: 'Réunion interrompue',
       resumeInterruptedBody:
-        "Une réunion était en cours lors du rechargement. Souhaitez-vous reprendre l'enregistrement ?",
-      abandon: 'Abandonner',
+        'L’enregistrement s’est arrêté avant la fin de la réunion. La transcription, les notes, les actions et le chronomètre sont conservés. Reprendre là où elle s’est arrêtée ?',
+      endInterrupted: 'Terminer la réunion',
       resume: 'Reprendre',
     },
-    // Onglet « Actions » de « Ma configuration ». Section à part de `config` :
+    // Onglet « Actions » de « Réglages ». Section à part de `config` :
     // le composant est autonome et lit ses libellés directement.
     configActions: {
       tabLabel: 'Actions',
@@ -2219,14 +3002,14 @@ export const uiTextData = {
       pickerSelection: 'Sélection :',
       pickerConfirm: 'Choisir ce dossier',
       pickerSharedDrivesMissing:
-        'Vos Drive partagés n’apparaissent pas ici : votre compte a été relié avant que myBrief sache les lister. Reconnectez-le depuis « Ma configuration → Connexion » pour les voir. Mon Drive et le dépôt fonctionnent normalement.',
+        'Vos Drive partagés n’apparaissent pas ici : votre compte a été relié avant que myBrief sache les lister. Reconnectez-le depuis « Réglages → Comptes connectés » pour les voir. Mon Drive et le dépôt fonctionnent normalement.',
       // Même drapeau serveur, côté Microsoft : ce sont les sites SharePoint qui
       // manquent, faute de la permission « Sites.ReadWrite.All ». Un annuaire
       // qui la REFUSE n'arrive jamais ici — Entra lui refuse la liaison entière
       // (cf. lib/connections/providers.js). Seules les connexions nouées avant
       // son ajout voient ce message.
       pickerSharedSitesMissing:
-        'Vos bibliothèques SharePoint n’apparaissent pas ici : votre compte a été relié avant que myBrief ne demande la permission « Sites.ReadWrite.All ». Reconnectez-le depuis « Ma configuration → Connexion » pour les voir. Votre OneDrive et le dépôt fonctionnent normalement.',
+        'Vos bibliothèques SharePoint n’apparaissent pas ici : votre compte a été relié avant que myBrief ne demande la permission « Sites.ReadWrite.All ». Reconnectez-le depuis « Réglages → Comptes connectés » pour les voir. Votre OneDrive et le dépôt fonctionnent normalement.',
       pickerMore: 'Afficher plus',
       browseErrors: {
         browse_scope_missing:
@@ -2366,13 +3149,27 @@ export const uiTextData = {
         unknown: 'erreur inattendue.',
       },
     },
+    // « Mon profil » (settings/ProfileSection.svelte) : la page d'accueil des
+    // réglages — ce que portait le menu déroulant du nom. Le groupe et le mot
+    // de passe gardent leurs libellés de `account`.
+    profile: {
+      intro: 'Votre identité dans myBrief, et votre langue.',
+      identityTitle: 'Identité',
+      nameLabel: 'Nom',
+      emailLabel: 'Adresse e-mail',
+      languageTitle: 'Langue',
+      languageHint:
+        "Celle de l'interface, et aussi de la transcription, des actions détectées et du compte rendu.",
+      securityTitle: 'Mot de passe',
+      securityHint: 'Votre compte se connecte par mot de passe : changez-le ici.',
+    },
     config: {
-      title: 'Ma configuration',
-      audioSection: 'Réglages audio',
+      title: 'Réglages',
+      audioSection: 'Microphone',
       audioIntro:
         "Le micro choisi ici ne vaut que pour cet appareil : un identifiant de périphérique n'a pas de sens d'une machine à l'autre.",
-      audioLabel: "Canal d'entrée sonore (microphone)",
-      audioDeviceLabel: 'Microphone',
+      audioLabel: "Canal d'entrée sonore.",
+      audioDeviceLabel: 'Périphérique',
       audioDeviceHint:
         "Le choix est enregistré immédiatement. Si le micro est indisponible au moment d'enregistrer, celui du système prend le relais.",
       audioDefault: 'Microphone par défaut du système',
@@ -2403,26 +3200,42 @@ export const uiTextData = {
         "Aucun son reçu. Vérifiez que l'ordinateur jouait un son, et que sa sortie audio passe bien par ce périphérique.",
       systemAudioFailed:
         "Ce périphérique n'a pas pu être ouvert. Autorisez l'accès au micro, ou choisissez-en un autre.",
-      // « Mon contexte » et non « Ma configuration » : le panneau porte déjà
+      // « Mon contexte » et non « Réglages » : le panneau porte déjà
       // ce nom — une section homonyme juste sous le titre disait deux choses
       // avec les mêmes mots.
       contextSection: 'Mon contexte',
       detectionSection: "Détection d'actions",
+      correctionsSection: 'Mots remplacés',
       contextHint: 'Envoyé avant chaque génération de compte-rendu.',
       contextIntro:
         'Ce texte est envoyé avant chaque génération de compte-rendu pour donner votre contexte (travail, entreprise, poste, informations utiles…).',
       contextPlaceholder:
         'Ex : Je suis Responsable Commercial chez Acme. Mes réunions portent souvent sur des opportunités B2B. Mon manager est…',
-      // Intertitres de la colonne de gauche : huit entrées à plat forment une
-      // colonne indifférenciée, où un réglage a l'air d'un outil.
-      groupSettings: 'Réglages',
-      // Ce que devient un compte rendu une fois écrit : où il part, où il se
-      // dépose, et le compte qui porte les deux.
-      groupActions: 'Actions',
+      // Colonne de gauche (config/configSections.js). « Mon compte » : ce qu'on
+      // règle sur soi, sous les noms que ces pages portent dans MIA.
+      // `audioNav` et non `audioSection` : ce dernier titre la carte du micro.
+      groupAccount: 'Mon compte',
+      profileSection: 'Mon profil',
+      aiSection: 'Préférences IA',
+      aiHelpSection: 'Aide IA',
+      audioNav: 'Micro et son',
+      // « Mes réunions » : ce qui joue pendant, puis ce qu'elle devient après.
+      // « Après la réunion » s'appelait « Actions », comme la « Détection
+      // d'actions » qui n'a rien à voir.
+      groupMeetings: 'Mes réunions',
+      meetingSection: 'Pendant la réunion',
+      actionsSection: 'Après la réunion',
+      // Sous « Mon contexte » : ce que l'IA fait EN réunion se règle ailleurs.
+      aiElsewhere:
+        'La détection d’actions et les mots remplacés se règlent avec ce qui joue en réunion.',
+      aiElsewhereLink: 'Ouvrir « Pendant la réunion »',
+      usageSection: 'Usage & crédits',
+      // Onglets de la page « Actions » : une action = un onglet.
       actionMailSection: "Envoi d'email",
       actionStorageSection: 'Entreposer',
       groupLibrary: 'Ma bibliothèque',
-      groupTools: 'Outils',
+      // Pied de colonne : « Importer un audio » et « Extension Chrome », une page.
+      toolsSection: 'Outils',
       importSection: 'Importer un audio',
       importIntro:
         'Transformez un enregistrement existant en compte rendu : choisissez un fichier audio, MyBrief le transcrit puis le résume comme une réunion.',
@@ -2436,6 +3249,12 @@ export const uiTextData = {
         "Une icône dans la barre de Chrome : un clic ouvre MyBrief, un autre démarre une réunion — d'où que vous soyez sur le web. Rien ne change dans MyBrief lui-même.",
       extStateInstalled: 'Extension installée et liée à ce site',
       extStateVersion: 'version {version}',
+      extStateOutdated: 'Une nouvelle version de l’extension est disponible',
+      extStateOutdatedHint:
+        'Version {version} installée, {latest} disponible. Chargée depuis un dossier, l’extension ne se met pas à jour seule.',
+      extUpdateZip: 'Télécharger la nouvelle version (.zip)',
+      extUpdateHint:
+        'Décompressez-la dans le dossier « mybrief-extension » déjà installé, en remplaçant ses fichiers — son emplacement figure sur la carte MyBrief de chrome://extensions. Cliquez ensuite ↻ sur cette carte. Décompressée ailleurs, elle deviendrait une seconde extension, à lier de nouveau.',
       extStateMissing: 'Extension non détectée dans ce navigateur',
       extStateMissingHint:
         "Suivez les étapes ci-dessous. Une fois l'extension liée, cette ligne passe au vert d'elle-même.",
@@ -2446,7 +3265,7 @@ export const uiTextData = {
         status: 'Connecté',
         primary: 'Nouvelle réunion',
         secondary: 'Ouvrir MyBrief',
-        links: ['Historique', 'Ma configuration'],
+        links: ['Historique', 'Réglages'],
       },
       extInstallTitle: '1. Installer',
       extInstallStore: 'Ajouter à Chrome',
@@ -2466,7 +3285,7 @@ export const uiTextData = {
         },
         {
           label: 'Cliquez « Charger l’extension non empaquetée »',
-          hint: 'Choisissez le dossier décompressé. L’icône MyBrief apparaît dans la barre.',
+          hint: 'Choisissez le dossier « mybrief-extension », celui qui contient le fichier manifest.json. L’icône MyBrief apparaît dans la barre.',
         },
         {
           label: 'Épinglez l’icône',
@@ -2509,7 +3328,7 @@ export const uiTextData = {
       // Libellé de l'entrée de menu uniquement (cf. SettingsPanel) : la section
       // relie un compte externe — l'envoi de mail n'est qu'un de ses usages, le
       // dépôt Drive en est un autre.
-      mailSection: 'Connexion',
+      mailSection: 'Comptes connectés',
       mailIntro:
         'Choisissez le compte qui envoie vos documents quand vous cliquez sur « Envoyer par mail ».',
       // `{provider}` est remplacé par le nom du fournisseur retenu par
@@ -2548,6 +3367,127 @@ export const uiTextData = {
       error: "Erreur lors de l'enregistrement",
       close: 'Fermer',
     },
+    // Recherche dans les réglages (components/SettingsSearch.svelte), en tête
+    // de la colonne de « Réglages » et de l'administration. `keywords` : les
+    // mots qu'on tape sans qu'ils soient à l'écran, séparés par des virgules,
+    // sous la clé de l'entrée du catalogue (config/settingsSearch.js).
+    settingsSearch: {
+      placeholder: 'Rechercher un réglage…',
+      label: 'Rechercher dans les réglages',
+      open: 'Rechercher un réglage',
+      shortcut: 'Raccourci : {keys}',
+      clear: 'Effacer la recherche',
+      results: 'Réglages trouvés',
+      countOne: '1 réglage trouvé',
+      countMany: '{n} réglages trouvés',
+      empty: 'Aucun réglage ne correspond à « {query} ».',
+      emptyHint: 'Essayez un autre mot, par exemple « micro », « langue » ou « dossier ».',
+      keywords: {
+        'config.profile': 'compte, identité, nom, adresse, email, avatar, groupe',
+        'config.profile.identity': 'nom, prénom, adresse, email, avatar, groupe, équipe',
+        'config.profile.language': 'langue, language, anglais, english, français, traduction',
+        'config.profile.password': 'mot de passe, password, mdp, sécurité, identifiants',
+        'config.ai': 'intelligence artificielle, ia, assistant, consigne, prompt',
+        'config.ai.context':
+          'contexte, métier, poste, fonction, entreprise, présentation, consigne, prompt',
+        'config.meeting.detection': 'actions, tâches, todo, à faire, engagements, repérer',
+        'config.meeting.detection.state': 'activer, désactiver, couper, détection en direct',
+        'config.meeting.detection.what': 'sensibilité, mots-clés, déclencheurs, stricte, large',
+        'config.meeting.detection.pace': 'fréquence, rythme, vitesse, intervalle, profondeur, coût',
+        'config.meeting.detection.test': 'essai, tester, banc, extrait, simulation',
+        'config.meeting.corrections':
+          'corrections, remplacer, remplacement, orthographe, mots mal transcrits, noms propres, dictionnaire',
+        'config.meeting.corrections.learn': 'notes, apprendre, retenir, mémoriser, automatique',
+        'config.meeting.corrections.list': 'liste, graphie, écriture, nom écorché, sigle, corriger',
+        'config.ai.aiHelp':
+          'assistant en réunion, orbe, sonnette, sons, voix, démarrage, par défaut',
+        'config.meeting':
+          'en réunion, pendant la réunion, en direct, enregistrement, transcription, live',
+        'config.meeting.aiHelp':
+          'assistant en réunion, orbe, sonnette, sons, voix, démarrage, par défaut',
+        'config.meeting.aiHelp.start': 'allumer, éteindre, démarrage, domaines, par défaut',
+        'config.meeting.aiHelp.sounds':
+          'son, sonnette, cloche, bip, notifications, muet, couper le son, silence, minuteur, décompte, mélodie',
+        'config.meeting.aiHelp.voice':
+          'voix, lire à voix haute, synthèse vocale, parler, lecture, tts, openai, mistral',
+        'config.meeting.audio': 'audio, son, micro, microphone, casque, entrée audio, périphérique',
+        'config.meeting.audio.mic': 'micro, microphone, casque, entrée, périphérique, headset',
+        'config.meeting.audio.system':
+          'visio, son de l’ordinateur, haut-parleur, blackhole, vb-cable, mixage stéréo, firefox, safari, teams, zoom, meet',
+        'config.actions': 'actions, après réunion, envoi, partage, export, compte rendu',
+        'config.actions.mail': 'mail, email, e-mail, courriel, envoi, destinataires, objet',
+        'config.actions.mail.send': 'mail, email, courriel, destinataires, objet, copie',
+        'config.actions.mail.tagRecipients': 'tags, destinataires par tag, liste de diffusion',
+        'config.actions.mail.filename':
+          'nom de fichier, nommage, renommer, pièce jointe, pdf, docx, téléchargement',
+        'config.actions.mail.afterSummary':
+          'fenêtre, et maintenant, proposition, popup, après le résumé',
+        'config.actions.storage':
+          'dépôt, déposer, drive, onedrive, sharepoint, dossier, classer, sauvegarder, archiver',
+        'config.actions.storage.folder':
+          'dossier, drive, onedrive, sharepoint, bibliothèque, confirmation, sous-dossier',
+        'config.actions.storage.tagFolders': 'dossier par tag, tags, sous-dossier, rangement',
+        'config.actions.mybrain': 'mybrain, cerveau, base de connaissances, équipe',
+        'config.actions.mybrain.send': 'mybrain, cerveau, partager, envoyer mes réunions',
+        'config.actions.mybrain.recent': 'mybrain, historique des envois, échec, réessayer',
+        'config.mail':
+          'google, microsoft, gmail, outlook, office 365, compte relié, connexion, autorisation, oauth',
+        'config.usage': 'statistiques, stats, consommation, quota, crédit, minutes, temps restant',
+        'config.templates': 'modèles, format, gabarit, compte rendu, résumé, structure',
+        'config.tags': 'étiquettes, classeurs, catégories, couleurs, ranger, clients, projets',
+        'config.tools': 'outils, utilitaires, importer, extension',
+        'config.tools.import':
+          'fichier audio, mp3, m4a, wav, téléverser, upload, enregistrement existant, dictaphone',
+        'config.tools.extension': 'chrome, navigateur, extension, raccourci clavier, edge, brave',
+        'config.help': 'aide, documentation, guide, mode d’emploi, tutoriel, faq',
+        'config.feedback': 'bug, problème, idée, suggestion, signaler, retour, support',
+        'admin.dashboard': 'accueil, tableau de bord, diagnostic, alertes, activité',
+        'admin.users':
+          'utilisateurs, comptes, personnes, rôle, administrateur, créer un compte, désactiver, supprimer, réinitialiser le mot de passe',
+        'admin.groups':
+          'groupes, équipes, membres, quota, minutes par mois, droits, infographies, aide ia',
+        'admin.ai': 'clés api, api key, token, fournisseurs, openai, mistral, speechmatics',
+        'admin.ai.openai': 'clé api, api key, gpt, chatgpt',
+        'admin.ai-models': 'modèles, llm, gpt, transcription, rédaction, résumé, prix, coût',
+        'admin.ai-models.summary': 'modèle de résumé, compte rendu, rédaction, gpt, llm',
+        'admin.ai-models.transcription':
+          'modèle de transcription, reconnaissance vocale, speech to text, temps réel',
+        'admin.ai-models.infographic': 'image, dessin, visuel, illustration, style graphique',
+        'admin.templates':
+          'modèles, gabarits, formats de compte rendu, templates par défaut, organisation',
+        'admin.actions': 'boutons, envoi, dépôt, téléchargement, après réunion, smtp, relais',
+        'admin.actions.email': 'mail, smtp, relais, destinataires maximum, objet, tiers',
+        'admin.actions.storage': 'drive, onedrive, sharepoint, dossier cible, dépôt',
+        'admin.actions.download': 'télécharger, pdf, docx, fichier',
+        'admin.actions.account':
+          'google, microsoft, gmail, outlook, sharepoint, fournisseur, compte relié',
+        'admin.actions.naming': 'nom de fichier, nommage, format',
+        'admin.aihelp': 'assistant, réunion, mot d’appel, domaines, interventions',
+        'admin.aihelp.access': 'groupes, droits, accès, qui',
+        'admin.aihelp.wake': 'prénom, nom, mot d’appel, déclencheur, wake word',
+        'admin.aihelp.pace': 'interventions, spontané, signalements, fréquence',
+        'admin.mybrain': 'mybrain, cerveau, base de connaissances, clé, connexion',
+        'admin.mybrain.connection': 'adresse, url, clé api, tester la connexion',
+        'admin.mybrain.policy': 'envoi des réunions, obligatoire, imposé, facultatif',
+        'admin.credits': 'crédit, quota, minutes, temps, épuisé, par compte',
+        'admin.stats':
+          'statistiques, consommation, coûts, dépenses, budget, rapport pdf, export, tarifs, usage',
+        'admin.company': 'entreprise, vocabulaire, glossaire, jargon, sigles, corrections',
+        'admin.company.context':
+          'vocabulaire, glossaire, jargon, sigles, acronymes, noms propres, contexte',
+        'admin.company.corrections':
+          'corrections, remplacer, orthographe, mots mal transcrits, dictionnaire',
+        'admin.branding': 'marque, apparence, logo, couleurs, thème, charte graphique',
+        'admin.branding.logo': 'logo, image, icône, marque',
+        'admin.branding.tagline': 'slogan, sous-titre, phrase d’accueil, tagline',
+        'admin.branding.colors': 'couleur, thème, charte, primaire, secondaire',
+        'admin.auth': 'connexion, login, sso, authentification, page de connexion',
+        'admin.auth.password': 'mot de passe, email, identifiants',
+        'admin.auth.google': 'google, workspace, sso, oauth, client id, secret',
+        'admin.auth.entra': 'microsoft, entra, azure ad, office 365, sso, oauth',
+        'admin.auth.domains': 'domaines autorisés, restriction, adresses, entreprise',
+      },
+    },
     // Modale de bienvenue (WelcomeContent), seule lectrice de ce bloc. Courte
     // exprès : une phrase, trois gestes, un rappel pour la visio. Le mode
     // d'emploi complet est la documentation en ligne, qu'ouvre « Aide ».
@@ -2575,12 +3515,15 @@ export const uiTextData = {
     // « Quel type de réunion ? », au démarrage sur ordinateur (MeetingTypeModal).
     meetingType: {
       title: 'Quel type de réunion ?',
+      // Sous le titre : dernier écran avant que l'enregistrement démarre.
+      consentTitle: 'Consentement obligatoire :',
+      consent: 'tous les participants doivent accepter l’enregistrement qui va démarrer.',
       inPerson: 'Réunion en présentiel',
       visio: 'Réunion avec visio',
       visioHint:
         'En visio : partagez l’onglet de la réunion — ou « Tout l’écran » pour l’application Teams ou Zoom — en cochant la case de l’audio.',
       // Firefox, Safari : pas de fenêtre de partage, le périphérique choisi
-      // dans Ma configuration → Réglages audio s'ouvre directement.
+      // dans Réglages → Pendant la réunion → Micro et son s'ouvre directement.
       visioHintDevice:
         'En visio : myBrief enregistre aussi le son de l’ordinateur, par « {device} ».',
       cancel: 'Annuler',
@@ -2591,7 +3534,7 @@ export const uiTextData = {
       title: 'Navigateur partiellement compatible',
       lead: "Firefox et Safari ne savent pas partager le son d'une visio ou d'une application : ici, myBrief n'enregistre que votre micro.",
       detail:
-        'Pour enregistrer aussi vos interlocuteurs, ouvrez myBrief dans Google Chrome ou Microsoft Edge, ou installez un périphérique audio virtuel et choisissez-le dans Ma configuration → Réglages audio.',
+        'Pour enregistrer aussi vos interlocuteurs, ouvrez myBrief dans Google Chrome ou Microsoft Edge, ou installez un périphérique audio virtuel et choisissez-le dans Réglages → Pendant la réunion → Micro et son.',
       note: 'Le micro fonctionne normalement.',
       configure: "Régler le son de l'ordinateur",
       ack: "J'ai compris",
@@ -2629,12 +3572,12 @@ export const uiTextData = {
         'Le document est trop volumineux pour être envoyé en pièce jointe. Téléchargez-le puis envoyez-le manuellement.',
       actionEmailError: "L'envoi par mail a échoué. Réessayez dans quelques instants.",
       actionStorageNotConnected:
-        "Le dépôt vers {provider} n'est pas configuré. Connectez votre compte dans « Ma configuration », ou contactez votre administrateur.",
+        "Le dépôt vers {provider} n'est pas configuré. Connectez votre compte dans « Réglages → Comptes connectés », ou contactez votre administrateur.",
       actionStorageReconnect:
-        "Votre compte n'autorise pas (ou plus) le dépôt de fichiers. Reconnectez-le dans « Ma configuration » pour accorder cet accès.",
+        "Votre compte n'autorise pas (ou plus) le dépôt de fichiers. Reconnectez-le dans « Réglages → Comptes connectés » pour accorder cet accès.",
       actionStorageError: 'Le dépôt a échoué. Réessayez dans quelques instants.',
       actionEmailDropped:
-        "Document envoyé à vous seul : ce serveur n'est pas autorisé à écrire à des destinataires externes. Reliez votre compte dans « Ma configuration » pour que vos envois partent de votre boîte.",
+        "Document envoyé à vous seul : ce serveur n'est pas autorisé à écrire à des destinataires externes. Reliez votre compte dans « Réglages → Comptes connectés » pour que vos envois partent de votre boîte.",
       actionTestEmailOk: 'Mail de test envoyé à {recipients} (via {via}).',
       actionTestStorageOk: 'Fichier de test « {filename} » déposé dans « {folder} ».',
       actionTestTooMany: 'Trop de tests en peu de temps. Réessayez dans quelques minutes.',
@@ -2739,14 +3682,22 @@ export const uiTextData = {
       running: 'En cours : {steps}…',
       tagApplied: 'Réunion rangée dans « {tag} ».',
       tagFailed: 'Le tag n’a pas pu être posé : rien n’est parti, réessayez depuis « Partager ».',
-      offerOff:
-        'Cette fenêtre ne s’ouvrira plus. Réactivez-la dans Ma configuration, rubrique Actions.',
+      offerOff: 'Cette fenêtre ne s’ouvrira plus. Réactivez-la dans Réglages → Après la réunion.',
     },
     aiNotice: {
       creditTitle: "Crédit d'IA épuisé",
       serviceTitle: 'Service IA indisponible',
       networkTitle: 'Connexion interrompue',
       dismiss: 'Fermer',
+    },
+    // Écran chargé à la demande (components/lazy/) dont le fichier n'arrive
+    // pas : réseau coupé, ou nouvelle version mise en ligne depuis l'ouverture.
+    lazyLoad: {
+      failed:
+        "Cet écran n'a pas pu se charger. Une nouvelle version de MyBrief est peut-être en ligne : rechargez la page.",
+      failedRecording:
+        "Cet écran n'a pas pu se charger. Rechargez la page à la fin de la réunion : une nouvelle version de MyBrief est peut-être en ligne.",
+      reload: 'Recharger',
     },
     continueRecording: {
       title: 'Toujours en réunion ?',
@@ -2859,6 +3810,13 @@ export const uiTextData = {
         ai_key_missing:
           'No OpenAI key: meetings are recorded, but nothing is transcribed or summarized.',
         ai_key_rejected: 'OpenAI rejects the saved key: transcription and summaries are stopped.',
+        ai_provider_key_missing:
+          '{provider} is chosen for transcription, but its key is not saved: nothing is transcribed.',
+        ai_provider_key_rejected: '{provider} rejects the saved key: transcription is stopped.',
+        ai_summary_provider_key_missing:
+          '{provider} is chosen for summaries, but its key is not saved: no summary is written.',
+        ai_summary_provider_key_rejected:
+          '{provider} rejects the saved key: summaries are stopped.',
         storage_provider_missing:
           '“Store” is offered, but no provider (Google or Microsoft) is chosen: the button does not appear.',
         mail_unavailable:
@@ -2873,6 +3831,8 @@ export const uiTextData = {
         prices_stale:
           'AI prices were checked {days} days ago: refresh them for accurate estimates.',
         branding_default: 'Logo, welcome line and colors are still the defaults.',
+        company_logo_missing:
+          "No company logo: infographics show the application's logo in its place.",
         org_context_empty:
           'No organization vocabulary: client names, projects and acronyms may be misspelled in summaries.',
         connection_missing:
@@ -2893,32 +3853,35 @@ export const uiTextData = {
     },
     adminAuth: {
       tabLabel: 'Authentication',
-      intro: 'Choose how your users sign in to myBrief.',
-      // ── "Sign-in page" card: the methods as displayed to users ──
+      // ── "Sign-in page" card: one pill per method, its details on click ──
       loginModesTitle: 'Sign-in page',
       loginModesIntro:
-        'The sign-in methods offered to your users, exactly as they appear on the sign-in page. Only the methods shown here are offered.',
+        'The sign-in methods offered to your users, exactly as they appear on the sign-in page. A green dot: the method is shown. Click a pill to set up its method.',
+      modesCount: '{count} of {total} shown',
+      modeNames: {
+        password: 'Email and password',
+        google: 'Google',
+        entra: 'Microsoft',
+        legacy: 'Legacy SSO',
+      },
       modeShown: 'Shown',
       modeHidden: 'Hidden',
-      modeToggle: 'Show',
+      modeChanged: 'Changed',
+      modeOffer: 'Offer on the sign-in page',
       modePassword: 'Email and password',
+      modePasswordUsage: 'For accounts that have a myBrief password.',
       modePasswordEnvOff:
         'Disabled by the deployment configuration (PASSWORD_LOGIN_ENABLED): this method stays hidden regardless of this setting.',
-      modeProviderHint:
-        'A provider appears once enabled in its card below, with complete, saved credentials.',
       modeLegacy: 'Legacy SSO (Traefik plugin)',
       modeLegacyHint:
         'Button served by the deployment plugin, alongside native sign-in. Hide it once the native switch is complete to declutter the page.',
       modeTest: 'Test',
+      modeTestInfoLabel: 'What the test does',
       modeTestHint:
         '"Test" runs the real sign-in flow in a new tab — the only test that proves the configuration end to end (secret, redirect URI, directory). Completing the flow with another account switches your session to that account.',
       noModeLeft:
         'At least one sign-in method must stay shown, otherwise nobody can sign in anymore — including you.',
-      providersTitle: 'Identity providers',
-      statusOn: 'Active',
-      statusOff: 'Inactive',
       googleTitle: 'Sign in with Google',
-      googleEnable: 'Enable',
       googleIntro:
         'Create a "Web application" OAuth client in Google Cloud Console, then paste the client ID and secret here.',
       entraTitle: 'Sign in with Microsoft Entra ID',
@@ -2938,6 +3901,7 @@ export const uiTextData = {
       secretEmpty: 'Paste the client secret',
       secretKeepHint: 'Leave empty to keep the current secret.',
       secretRequiredHint: 'The secret is required to enable Google sign-in.',
+      entraSecretRequiredHint: 'The secret is required to enable Microsoft sign-in.',
       redirectUri: 'Authorised redirect URI',
       redirectHint:
         'Copy this exactly into "Authorised redirect URIs" of your Google Cloud client.',
@@ -2945,7 +3909,12 @@ export const uiTextData = {
       redirectMailHint:
         'Second URI of the same Google Cloud client: used by the "Send by email" flow (users\' Gmail connection). Without it, the connection fails with redirect_uri_mismatch. The Gmail API must also be enabled in the project.',
       credentialsRequired: 'Fill in the client ID and secret before enabling Google sign-in.',
+      entraCredentialsRequired:
+        'An Entra credential is missing — secret, client ID or directory: Microsoft sign-in cannot be enabled.',
       domainsTitle: 'Allowed domains',
+      domainsNone: 'None',
+      domainsOne: '1 domain',
+      domainsMany: '{count} domains',
       domainsIntro:
         'A user signing in with Google or Microsoft from one of these domains automatically gets an account. Others are refused.',
       domainPlaceholder: 'example.com',
@@ -2953,26 +3922,50 @@ export const uiTextData = {
       domainRemove: 'Remove domain',
       domainEmpty:
         'No allowed domain: nobody can create an account through Google or Microsoft. Accounts already created by an administrator keep working.',
+      unsavedHint: 'Unsaved changes',
+      discardChanges: 'Discard',
       saved: 'Saved',
     },
     adminAi: {
-      tabLabel: 'AI',
-      intro:
-        'The OpenAI key powers transcription, summaries and action detection. Without it, recording still works but nothing is generated.',
+      tabLabel: 'API keys',
+      modelsTabLabel: 'Models',
+      providersTitle: 'AI providers',
+      providersCount: '{count} of {total} connected',
+      tileSummary: 'Summaries',
+      tileTranscription: 'Transcription',
+      tileInfographic: 'Infographic',
+      tileChanged: 'Changed',
+      tileKeyNeeded: 'Key required',
+      filterLabel: 'Provider',
+      filterAll: 'All',
+      pricesInfoLabel: 'How to read prices',
+      lockedModel: 'Locked: its provider’s key is missing',
+      openaiUsage: 'Summaries, actions, titles, infographic and transcription',
+      providerUsage: {
+        mistral: 'Transcription of live speech and imported files (Voxtral), and summary writing',
+        speechmatics: 'Transcription of live speech and imported files, processed in Europe',
+        assemblyai: 'Transcription of live speech and imported files',
+      },
+      providerConsoles: {
+        mistral: 'console.mistral.ai',
+        speechmatics: 'portal.speechmatics.com',
+        assemblyai: 'assemblyai.com/dashboard',
+      },
       keyTitle: 'OpenAI API key',
       keyIntro:
-        'Create a key on platform.openai.com, then paste it here. It never leaves the server.',
+        'Create a key on platform.openai.com, then paste it here: it is checked against OpenAI before being saved, and never leaves the server.',
+      keyReplace: 'Replace',
+      keyAdd: 'Add a key',
       statusOn: 'Configured',
       statusOff: 'Missing',
+      statusRequired: 'Required',
+      statusOptional: 'Optional',
       sourceSettings: 'Key saved from this screen:',
       sourceEnv: 'Key provided by the server configuration:',
       sourceNone: 'No key configured: transcription and summaries are unavailable.',
       updatedBy: 'Saved by',
-      keyLabel: 'New key',
       keyPlaceholderNew: 'sk-…',
       keyPlaceholderReplace: 'sk-… (replaces the current key)',
-      keyHelp:
-        'The key is checked against OpenAI before being saved: an invalid key is rejected here rather than breaking the application.',
       overrideEnvWarning:
         'This key will take precedence over the one in the server configuration file.',
       test: 'Test the key',
@@ -2981,7 +3974,7 @@ export const uiTextData = {
       clear: 'Remove the key',
       clearConfirm:
         'Remove the saved key? The application will fall back to the one in the server configuration file, if any.',
-      saved: 'Key saved',
+      saved: 'OpenAI key saved',
       modelTitle: 'Transcription model',
       modelIntro:
         'Model that transcribes speech live while recording. It changes neither summaries nor action detection.',
@@ -3005,8 +3998,15 @@ export const uiTextData = {
       priceDeltaMore: '{amount} more per hour than the model in use.',
       priceDeltaSame: 'Same price per hour as the model in use.',
       pricesBasis:
-        "Cost of one hour of transcription, at OpenAI's public rate converted to euros. Each extra € means a price roughly twice as high. In a video meeting, the other side's sound is transcribed separately: up to twice this cost.",
-      pricesRefreshLink: 'Refresh prices in Statistics',
+        "Cost of one hour of transcription, at its provider's public rate converted to euros. Each extra € means a price roughly twice as high. In a video meeting, the other side's sound is transcribed separately: up to twice this cost.",
+      pricesRefreshLink: 'Refresh prices in Usage',
+      pricePerSummary: '/summary',
+      summaryPriceCaption: 'Estimated cost of a summary · one-hour meeting',
+      summaryPricesBasis:
+        "The cost shown is that of a summary of a one-hour meeting, estimated with the Usage page's assumptions and the provider's public rate converted to euros. It is approximate: it follows the meeting's length and how much the model writes. Each extra € means a price roughly four times as high.",
+      summaryDeltaLess: '{amount} less per summary than the model in use.',
+      summaryDeltaMore: '{amount} more per summary than the model in use.',
+      summaryDeltaSame: 'Same price per summary as the model in use.',
       summaryTitle: 'Summary writing model',
       summaryIntro:
         'Model that writes the meeting summary from the transcript. It decides the length, clarity and structure of the result — the most visible setting on this screen.',
@@ -3023,44 +4023,82 @@ export const uiTextData = {
       summarySaved: 'Writing model saved',
       infographicTitle: 'Meeting infographic',
       infographicIntro:
-        'Offers, when generating a summary, to create a meeting infographic — an image generated by OpenAI from the transcript, the actions and the notes.',
+        'Offers, when generating a summary, to create the meeting infographic: the AI writes its content from the transcript, the actions and the notes, and picks one of six templates — Overview, Decision, Roadmap, Dashboard, Workshop, Review.',
       infographicToggleLabel: 'Offer the infographic',
       infographicHelp:
-        'When disabled, the "Generate an infographic" checkbox disappears for every account. When enabled, each group decides who can use it, in the Groups tab. Each requested image is billed on the OpenAI key above.',
+        'When disabled, the "Infographic" option disappears from the generation card for every account. When enabled, each group decides who can use it, in People → Groups. Each requested infographic is one call to the text model, billed on the OpenAI key (API keys page).',
       infographicOn: 'Offered',
+      infographicTileSub: 'Six templates',
+      infographicLookHelp:
+        'Infographics use the logo and colours from Organisation → Brand & appearance: changing them also changes how existing infographics look.',
       infographicOff: 'Hidden',
       infographicSaved: 'Infographic setting saved',
-      infographicModelLabel: 'Model that draws the image',
-      infographicModelSourceEnv: 'Model imposed by the server configuration.',
-      infographicModelSourceDefault: 'Application default model.',
-      infographicModelOffList:
-        'This model comes from the server configuration and is not among the choices offered here. Picking one from this list would replace it, with no way back from this screen.',
-      infographicModelHelp:
-        'Every image is billed when generated: a faster model is also a cheaper one. The format stays a portrait page, whichever model is used.',
-      infographicModelSaved: 'Infographic model saved',
-      infographicStyleLabel: 'Graphic style (optional)',
-      infographicStylePlaceholder:
-        'E.g.: use purple, orange and pink. Charts are clean and professional. Our company name in the top left corner.',
-      infographicStyleHelp:
-        'Style guidance attached to every image: colors, tone of the charts, wording to display. Left empty, the model picks its own palette and layout.',
-      infographicStyleSaved: 'Graphic style saved',
       unsavedHint: 'Unsaved changes',
       discardChanges: 'Discard',
       models: {
         'gpt-realtime-whisper': 'Long-standing default — word by word, proven on long meetings',
         'gpt-live-transcribe': 'Built for live — word by word, same family as the default',
         'gpt-transcribe': 'Newest — word by word, final text repunctuated per segment',
+        'voxtral-mini-transcribe-realtime-2602':
+          'Word by word, punctuated as people speak. Stable version',
+        'voxtral-mini-transcribe-realtime-3-0':
+          'Mistral’s newest, more languages. In public preview',
+        'speechmatics-melia-1': 'Speechmatics’ newest, switches between languages on its own',
+        'speechmatics-enhanced': 'Speechmatics’ most proven, very accurate in French',
+        'universal-3-6-pro':
+          'AssemblyAI’s most accurate, 32 languages. Billed by meeting duration, pauses included',
+        'universal-streaming-multilingual':
+          'AssemblyAI’s cheapest, 6 languages including French. Billed by meeting duration',
       },
+      modelNames: {
+        'gpt-6-astra': 'GPT-6 Astra',
+        'gpt-6.1-sol': 'GPT-6.1 Sol',
+        'gpt-6-luna': 'GPT-6 Luna',
+        'gpt-5.6-sol': 'GPT-5.6 Sol',
+        'gpt-5.4': 'GPT-5.4',
+        'gpt-5.4-mini': 'GPT-5.4 mini',
+        'mistral-large-4': 'Mistral Large 4',
+        'mistral-medium-3-5': 'Mistral Medium 3.5',
+        'mistral-large-2512': 'Mistral Large 3',
+        'mistral-small-2603': 'Mistral Small 4',
+        'gpt-realtime-whisper': 'GPT Realtime Whisper',
+        'gpt-live-transcribe': 'GPT Live Transcribe',
+        'gpt-transcribe': 'GPT Transcribe',
+        'voxtral-mini-transcribe-realtime-2602': 'Voxtral Realtime',
+        'voxtral-mini-transcribe-realtime-3-0': 'Voxtral Realtime 3',
+        'speechmatics-melia-1': 'Melia 1',
+        'speechmatics-enhanced': 'Enhanced',
+        'universal-3-6-pro': 'Universal-3.6 Pro',
+        'universal-streaming-multilingual': 'Universal-Streaming Multilingual',
+      },
+      providers: {
+        openai: 'OpenAI',
+        mistral: 'Mistral',
+        speechmatics: 'Speechmatics',
+        assemblyai: 'AssemblyAI',
+      },
+      providerLocked: 'Add a {provider} key to pick these models.',
+      providerUnlock: 'Add the {provider} key',
+      providerKeyLabel: '{provider} API key',
+      providerKeyHelp:
+        'Create a key on {console}, then paste it here: it is checked against {provider} before being saved, and never leaves the server.',
+      providerKeyPlaceholderNew: 'Paste your {provider} key',
+      providerKeyPlaceholderReplace: 'Replace with a new key',
+      providerKeyNeeded: 'This model needs a {provider} key.',
+      providerKeyClearConfirm:
+        'Remove the {provider} key? Its models can no longer be chosen until a key is pasted again.',
+      providerKeyStored: '{provider} key saved',
       summaryModels: {
-        'gpt-5.6-sol':
-          'GPT-5.6 Sol — the most capable tier, deepest reasoning. The most expensive.',
-        'gpt-5.4': 'Recommended — the best quality/price balance for a meeting summary',
-        'gpt-5.4-mini': 'Cheapest and fastest — a more compact summary, with less nuance',
-      },
-      infographicModels: {
-        'gpt-image-2.5-flare':
-          'Recommended — GPT-Image-2.5 Flare: sharper images than the previous generation, and about twice as fast.',
-        'gpt-image-2': 'The previous generation — slower, proven on meeting infographics.',
+        'gpt-6-astra': 'OpenAI’s most capable, deepest reasoning — and by far the most expensive',
+        'gpt-6.1-sol': 'Close to Astra on complex meetings, at a fifth of the price',
+        'gpt-5.6-sol': 'Previous generation, its most capable tier',
+        'gpt-5.4': 'Recommended — proven on our summaries: the best structure for the price',
+        'gpt-5.4-mini': 'Cheap and fast — a more compact summary, with less nuance',
+        'gpt-6-luna': 'OpenAI’s lightest and cheapest — for simple meetings',
+        'mistral-large-4': 'Mistral’s most capable. In public preview',
+        'mistral-medium-3-5': 'Mistral’s latest stable model, versatile',
+        'mistral-large-2512': 'Mistral’s proven large model, at a low price',
+        'mistral-small-2603': 'Mistral’s lightest and cheapest',
       },
       errors: {
         openai_key_doubled_prefix:
@@ -3071,14 +4109,54 @@ export const uiTextData = {
         transcription_model_rejected: 'OpenAI rejected this transcription model.',
         summary_model_rejected:
           'OpenAI rejected this writing model — your organization probably cannot access it.',
+        provider_key_missing:
+          'This model needs a {provider} key: save it on the API keys page, then choose the model.',
+        provider_key_in_use:
+          'A {provider} model is still in use with this key (transcription or summaries): pick another provider’s model first, then remove it.',
+        provider_key_rejected: '{provider} rejected this key.',
+        provider_key_malformed: 'This does not look like a {provider} key.',
+        provider_key_looks_openai:
+          'This is an OpenAI key ("sk-…"): paste the key created at {provider} here.',
+        provider_model_rejected:
+          '{provider} rejected this model — your account probably cannot access it.',
       },
     },
     adminBranding: {
-      tabLabel: 'Configuration',
-      intro:
-        "What applies to the whole installation: your organisation's vocabulary, attached to every summary, automatic transcript corrections, and myBrief's appearance — logo, sidebar tagline, interface colors.",
-      logoTitle: 'Logo',
-      logoIntro: 'Shown in the sidebar, on the sign-in screen and on the welcome screen.',
+      tabLabel: 'Brand & appearance',
+      companyTabLabel: 'Company',
+      // ── Folded dashboard: two groups of tiles, one setting unfolded on click ──
+      groupWords: "Your organisation's words",
+      groupLook: 'Appearance',
+      tileContext: 'Vocabulary',
+      tileContextEmpty: 'Attached to every summary',
+      tileCorrections: 'Corrections',
+      tileCorrectionsEmpty: 'Words replaced during meetings',
+      tileCompanyLogo: 'Company logo',
+      tileCompanyLogoSub: 'At the top of infographics',
+      tileCompanyLogoMissing: 'To add',
+      tileLogo: 'Application logo',
+      tileLogoSub: 'Sidebar, sign-in, welcome screen, infographic footer',
+      tileTagline: 'Tagline',
+      tileTaglineDefault: 'Default tagline',
+      tileTaglineSub: 'Under the name, in the sidebar',
+      tileTaglineEn: 'In English: {text}',
+      tileColors: 'Colors',
+      tileColorsCustom: 'Customised',
+      tileColorsDefault: 'Original colors',
+      tileChanged: 'Changed',
+      tileInvalid: 'To fix',
+      companyLogoTitle: 'Company logo',
+      companyLogoIntro:
+        'Opens every infographic and every PDF summary, top left. A wide logo fits better than a square one.',
+      companyLogoSetBadge: 'Added',
+      companyLogoMissingBadge: 'Missing',
+      companyLogoFallback: "Until then, infographics show the application's logo in its place.",
+      companyLogoPreviewAlt: 'Company logo preview',
+      companyLogoReset: 'Remove the company logo',
+      companyLogoHint: 'PNG, JPEG, WebP or SVG, {max} KB max. Wide format recommended.',
+      logoTitle: 'Application logo',
+      logoIntro:
+        'Shown in the sidebar, on the sign-in screen, on the welcome screen, and at the foot of every infographic.',
       logoCustomBadge: 'Custom',
       logoDefaultBadge: 'Built-in logo',
       logoPreviewAlt: 'Logo preview',
@@ -3186,7 +4264,7 @@ export const uiTextData = {
     adminTemplates: {
       tabLabel: 'Templates',
       intro:
-        'The summary templates offered to every account: the app’s built-in defaults — editable below — plus the ones you create. Anyone can also add their own under "My settings".',
+        'The summary templates offered to every account: the app’s built-in defaults — editable below — plus the ones you create. Anyone can also add their own under "Settings → My templates".',
       loading: 'Loading…',
       empty: 'No custom template. The built-in default templates are used.',
       defaultBadge: 'default',
@@ -3259,6 +4337,48 @@ export const uiTextData = {
       copySuffix: '(copie)',
       copySuffixEn: '(copy)',
     },
+    // Settings → During the meeting → Replaced words (settings/CorrectionsSection):
+    // the ACCOUNT's corrections list. `card` overrides the texts of the card
+    // shared with the administration (adminTranscriptCorrections).
+    configCorrections: {
+      intro:
+        'Words the transcription gets wrong in YOUR meetings, replaced automatically at the end of each sentence. They come on top of the ones your administrator set for everyone.',
+      learnTitle: 'Remember the replacements in my notes',
+      learnHint:
+        'Writing “Replace Durend with Durand” in a meeting’s notes adds the replacement to your list: no need to write it again in the next meeting.',
+      learnLabel: 'Add the replacements written in my notes to my list',
+      learnScope:
+        'Replacements are kept when both words sound almost the same — the mark of a mistranscribed word. A replacement such as “Replace Bob with Robert” only applies to its meeting: add it below if you want it everywhere.',
+      learnOff: 'Off: a replacement written in your notes only applies to its meeting.',
+      card: {
+        title: 'My replaced words',
+        intro: 'What the transcription gets wrong in your meetings, and what to write instead.',
+        scopeTitle: 'Applies to your meetings only.',
+        scopeText:
+          'Remove a replacement that was only meant for one meeting: it applies to every later one, even where the word was right.',
+        fromPlaceholder: 'E.g. Durend, Durant',
+        toPlaceholder: 'E.g. Durand',
+        rowLabel: 'Replacement {n}',
+        remove: 'Remove this replacement',
+        add: 'Add a replacement',
+        limitReached:
+          'Limit of {max} replacements reached: remove one to add another. Until then, the ones in your notes are no longer kept.',
+        emptyTitle: 'No replaced word yet.',
+        emptyText:
+          'Add one when a name keeps coming back misspelled meeting after meeting — or write the replacement in your notes. For example:',
+        emptyFrom: 'Durend',
+        emptyTo: 'Durand',
+        tryPlaceholder: 'E.g. We met Mr Durend yesterday.',
+      },
+      discardChanges: 'Cancel',
+      save: 'Save',
+      saving: 'Saving…',
+      saved: 'Saved',
+      errors: {
+        network: 'Could not connect. Check your network, then try again.',
+        unknown: 'Saving failed. Try again.',
+      },
+    },
     configActionDetection: {
       tabLabel: 'Action detection',
       intro:
@@ -3274,11 +4394,11 @@ export const uiTextData = {
       sensitivityLabel: 'Sensitivity',
       sensitivity: {
         explicit: {
-          label: 'Strict',
+          label: 'Strict (default)',
           hint: 'Only what is announced as an action. Little noise, but a commitment made in passing goes unnoticed.',
         },
         balanced: {
-          label: 'Balanced (recommended)',
+          label: 'Balanced',
           hint: 'Announced actions, plus those someone takes on or is handed — “I’ll take care of it”, “can you follow up with the client?”. A need voiced with nobody picking it up is ignored.',
         },
         wide: {
@@ -3337,7 +4457,7 @@ export const uiTextData = {
       },
     },
     adminStats: {
-      tabLabel: 'Statistics',
+      tabLabel: 'Usage',
       intro:
         'How myBrief is used over the selected period: meetings, recorded time, active accounts. Aggregate figures only, never meeting contents.',
       rangeLabel: 'Observed period',
@@ -3592,7 +4712,7 @@ export const uiTextData = {
         colShare: 'Share',
         compareTitle: 'Compare models',
         compareIntro:
-          'What the same activity would have cost with each model offered in the AI tab. Only the price changes: quality is best judged by trying.',
+          'What the same activity would have cost with each model offered in Administration (AI models). Only the price changes: quality is best judged by trying.',
         colModel: 'Model',
         colTariff: 'Public price',
         colDelta: 'Difference per month',
@@ -3616,9 +4736,9 @@ export const uiTextData = {
           detection:
             'Action detection: about {calls} analyses per recorded hour, for accounts that turned it on.',
           image:
-            'Infographic: one high-quality portrait page, i.e. {tokens} image tokens. Only the latest image of a meeting is counted.',
+            'Infographic: one call to the text model, about {tokens} written tokens — its layout costs nothing. Only the latest infographic of a meeting is counted.',
           excluded:
-            'Not counted: audio file imports, transcript proofreading from notes, and tests from the AI tab.',
+            'Not counted: audio file imports, transcript proofreading from notes, and tests from AI models.',
         },
         sources: {
           builtin: 'built into myBrief',
@@ -3648,8 +4768,6 @@ export const uiTextData = {
     },
     adminActions: {
       tabLabel: 'Actions',
-      intro:
-        'Choose the actions offered to users at the end of each meeting and after each summary generation.',
       meetingTitle: 'After each meeting',
       summaryTitle: 'After each summary',
       summaryIntro: 'Buttons offered on every generated summary.',
@@ -3722,6 +4840,29 @@ export const uiTextData = {
         'File names when the user has set nothing of their own. Click a variable to insert it.',
       testEmailDisabled: 'No SMTP relay configured on this server.',
       testStorageDisabled: 'Choose a provider first.',
+      chooseAccount: 'Choose the connected account',
+      // ── Folded dashboard: the preview, one tile per button and per shared setting ──
+      groupButtons: 'The buttons offered',
+      groupShared: 'Shared settings',
+      tileScopeBoth: 'Meeting and summary',
+      tileScopeMeeting: 'After the meeting',
+      tileScopeSummary: 'After the summary',
+      tileScopeNone: 'Off',
+      tileMailSub: '{max} recipients at most',
+      tileMailBlocked: 'No relay',
+      tileStorageBlocked: 'Account required',
+      tileFolder: 'Folder: {folder}',
+      tileFolderDefault: '“myBrief” folder',
+      tileNoAccount: 'No connected account',
+      tileDownloadSub: 'No account or relay needed',
+      tileAccountSub: 'Email sending and storage',
+      tileAccountNone: 'Email through the server relay, no storage',
+      tileSharePointOn: 'SharePoint libraries offered',
+      tileSharePointOff: 'OneDrive only',
+      tileNaming: 'File names',
+      tileNamingDefault: 'Usual format',
+      tileNamingSub: 'When the user has set nothing',
+      tileChanged: 'Changed',
       unsavedHint: 'Unsaved changes',
       discardChanges: 'Discard',
     },
@@ -3768,11 +4909,11 @@ export const uiTextData = {
         off: { label: 'Off', hint: 'No meeting is sent to MyBrain.' },
         optin: {
           label: 'Each user decides',
-          hint: 'Everyone turns sending on in My configuration → MyBrain. Nothing is sent until they do.',
+          hint: 'Everyone turns sending on in Settings → After the meeting → MyBrain. Nothing is sent until they do.',
         },
         forced: {
           label: 'Required for everyone',
-          hint: 'Meetings from every account are sent. Everyone sees it in My configuration → MyBrain, without being able to turn it off.',
+          hint: 'Meetings from every account are sent. Everyone sees it in Settings → After the meeting → MyBrain, without being able to turn it off.',
         },
       },
       policyNotConfigured: 'Nothing is sent until the MyBrain connection is configured.',
@@ -3902,14 +5043,14 @@ export const uiTextData = {
       menuLabel: 'My account',
       guest: 'Guest',
       changePasswordTitle: 'Change password',
-      groupsLabel: 'Your groups',
+      groupsLabel: 'Your group',
       groupsHint: 'Assigned by your administrator.',
       capsuleRemaining: '{remaining} left',
       thisMonth: 'This month',
       monthMeetings: 'Meetings',
       monthRecorded: 'Recorded',
       monthSummaries: 'Summaries',
-      seeStats: 'See my statistics',
+      seeStats: 'See details',
       language: 'Language',
       forcedTitle: 'Choose your password',
       forcedMessage:
@@ -3929,14 +5070,33 @@ export const uiTextData = {
         unknown: 'Something went wrong. Please try again.',
       },
     },
+    adminDashboard: {
+      tabLabel: 'Dashboard',
+      intro: 'What is left to fix in the organization, and the page where to fix it.',
+      issuesTitle: 'To fix',
+      issuesEmpty: 'Nothing to fix: the installation is in order.',
+      levels: { error: 'Outage', warning: 'Setting with no effect', tip: 'Tip' },
+      activityTitle: 'Activity over the last 30 days',
+      activityLink: 'See usage',
+      meetings: 'Meetings',
+      recorded: 'Recorded time',
+      activeAccounts: 'Active accounts',
+      activeOf: '{active} of {total}',
+      activityError: 'Figures are not available right now.',
+    },
     adminPanel: {
       sectionsLabel: 'Administration sections',
+      groupPeople: 'People',
+      groupModels: 'AI models',
+      groupCapabilities: 'Capabilities',
+      groupCosts: 'Costs',
+      groupOrganization: 'Organization',
       restricted: 'Restricted to administrators.',
       noAccess: 'The account {email} has no access to administration.',
       signInRequired: 'Sign in to access administration.',
     },
     adminUsers: {
-      tabLabel: 'Users',
+      tabLabel: 'Accounts',
       intro: 'The accounts that use myBrief on this installation. Click an account to edit it.',
       searchPlaceholder: 'Search for a user…',
       createButton: 'New user',
@@ -3989,14 +5149,15 @@ export const uiTextData = {
         'This deletes the account {email} along with all its meetings, personal templates and configuration. It cannot be undone.',
       deleteConfirmLabel: 'Type {email} to confirm',
       deleteConfirm: 'Delete permanently',
-      groupsLabel: 'Groups',
-      groupsHint: 'Tick the account’s groups. Nothing ticked: it stays in the default group.',
+      groupsLabel: 'Group',
+      groupsHint:
+        'One group per account. Made an administrator, the account joins the administrators’ group; back to user, it leaves it for the default group.',
       groupFilterLabel: 'Filter by group',
       groupFilterAll: 'All groups',
       emptyForGroup: 'No users in this group.',
       errors: {
         email_taken: 'An account already exists with this address.',
-        group_not_found: 'One of the chosen groups no longer exists. Reload the page.',
+        group_not_found: 'The chosen group no longer exists. Reload the page.',
         no_login_mode_left:
           'Cannot save: no sign-in method would remain shown on the sign-in page.',
         last_admin: 'Not possible: this is the last active administrator.',
@@ -4011,14 +5172,17 @@ export const uiTextData = {
     adminGroups: {
       tabLabel: 'Groups',
       intro:
-        "Sets of users: departments, teams, profiles. Every account belongs to at least one group: the default one welcomes every new account, and any account left without another group. A group can cap its members' meeting minutes.",
+        "Sets of users: departments, teams, profiles. Every account belongs to exactly one group: the default one welcomes every new account, the administrators' one every account that becomes an administrator. A group can cap its members' meeting minutes.",
       counter: '{count} / {max}',
       createButton: '+ New group',
       loading: 'Loading…',
       empty: 'No groups.',
       defaultBadge: 'Default',
       defaultHint:
-        'Every new account joins it, and an account removed from its last group returns to it. It can be renamed, not deleted.',
+        'Every new account joins it, and an account removed from its group returns to it. It can be renamed, not deleted.',
+      adminBadge: 'Administrators',
+      adminHint:
+        'Every account promoted to administrator joins it, and leaves it if demoted. It can be renamed, not deleted.',
       membersNone: 'No members',
       membersOne: '1 member',
       membersMany: '{n} members',
@@ -4045,14 +5209,12 @@ export const uiTextData = {
       addMemberAllIn: 'Every account found is already in this group.',
       adding: 'Adding…',
       remove: 'Remove',
-      removeHint: 'Remove from this group',
-      removeLastHint: 'This is their last group: removed from here, they return to “{default}”.',
-      removeOnlyDefaultHint: 'This is their only group: they stay here until they have another.',
+      removeLastHint: 'Removed from here, they return to “{default}”.',
+      removeOnlyDefaultHint: 'One only leaves the default group by joining another group.',
+      currentGroup: 'Currently in',
       noMembers: 'Nobody in this group yet. Add members above, or from each account’s details.',
-      otherGroups: 'Also in',
       deleteTitle: 'Delete this group',
-      deleteMessage:
-        'Delete “{name}”? Its members stay in their other groups; those without another one return to “{default}”. No account is deleted.',
+      deleteMessage: 'Delete “{name}”? Its members return to “{default}”. No account is deleted.',
       deleteConfirm: 'Delete the group',
       quotaLabel: 'Meeting minutes per month',
       quotaUnlimited: 'Unlimited',
@@ -4060,16 +5222,22 @@ export const uiTextData = {
       quotaUnit: 'min per month and per person',
       quotaMinutesLabel: 'Minutes per month',
       quotaHint:
-        'An account in several groups keeps the most generous quota, and “Unlimited” wins. Everyone sees their meter at the bottom of the left column.',
+        'Each member gets this quota for themselves: moving someone to another group changes their quota. Everyone sees their meter at the bottom of the left column.',
       quotaPill: '{minutes} min / month',
       quotaPillUnlimited: 'Unlimited',
       rightsLabel: 'Rights',
       infographicLabel: 'Generate infographics',
-      infographicHint:
-        'Members can create the infographic of a meeting summary. Rights add up: one of their groups is enough.',
+      infographicHint: 'Members can create the infographic of a meeting summary.',
       infographicPill: 'Infographics',
+      aiHelpLabel: 'AI Help in meetings',
+      aiHelpHint: 'Members can turn on AI Help during their meetings.',
+      aiHelpPill: 'AI Help',
+      aiHelpMyBrainLabel: 'AI Help with myBrain',
+      aiHelpMyBrainHint:
+        'These members’ AI Help reads the shared myBrain wiki — the same access for the whole group.',
+      aiHelpMyBrainPill: 'AI Help + myBrain',
       infographicGlobalOff:
-        'The AI tab does not offer infographics at the moment: this right will apply once they are turned on there.',
+        'The AI models section does not offer infographics at the moment: this right will apply once they are turned on there.',
       peopleTitle: 'Users',
       peopleHint: 'Drag an account onto a group, or select it and then choose the group.',
       peopleSearch: 'Search accounts…',
@@ -4077,9 +5245,9 @@ export const uiTextData = {
       peopleTruncated: '{shown} of {total} accounts shown: search to find the others.',
       pickedHint: 'Choose a group for {name}.',
       dropHere: 'Drop here',
-      dropRelease: 'Release to add',
-      dropAdd: 'Add {name} here',
-      dropAddTo: 'Add {name} to {group}',
+      dropRelease: 'Release to move',
+      dropAdd: 'Move {name} here',
+      dropAddTo: 'Move {name} to {group}',
       dropAlready: 'Already in this group',
       addedTo: '{name} is now in {group}.',
       errors: {
@@ -4092,6 +5260,7 @@ export const uiTextData = {
         limit_reached: 'Maximum number of groups reached ({max}).',
         group_not_found: 'This group no longer exists.',
         default_group: 'The default group cannot be deleted.',
+        admin_group: 'The administrators’ group cannot be deleted.',
         user_not_found: 'One of the accounts no longer exists. Reload the page.',
         invalid_body: 'Check the fields you filled in.',
         forbidden: 'You do not have the required permissions.',
@@ -4110,6 +5279,8 @@ export const uiTextData = {
       gapMarker: '⟨ Offline passage — transcription deferred until the network returns ⟩',
       markerAuthor: 'MyBrief',
       gapResolved: '✅ Offline passage transcribed and reinserted',
+      interruptionMarker: '⟨ Recording interrupted for {duration} ⟩',
+      lostMarker: '⟨ Offline passage not transcribed — the app closed first ⟩',
       pendingAtStop:
         '⏳ {count} offline passage(s) awaiting transcription — will upload automatically when the network returns, keep the app open',
     },
@@ -4140,6 +5311,7 @@ export const uiTextData = {
       myTemplates: 'My templates',
       myTags: 'My tags',
       configuration: 'Settings',
+      adminShort: 'Admin',
     },
     sections: {
       summaryTitle: '📝 Summary',
@@ -4184,20 +5356,22 @@ export const uiTextData = {
       recorderPrepError: 'Error while preparing local recording',
       recordingInProgress: 'Recording in progress',
       recordingFinished: 'Recording finished',
-      microphoneMuted: '⚠️ Microphone muted detected',
-      microphoneEnded: '❌ Microphone disabled',
       connectionLost: '⚠️ Connection lost, reconnecting...',
       connectionRestored: '✅ Connection restored',
       transcriptionInterrupted: '⚠️ Transcription interrupted, reconnecting...',
       transcriptionCreditExhausted: '❌ AI credit exhausted — transcription paused',
       transcriptionLimited: '⚠️ Transcription service temporarily throttled',
-      audioContextSuspended: '⚠️ Audio suspended, reactivating...',
-      audioContextResumed: '✅ Audio reactivated',
-      appBackgrounded: '⚠️ App in background - recording may be interrupted',
-      appResumed: '✅ App resumed',
-      microphoneReactivated: '✅ Microphone reactivated',
-      microphoneReactivationFailed: '❌ Could not reactivate microphone',
-      recordingInterrupted: '⚠️ Recording interrupted - press Resume',
+      captureResumed: '✅ Recording resumed after a {duration} interruption',
+      // Replacement written in the notes, added to the account's "Replaced
+      // words" (utils/noteLearning.js). {from} → {to}; {n}, {max}.
+      replacementLearned:
+        '✅ “{from}” will be replaced with “{to}” in your next meetings (Settings → During the meeting → Replaced words)',
+      replacementsLearned:
+        '✅ {n} replacements from your notes kept for your next meetings (Settings → During the meeting → Replaced words)',
+      replacementsFull:
+        '⚠️ Your replaced words are full ({max}): remove some in Settings → During the meeting → Replaced words so the next ones are kept',
+      recordingInterrupted:
+        '⚠️ Recording interrupted (call, other app) — tap the screen to resume it',
       summaryGenerating: 'Generating summary...',
       summaryReady: 'Summary generated',
       summaryError: 'Error while generating the summary',
@@ -4252,7 +5426,7 @@ export const uiTextData = {
       micDenied:
         'Microphone blocked: allow it for MyBrief in your browser or phone settings, then start again.',
       micNotFound:
-        'No microphone found. Plug one in, or pick another one in My configuration, then try again.',
+        'No microphone found. Plug one in, or pick another one in Settings → During the meeting → Microphone and sound, then try again.',
       micBusy: 'The microphone is already in use by another app. Close it, then try again.',
       recordingStartFailed: 'The recording could not start. Please try again in a moment.',
       notesActionsSaveError: 'Saving notes and actions failed — your latest edits are not stored.',
@@ -4320,6 +5494,13 @@ export const uiTextData = {
       tagNone: 'No tag',
       tagManage: 'Manage tags…',
       tagNoneYet: 'No tag created yet',
+      // Tag picker search — in the name AND the context of tags.
+      tagSearch: 'Search tags',
+      tagSearchCreate: 'Search or create a tag…',
+      tagRecent: 'Recent',
+      tagAll: 'All tags',
+      tagNoMatch: 'No matching tag.',
+      tagCreate: 'Create “{label}”',
       filterAll: 'All',
       filterUntagged: 'Untagged',
       filterLabel: 'Filter by tag',
@@ -4347,14 +5528,13 @@ export const uiTextData = {
       blockedShort: 'Quota reached',
       exhaustedToast:
         'Your meeting minutes for this month are used up: they reset on 1 {month}. Your administrator can raise your group’s quota.',
+      exhaustedLiveToast:
+        'Your meeting minutes for this month are used up. Recording continues until you stop it, but you won’t be able to start another meeting before 1 {month}.',
       minutesOnly: '{m} min',
       hoursOnly: '{h} h',
       hoursMinutes: '{h} h {m} min',
     },
     myStats: {
-      title: 'My statistics',
-      navTitle: 'Statistics',
-      navMe: 'My statistics',
       creditsTabLabel: 'Time credit',
       intro:
         "Your use of MyBrief: your meetings, recorded time and this month's time credit. Figures only, never what was said in your meetings.",
@@ -4442,6 +5622,370 @@ export const uiTextData = {
         unknown: 'Statistics could not be loaded. Try again in a moment.',
       },
     },
+    // Meeting AI Help (components/aiHelp/, stores/aiHelp.js). `{name}` is the
+    // wake word set by the administration ("Alfred").
+    aiHelp: {
+      name: 'AI Help',
+      setupSwitch: 'AI Help for this meeting',
+      setupOn:
+        '{name} follows the meeting and steps in in writing; a sound announces its alerts, its ideas and what it does for you.',
+      setupOff: 'Off for this meeting.',
+      setupNote:
+        'Settings carried over from your last meeting. The project is recognised from the tag or from what is said. Everything changes in one click during the meeting.',
+      setupNoteNoBrain:
+        'Settings carried over from your last meeting. {name} relies on the meeting, your notes and the agenda. Everything changes in one click during the meeting.',
+      domainsLabel: 'Areas of intervention',
+      domains: {
+        project: {
+          title: 'Project guardrail',
+          hint: 'Alerts when a decision contradicts the project.',
+        },
+        qa: {
+          title: 'Questions & answers',
+          hint: 'Answers your questions. Without them, {name} still does what you ask.',
+        },
+        agenda: { title: 'Agenda', hint: 'Keeps the items, recalls the forgotten ones.' },
+        ideas: { title: 'Idea box', hint: 'Suggests a lead from time to time.' },
+      },
+      agendaLabel: 'Items to cover',
+      agendaHint: 'one per line',
+      agendaPlaceholder: 'Phase 2 progress\nRisks\nBudget',
+      agendaVoiceHint:
+        'Or announce them in the meeting — “on the agenda: …” — and {name} keeps them.',
+      agendaEmpty: 'No item yet. Announce them aloud — “on the agenda: …” — or add one.',
+      agendaAddLabel: 'Add an item to the agenda',
+      agendaAddPlaceholder: 'Add an item…',
+      agendaAdd: 'Add this item',
+      agendaRemove: 'Remove “{point}” from the agenda',
+      agendaHeard: 'Kept from what was said in the meeting',
+      agendaEdit: 'Fix',
+      agendaEvents: {
+        noted: 'I have noted the agenda',
+        closing: 'The meeting is ending: some items were not covered',
+      },
+      pillOn: 'AI Help is on — click to turn it off',
+      pillOff: 'AI Help is off — click to turn it on',
+      turnedOn: 'AI Help on',
+      turnedOff: 'AI Help off',
+      wakeSay: '“{name}, …”',
+      wakeLabel: '“{name}”',
+      wakeHint: 'To talk to it, start your sentence with “{name}”',
+      domainsOpen: 'Choose what AI Help follows',
+      domainsSome: 'Choose what AI Help follows — {on} of {total} areas on',
+      ask: 'Ask',
+      askTitle: 'Ask {name}',
+      askLabel: 'Your question to {name}',
+      askPlaceholder: 'Your question…',
+      askLabelCommands: 'Your request to {name}',
+      askPlaceholderCommands: 'A request: a tag, a note, a timer, a pause…',
+      commandsOnly:
+        'Questions & answers are off: {name} does not answer questions, but does what you ask.',
+      askSend: 'Send the question',
+      suggestions: [
+        'Give me a summary',
+        'Where is the agenda at?',
+        'Which actions were decided?',
+        'What did we forget?',
+        'Any other ideas?',
+      ],
+      chatEmpty:
+        'Ask {name} for a summary, the agenda, the actions, ideas — or to start a timer, pause, fix the transcript, write the minutes. Here, or aloud: “{name}, …”.',
+      chatEmptyCommands:
+        'Ask {name} to add a tag, take a note, start a timer, pause, fix the transcript or write the minutes. Here, or aloud: “{name}, …”.',
+      settings: 'AI Help settings',
+      soundMute: 'Mute AI Help for this meeting',
+      soundUnmute: 'Unmute AI Help',
+      soundLocked: 'The browser is blocking sound — click to enable it',
+      soundMuted: 'Sound off',
+      soundBack: 'Sound on',
+      soundUnlocked: 'Sound enabled',
+      openPreferences: 'Startup, sounds and voice for all your meetings →',
+      voicePointsLeft: 'Points left: {points}',
+      prefs: {
+        intro:
+          'What AI Help does in your meetings, before they even start. During a meeting, everything changes for that meeting only: the bell on its pill mutes it.',
+        startTitle: 'When a meeting starts',
+        startHint: 'AI Help and its areas as they are when each meeting opens.',
+        startSwitch: 'AI Help on',
+        startOff:
+          'Your meetings start without it: its orb, in the bottom bar, turns it on in one click.',
+        soundsTitle: 'Sounds',
+        soundsHint: 'One sound per meaning, to know what is coming without looking at the screen.',
+        sounds: {
+          alerts: {
+            label: 'Alerts',
+            hint: 'Three rising notes: contradiction, reminder, points left out at the end.',
+          },
+          ideas: { label: 'Ideas', hint: 'A ring of a desk bell.' },
+          actions: { label: 'Actions done', hint: 'Two short notes: understood, done.' },
+          timer: {
+            label: 'Timer end',
+            hint: 'A short melody when the countdown reaches zero.',
+          },
+        },
+        listen: 'Listen',
+        listenTo: 'Listen to the “{label}” sound',
+        voiceTitle: 'Voice',
+        voiceHint: 'Read aloud what it writes. Muting it during a meeting silences the voice too.',
+        voiceSwitch: 'Read aloud',
+        readLabel: 'What it reads',
+        read: { answers: 'Its answers', alerts: 'Its alerts and reminders', ideas: 'Its ideas' },
+        engineLabel: 'Engine',
+        engines: {
+          browser: {
+            label: 'Your browser',
+            hint: 'Free, on your device: nothing leaves it. The voices are your system’s.',
+          },
+          openai: { label: 'OpenAI', hint: 'Natural voices, billed to your organization’s key.' },
+          mistral: {
+            label: 'Mistral',
+            hint: 'Voxtral, billed to your organization’s Mistral key.',
+          },
+        },
+        engineRetires: 'OpenAI retires these models on {date}.',
+        enginesChecking: 'Checking the available voices…',
+        enginesNote:
+          'OpenAI and Mistral voices appear once your administrator has entered their key, and only after a successful trial.',
+        engineGone: 'This engine is no longer offered: choose another one.',
+        noBrowserVoice: 'This browser cannot read aloud.',
+        modelLabel: 'Model',
+        voiceLabel: 'Voice',
+        voiceDefault: 'System default voice',
+        otherLanguages: 'Other languages',
+        sample: 'Hello, I am {name}. This is how I will read what I write during your meetings.',
+        sampleSpeaking: 'Reading…',
+        sampleDone: 'Voice tried.',
+        save: 'Save',
+        saving: 'Saving…',
+        saved: 'Saved',
+        discard: 'Discard changes',
+        errors: {
+          voice_blocked: 'The browser is blocking sound: click in the page, then try again.',
+          voice_unavailable: 'This voice is not available on this device.',
+          voice_failed: 'The voice could not be played.',
+          voice_unknown: 'This voice does not exist for this model.',
+          voice_model_unknown: 'This voice model is not offered.',
+          too_many_requests: 'Too many tries in a short time: try again in a moment.',
+          ai_help_not_allowed: 'Your group no longer has access to AI Help.',
+          default: 'Something went wrong. Try again.',
+        },
+      },
+      close: 'Close',
+      kinds: {
+        alert: 'Contradiction',
+        agenda: 'Agenda',
+        idea: 'Idea',
+        answer: 'Answer',
+        project: 'Question',
+        reminder: 'Reminder',
+      },
+      acts: {
+        tag: 'Tag “{label}” set on the meeting.',
+        tagMissing: 'None of your tags is called “{label}”: create it in My tags.',
+        note: 'Note added: {text}',
+        reminder: 'Reminder in {minutes} min: {label}',
+        reminderBare: 'Reminder in {minutes} min.',
+        timerStart: 'Timer started: {time}.',
+        timerStartLabel: 'Timer started: {time} — {label}',
+        timerAdd: 'Timer extended by {time}: {left} left.',
+        timerCut: 'Timer shortened by {time}: {left} left.',
+        timerStop: 'Timer stopped.',
+        timerNone: 'No timer is running.',
+        pause: 'Meeting paused. {name} can no longer hear you: use “Resume”, or ask in writing.',
+        pauseNoop: 'The meeting is already paused.',
+        resume: 'Meeting resumed.',
+        resumeNoop: 'The meeting is not paused.',
+        end: 'Meeting ended.',
+        summaryNow: 'Meeting ended: minutes written with the “{template}” template.',
+        summaryNowDefault: 'Meeting ended: minutes written.',
+        summaryLater: 'Minutes ordered for the end of the meeting, with the “{template}” template.',
+        summaryLaterDefault: 'Minutes ordered for the end of the meeting.',
+        templateMissing: 'No template is called “{template}”: nothing was started.',
+        replace: 'Transcript fixed: “{find}” replaced with “{with}”.',
+        replaceAll: 'Transcript fixed: “{find}” replaced everywhere with “{with}”.',
+        remove: 'Transcript fixed: “{find}” removed.',
+        replaceMissing: '“{find}” is not in the transcript: nothing was changed.',
+      },
+      reminderTitle: 'Time for your reminder',
+      timer: {
+        left: 'Timer: {time} left',
+        leftLabel: 'Timer “{label}”: {time} left',
+        done: 'Time’s up',
+        stop: 'Stop the timer',
+        close: 'Close the timer',
+      },
+      askedByVoice: 'Asked out loud',
+      askedInWriting: 'Asked in writing',
+      thinking: '{name} is looking…',
+      wakeMark: 'Question to {name}',
+      acknowledge: 'Got it',
+      acknowledged: 'Seen',
+      dismiss: 'Put away',
+      dismissLabel: 'Put this intervention away',
+      othersOpenOne: '1 more intervention — see all',
+      othersOpenMany: '{count} more interventions — see all',
+      sizeUp: 'Make the window and its text bigger',
+      sizeDown: 'Make the window and its text smaller',
+      agendaStates: { done: 'Covered', now: 'In progress', todo: 'Not covered yet' },
+      projectLabel: 'Meeting project',
+      projectLinked: '{project} · myBrain',
+      projectUnknown: 'Project to confirm',
+      projectNone: 'No project',
+      projectChange: 'Change',
+      projectAskTitle: 'Which project is this meeting about?',
+      projectAskBody: 'I cannot tell from the tag or from what is said. One click is enough.',
+      projectNoneChoice: 'None of these',
+      projectSearch: 'Search a project in myBrain',
+      projectEmpty: 'No project sheet has that name.',
+      tagLinkTitle: 'Link the “{tag}” tag to this project?',
+      tagLinkBody:
+        'Next meetings with this tag will start straight on “{project}”, without asking you.',
+      tagRelinkBody:
+        'This tag currently leads to “{linked}”. Link it to “{project}” instead? Next meetings with this tag will start on it.',
+      tagLinkYes: 'Link',
+      tagLinkNo: 'Not now',
+      tagLinkFailed: 'The tag could not be linked. Try again.',
+      openSheet: 'Open “{title}” in myBrain',
+      stageLabel: 'AI Help intervention',
+      notice: 'myBrain is not responding: {name} carries on with the meeting alone.',
+      knowledgeNotes: {
+        empty: 'myBrain has nothing on this question: answer drawn from the meeting.',
+        down: 'myBrain did not respond: answer drawn from the meeting.',
+        no_right:
+          'Your group lacks the “AI Help with myBrain” right: answer drawn from the meeting.',
+        no_key_right: 'The myBrain key lacks the “read” right: answer drawn from the meeting.',
+      },
+      noBrain:
+        'Your account does not read myBrain: {name} answers from the meeting, your notes and your context.',
+      noBrainReasons: {
+        no_group_right:
+          'Your group lacks the “AI Help with myBrain” right: {name} answers from the meeting, your notes and your context.',
+        no_read_right:
+          'The myBrain key lacks the “read” right: {name} answers from the meeting, your notes and your context.',
+        not_connected:
+          'myBrain is not connected to myBrief: {name} answers from the meeting, your notes and your context.',
+      },
+      notices: {
+        mybrain_right_missing:
+          'myBrain refuses read access to the myBrief key: {name} carries on with the meeting alone.',
+        mybrain_key_rejected:
+          'myBrain no longer recognises the myBrief key: {name} carries on with the meeting alone.',
+        mybrain_timeout:
+          'myBrain is taking too long to respond: {name} carries on with the meeting alone.',
+        questions_off:
+          'Questions & answers are off: {name} does not answer, but does what you ask — a tag, a note, a pause…',
+      },
+      errors: {
+        default: '{name} could not answer. Try again.',
+        network: 'Connection lost: the question was not sent.',
+        too_many_requests: 'Too many questions in a short time. Try again in a moment.',
+        ai_help_no_answer: '{name} found no answer.',
+        ai_help_domain_off:
+          'That is a question: {name} does not answer it, questions & answers are off.',
+        ai_help_mybrain_not_allowed: 'Reading myBrain is not open to your account.',
+        mybrain_unreachable: 'myBrain is not responding. Try again later.',
+        mybrain_not_found: 'This sheet no longer exists in myBrain.',
+      },
+      tag: {
+        title: 'Project in myBrain',
+        hint: 'When a meeting carries this tag, AI Help knows which project it is about.',
+        suggested: 'Suggested from the tag name',
+        linked: 'Linked to this tag',
+        none: 'No linked project. The AI will recognise it from what is said, or ask.',
+        link: 'Link',
+        unlink: 'Unlink',
+      },
+    },
+    adminAiHelp: {
+      tabLabel: 'AI Help',
+      intro:
+        'During a meeting, the AI follows what is said and steps in in writing: answers, alerts, ideas. Set here what the installation offers. Who uses it is decided in Groups.',
+      domainsTitle: 'Areas of intervention on offer',
+      domainsHint:
+        'An area turned off here appears for no one. The others are on by default at the start of every meeting.',
+      domains: {
+        project:
+          'Alerts when a decision contradicts the goal, scope or a deadline of the meeting’s project.',
+        qa: 'Answers questions, out loud or in writing. With myBrain: the sheets. Without: the current meeting. When off, it can still be asked to act: tag, note, pause…',
+        agenda:
+          'Keeps the items to cover, announced in the meeting or added at the desk. Says whether they were covered, flags the ones being forgotten and, at the end, the ones never raised.',
+        ideas: 'Suggests a lead or a question to consider from time to time.',
+      },
+      needsMyBrain: 'myBrain',
+      domainLocked: 'Unavailable: the myBrain key lacks the “lire” (read) right.',
+      wakeTitle: 'Wake word',
+      wakeHint:
+        'The first name participants give the AI to talk to it out loud: a question, or something to do.',
+      wakeExample: 'In a meeting: “{name}, remind me of the delivery date?”',
+      paceTitle: 'Spontaneous interventions',
+      paceHint: 'What the AI flags on its own, without being called.',
+      paces: {
+        quiet: { label: 'Discreet', hint: 'Clear contradictions only, no ideas.' },
+        normal: {
+          label: 'Normal',
+          hint: 'Contradictions, items being forgotten, one idea every ten minutes at most and, as the meeting ends, the items never raised.',
+        },
+        busy: {
+          label: 'Frequent',
+          hint: 'Also slight drifts, and one idea every five minutes at most — the AI shows up more often.',
+        },
+      },
+      brainTitle: 'Reading myBrain',
+      brainOk: 'Connection verified. The key has the “lire” (read) right.',
+      brainNoRead:
+        'The myBrain key lacks the “lire” (read) right: AI Help works without myBrain. If the key has just been granted it, “Test the connection” in the MyBrain tab reads it again; otherwise a myBrain administrator can issue a key that has it.',
+      brainOff: 'myBrain is not connected: AI Help works without it (MyBrain tab).',
+      brainScope:
+        'AI Help reads the shared wiki on behalf of the application, not the person: every authorised account has the same access. The restricted areas of myBrain stay closed to it.',
+      accessTitle: 'Who has access',
+      accessNoneBadge: 'No one yet',
+      accessBadgeOne: '1 group',
+      accessBadgeMany: '{count} groups',
+      accessNone:
+        'No group has the “AI Help in meetings” right yet: no one sees it, you included. Grant it to a group in the Groups tab, under Rights.',
+      accessSome: 'AI Help appears to the members of these groups. The others see nothing.',
+      accessNotYou:
+        'Your account is in none of these groups: you will not see it in your own meetings.',
+      meOk: 'Your account: AI Help reads myBrain in your meetings.',
+      meReasons: {
+        no_group_right:
+          'Your account has AI Help, but its group lacks the “AI Help with myBrain” right: in your meetings it will not consult myBrain.',
+        no_read_right:
+          'Your account has AI Help, but the myBrain key lacks the “read” right: in your meetings it will not consult myBrain.',
+        not_connected:
+          'Your account has AI Help, but myBrain is not connected to myBrief: it sticks to the meeting.',
+      },
+      accessWithBrain: 'with myBrain',
+      accessOpenGroups: 'Open Groups',
+      testTitle: 'Test the reading',
+      testHint:
+        'Ask a question as you would in a meeting: you see what myBrain returns to myBrief to answer it.',
+      testPlaceholder: 'What is the … project?',
+      testButton: 'Test',
+      testing: 'Reading…',
+      testContextOne: 'myBrain returned 1 sheet in {ms} ms:',
+      testContextMany: 'myBrain returned {count} sheets in {ms} ms:',
+      testContextNone:
+        'myBrain returned no sheet for this question ({ms} ms). AI Help then falls back on the keyword search below.',
+      testSearch: 'Keyword search “{keywords}”:',
+      testSearchNone: 'no sheet found.',
+      testNoKeywords: 'This question holds no keyword to search for.',
+      testFailed: 'myBrain refused this reading: {reason}',
+      save: 'Save',
+      saving: 'Saving…',
+      saved: 'Saved',
+      errors: {
+        default: 'The settings could not be saved.',
+        network: 'Connection lost. Try again.',
+        too_many_requests: 'Too many attempts in a short time. Try again in a moment.',
+        mybrain_not_connected: 'myBrain is not connected: do it in the MyBrain tab.',
+        mybrain_right_missing: 'the key lacks the “lire” (read) right.',
+        mybrain_key_rejected: 'myBrain rejects the key.',
+        mybrain_unreachable: 'myBrain cannot be reached from the myBrief server.',
+        mybrain_timeout: 'myBrain did not respond in time.',
+        mybrain_unavailable: 'this myBrain does not offer this reading.',
+      },
+    },
     meetingBar: {
       title: 'Meeting controls',
       notes: 'Notes',
@@ -4462,14 +6006,27 @@ export const uiTextData = {
       endDeleteHint: 'Nothing is kept.',
       endCancel: 'Cancel',
     },
+    meetingResume: {
+      dock: 'Resume',
+      dockTitle: 'Resume recording: what follows is added to this meeting',
+      cta: 'Resume recording',
+      ctaTitle: 'What follows will be added at the end of this transcript',
+      marker: '⟨ Recording resumed on {date} at {time} ⟩',
+    },
     dockCard: {
       templateUsed: 'Template used',
       groupUserTemplates: 'My templates',
       templatesSection: 'Templates',
       instructionsLabel: 'Additional instructions',
       instructionsPlaceholder: 'In this area, you can provide additional information...',
-      infographicLabel: 'Generate an infographic',
-      infographicShort: 'Infographic',
+      // Options of THIS generation: two switch tiles, under the page meter.
+      // The number of actions shows next to the title.
+      optionsSection: 'Add to the summary',
+      actionsOption: 'Detected actions',
+      actionsOptionHint: 'Listed in their own section',
+      actionsOptionNone: 'No actions detected',
+      infographicOption: 'Infographic',
+      infographicOptionHint: 'An extra image of the meeting',
       cancel: 'Cancel',
       optional: 'optional',
     },
@@ -4503,7 +6060,7 @@ export const uiTextData = {
       pendingLabel: 'Infographic in progress…',
       errorLabel: 'Infographic failed',
       errorHint:
-        'The infographic could not be generated. Regenerate a summary with the box checked to retry.',
+        'The infographic could not be generated. Regenerate a summary with the Infographic option on to retry.',
       thumbAlt: 'Meeting infographic',
       openAria: 'View the infographic full size',
       title: 'Meeting infographic',
@@ -4516,18 +6073,81 @@ export const uiTextData = {
       removeShort: 'Delete',
       createInvite: 'Create an infographic',
       createInviteHint:
-        'Generate an illustrated infographic of this meeting, from the transcription, actions and notes.',
+        "Generate this meeting's infographic — icons, charts, your organisation's logo — from the transcription, actions and notes.",
       removeConfirm:
         'Delete the infographic for this meeting? The meeting and its summary are untouched — you can generate a new one.',
       actionFailed: 'The infographic action failed. Please try again.',
       disabledError: 'Infographics are disabled by the administration.',
-      notAllowedError: 'Your groups do not allow you to create infographics.',
+      notAllowedError: 'Your group does not allow you to create infographics.',
+      downloadPreparing: 'Preparing the image…',
+      zoomIn: 'Enlarge',
+      zoomOut: 'Fit to screen',
+      downloadFailed: 'The infographic image could not be prepared. Please try again.',
+      sheet: {
+        templates: {
+          synthese: 'Overview',
+          decision: 'Decision',
+          feuille_de_route: 'Roadmap',
+          tableau_de_bord: 'Dashboard',
+          atelier: 'Workshop',
+          bilan: 'Review',
+        },
+        logoAlt: 'Organisation logo',
+        untitled: 'Meeting',
+        essential: 'Key point',
+        topics: 'Topics',
+        ideas: 'Ideas',
+        decision: 'Decision made',
+        decisions: 'Decisions',
+        otherDecisions: 'Other decisions',
+        vigilance: 'Watch points',
+        options: 'Options considered',
+        retained: 'Chosen',
+        pros: 'For',
+        cons: 'Against',
+        goal: 'Goal',
+        milestones: 'Milestones',
+        done: 'Done',
+        upcoming: 'Upcoming',
+        target: 'Goal',
+        indicators: 'Indicators',
+        breakdown: 'Breakdown',
+        ofTarget: '{pct} of {target}',
+        targetLabel: 'target {value}',
+        before: 'before',
+        now: 'now',
+        question: 'The question',
+        ideaOne: 'idea',
+        ideaMany: 'ideas',
+        themeOne: 'theme',
+        themeMany: 'themes',
+        retainedOne: 'chosen',
+        retainedMany: 'chosen',
+        retainedIdeas: 'Chosen ideas',
+        voteOne: '{count} vote',
+        voteMany: '{count} votes',
+        nextSteps: 'Agreed next steps',
+        verdict: 'In short',
+        worked: 'What worked',
+        struggled: 'What got stuck',
+        tryNext: 'To try',
+        actions: 'Actions',
+        moreActionOne: '+ 1 more action in the summary',
+        moreActionMany: '+ {count} more actions in the summary',
+        participants: 'Participants',
+        morePeopleOne: 'and 1 other',
+        morePeopleMany: 'and {count} others',
+        nextStep: 'Next step',
+        madeWith: 'myBrief',
+        appLogoAlt: 'Application logo',
+        tagLogoAlt: 'Client or project logo',
+      },
     },
     tagsPanel: {
       title: 'My tags',
       close: 'Close',
       intro:
-        'A tag sorts your conversations by client, project or topic. It can also decide where their reports are filed and who receives them.',
+        'A tag sorts your conversations by client, project or topic. It can also tell the AI what they are about, where their reports are filed and who receives them.',
       loading: 'Loading…',
       empty: 'No tag yet. Create one to start sorting your conversations.',
       add: 'New tag',
@@ -4582,6 +6202,7 @@ export const uiTextData = {
       counterOne: '{n} tag out of {max}',
       counterMany: '{n} tags out of {max}',
       searchLabel: 'Search a tag',
+      searchPlaceholder: 'Name, person, acronym…',
       searchEmpty: 'No tag matches.',
       taggedOne: '1 conversation',
       taggedMany: '{n} conversations',
@@ -4600,6 +6221,44 @@ export const uiTextData = {
       removeTag: 'Delete the tag',
       back: 'My tags',
       savedHint: 'Every choice is saved right away.',
+      // ── In-place name, quick dot ──
+      rename: 'Rename',
+      pastille: 'Colour and shape',
+      pastilleMore: 'Patterns and custom colour…',
+      // ── Client or project logo ──
+      logoQuestion: 'Which logo on its documents?',
+      logoWhen:
+        'The client’s or the project’s: as a medallion on the infographic, at the top of the PDF report, and in this list.',
+      logoDrop: 'Drop a logo',
+      logoBrowse: 'or click to choose it · PNG, JPG, SVG',
+      logoReplace: 'Replace…',
+      logoRemove: 'Remove',
+      logoAlt: 'Logo of the “{tag}” tag',
+      logoSaving: 'Uploading logo…',
+      logoSaveError: 'Could not save the logo. Try again.',
+      // ── Filing and sending, folded ──
+      ruleEdit: 'Change',
+      ruleClose: 'Close',
+      peopleMore: '+ {n}',
+      // ── Context — what the AI should know about the matter (lib/tagContext.js) ──
+      contextQuestion: 'What should the AI know?',
+      contextWhen:
+        'The project, its people and their roles, the acronyms: what it takes to understand a conversation tagged “{tag}”.',
+      contextPlaceholder:
+        'E.g. head-office renovation, handover in June. People: Claire Martin, client; Hugo Bernard, engineering firm. Acronyms: HP = heat pump.',
+      contextReadBy: 'Read by',
+      contextReaders: {
+        summary: 'Report',
+        transcript: 'Transcript',
+        infographic: 'Infographic',
+        aiHelp: 'AI Help',
+      },
+      contextCount: '{n} / {max}',
+      contextSaving: 'Saving…',
+      contextSaved: 'Saved',
+      contextGuard:
+        'The AI uses it to understand who is who and what the acronyms mean. It does not copy it into the report as if it had been said in the meeting.',
+      contextSaveError: 'Could not save this text. Try again.',
       // ── Filing — the tag → "Store" action link ──
       folderQuestion: 'Where should its reports go?',
       folderWhen: 'When you choose “Store” after a conversation tagged “{tag}”.',
@@ -4614,9 +6273,9 @@ export const uiTextData = {
       storageClosed:
         'File storage is disabled by your organisation. Destinations stay saved and will apply if it reopens.',
       storageNotConnected:
-        'Connect your Google or Microsoft account (My configuration → Connection) to pick folders.',
+        'Connect your Google or Microsoft account (Settings → Connected accounts) to pick folders.',
       storageDriveMissing:
-        'Your account is connected without file access. Connect it again from My configuration to allow storage.',
+        'Your account is connected without file access. Connect it again from Settings → Connected accounts to allow storage.',
       storageSaveError: 'Could not save the destination. Try again.',
       // ── Sending — the tag → "Send by email" action link ──
       mailQuestion: 'Who should receive its reports?',
@@ -4658,6 +6317,10 @@ export const uiTextData = {
         label_too_long: 'Name too long ({max} characters maximum).',
         color_invalid: 'Unknown colour.',
         shape_invalid: 'Unknown shape.',
+        context_too_long: 'Text too long ({max} characters maximum).',
+        logo_invalid: 'This file is not an image: choose a PNG, JPG or SVG.',
+        logo_too_big: 'Image too heavy for a logo: choose a simpler one.',
+        logo_unreadable: 'Unreadable image: try another file.',
         tag_not_found: 'This tag no longer exists. Reload the page.',
         meeting_not_found: 'This conversation could not be found.',
         network: 'Cannot complete this right now. Try again.',
@@ -4743,8 +6406,8 @@ export const uiTextData = {
         'This version of the summary will be deleted. The other versions are kept.',
       resumeInterruptedTitle: 'Meeting interrupted',
       resumeInterruptedBody:
-        'A meeting was in progress when the page reloaded. Do you want to resume recording?',
-      abandon: 'Abandon',
+        'Recording stopped before the meeting ended. The transcript, notes, actions and timer are kept. Resume where it stopped?',
+      endInterrupted: 'End the meeting',
       resume: 'Resume',
     },
     configActions: {
@@ -4812,14 +6475,14 @@ export const uiTextData = {
       pickerSelection: 'Selection:',
       pickerConfirm: 'Choose this folder',
       pickerSharedDrivesMissing:
-        'Your shared drives are not listed here: your account was connected before myBrief could list them. Reconnect it from “My configuration → Connection” to see them. My Drive and storage keep working.',
+        'Your shared drives are not listed here: your account was connected before myBrief could list them. Reconnect it from “Settings → Connected accounts” to see them. My Drive and storage keep working.',
       // Same server flag, Microsoft side: SharePoint sites are the ones missing,
       // for lack of the "Sites.ReadWrite.All" permission. A directory that
       // REFUSES it never gets here — Entra refuses the whole connection
       // (see lib/connections/providers.js). Only connections made before it was
       // added see this message.
       pickerSharedSitesMissing:
-        'Your SharePoint libraries are not listed here: your account was connected before myBrief requested the "Sites.ReadWrite.All" permission. Reconnect it from “My configuration → Connection” to see them. Your OneDrive and storage keep working.',
+        'Your SharePoint libraries are not listed here: your account was connected before myBrief requested the "Sites.ReadWrite.All" permission. Reconnect it from “Settings → Connected accounts” to see them. Your OneDrive and storage keep working.',
       pickerMore: 'Show more',
       browseErrors: {
         browse_scope_missing:
@@ -4953,13 +6616,24 @@ export const uiTextData = {
         unknown: 'unexpected error.',
       },
     },
+    profile: {
+      intro: 'Your identity in myBrief, and your language.',
+      identityTitle: 'Identity',
+      nameLabel: 'Name',
+      emailLabel: 'Email address',
+      languageTitle: 'Language',
+      languageHint:
+        'The language of the interface, and also of transcription, detected actions and summaries.',
+      securityTitle: 'Password',
+      securityHint: 'Your account signs in with a password: change it here.',
+    },
     config: {
-      title: 'My configuration',
-      audioSection: 'Audio settings',
+      title: 'Settings',
+      audioSection: 'Microphone',
       audioIntro:
         'The microphone chosen here applies to this device only: a device id has no meaning from one machine to another.',
-      audioLabel: 'Sound input channel (microphone)',
-      audioDeviceLabel: 'Microphone',
+      audioLabel: 'Sound input channel.',
+      audioDeviceLabel: 'Device',
       audioDeviceHint:
         'Saved immediately. If the microphone is unavailable when recording starts, the system default takes over.',
       audioDefault: 'System default microphone',
@@ -4988,17 +6662,28 @@ export const uiTextData = {
         'This device could not be opened. Allow microphone access, or choose another one.',
       contextSection: 'My context',
       detectionSection: 'Action detection',
+      correctionsSection: 'Replaced words',
       contextHint: 'Sent before every summary generation.',
       contextIntro:
         'This text is sent before every summary generation to provide your context (job, company, role, useful information…).',
       contextPlaceholder:
         'E.g. I am Sales Manager at Acme. My meetings are often about B2B opportunities. My manager is…',
-      groupSettings: 'Settings',
-      groupActions: 'Actions',
+      groupAccount: 'My account',
+      profileSection: 'My profile',
+      aiSection: 'AI preferences',
+      aiHelpSection: 'AI Help',
+      audioNav: 'Microphone and sound',
+      groupMeetings: 'My meetings',
+      meetingSection: 'During the meeting',
+      actionsSection: 'After the meeting',
+      aiElsewhere:
+        'Action detection and replaced words are set with everything that plays out in a meeting.',
+      aiElsewhereLink: 'Open “During the meeting”',
+      usageSection: 'Usage & credits',
       actionMailSection: 'Email sending',
       actionStorageSection: 'Storing',
       groupLibrary: 'My library',
-      groupTools: 'Tools',
+      toolsSection: 'Tools',
       importSection: 'Import audio',
       importIntro:
         'Turn an existing recording into a summary: pick an audio file, MyBrief transcribes then summarises it like a meeting.',
@@ -5010,6 +6695,12 @@ export const uiTextData = {
         'An icon in the Chrome toolbar: one click opens MyBrief, another starts a meeting — wherever you are on the web. Nothing changes inside MyBrief itself.',
       extStateInstalled: 'Extension installed and linked to this site',
       extStateVersion: 'version {version}',
+      extStateOutdated: 'A new version of the extension is available',
+      extStateOutdatedHint:
+        'Version {version} installed, {latest} available. Loaded from a folder, the extension does not update itself.',
+      extUpdateZip: 'Download the new version (.zip)',
+      extUpdateHint:
+        'Unzip it into the "mybrief-extension" folder already installed, replacing its files — its location is shown on the MyBrief card in chrome://extensions. Then click ↻ on that card. Unzipped anywhere else, it would become a second extension, to link again.',
       extStateMissing: 'Extension not detected in this browser',
       extStateMissingHint:
         'Follow the steps below. Once the extension is linked, this line turns green by itself.',
@@ -5020,7 +6711,7 @@ export const uiTextData = {
         status: 'Signed in',
         primary: 'New meeting',
         secondary: 'Open MyBrief',
-        links: ['History', 'My configuration'],
+        links: ['History', 'Settings'],
       },
       extInstallTitle: '1. Install',
       extInstallStore: 'Add to Chrome',
@@ -5040,7 +6731,7 @@ export const uiTextData = {
         },
         {
           label: 'Click "Load unpacked"',
-          hint: 'Pick the unzipped folder. The MyBrief icon appears in the toolbar.',
+          hint: 'Pick the "mybrief-extension" folder, the one that contains the manifest.json file. The MyBrief icon appears in the toolbar.',
         },
         {
           label: 'Pin the icon',
@@ -5080,7 +6771,7 @@ export const uiTextData = {
       ],
       extAdminNote:
         'Company-wide: your IT department can install the extension on every workstation through Chrome policy (ExtensionInstallForcelist), with no action from users.',
-      mailSection: 'Connection',
+      mailSection: 'Connected accounts',
       mailIntro: 'Choose the account that sends your documents when you click "Send by email".',
       // `{provider}` is replaced with the provider chosen by the installation
       // (Google or Microsoft) — see SettingsPanel.svelte.
@@ -5117,6 +6808,117 @@ export const uiTextData = {
       error: 'Error while saving',
       close: 'Close',
     },
+    settingsSearch: {
+      placeholder: 'Search settings…',
+      label: 'Search settings',
+      open: 'Search settings',
+      shortcut: 'Shortcut: {keys}',
+      clear: 'Clear search',
+      results: 'Matching settings',
+      countOne: '1 setting found',
+      countMany: '{n} settings found',
+      empty: 'No setting matches “{query}”.',
+      emptyHint: 'Try another word, such as “microphone”, “language” or “folder”.',
+      keywords: {
+        'config.profile': 'account, identity, name, address, email, avatar, group',
+        'config.profile.identity': 'name, first name, address, email, avatar, group, team',
+        'config.profile.language': 'language, langue, french, français, english, translation',
+        'config.profile.password': 'password, credentials, security, login',
+        'config.ai': 'artificial intelligence, ai, assistant, instructions, prompt',
+        'config.ai.context':
+          'context, job, role, position, company, about me, instructions, prompt',
+        'config.meeting.detection': 'actions, tasks, todo, to do, commitments, follow-ups, detect',
+        'config.meeting.detection.state': 'enable, disable, turn off, live detection',
+        'config.meeting.detection.what': 'sensitivity, keywords, triggers, strict, broad',
+        'config.meeting.detection.pace': 'frequency, pace, speed, interval, depth, cost',
+        'config.meeting.detection.test': 'try, test, sandbox, sample, simulation',
+        'config.meeting.corrections':
+          'corrections, replace, replacement, spelling, mistranscribed words, proper names, dictionary',
+        'config.meeting.corrections.learn': 'notes, learn, remember, keep, automatic',
+        'config.meeting.corrections.list': 'list, spelling, misspelled name, acronym, fix',
+        'config.ai.aiHelp': 'meeting assistant, orb, bell, sounds, voice, startup, default',
+        'config.meeting': 'in a meeting, during the meeting, live, recording, transcription',
+        'config.meeting.aiHelp': 'meeting assistant, orb, bell, sounds, voice, startup, default',
+        'config.meeting.aiHelp.start': 'turn on, turn off, startup, domains, default',
+        'config.meeting.aiHelp.sounds':
+          'sound, bell, chime, beep, notifications, mute, silence, timer, countdown, melody',
+        'config.meeting.aiHelp.voice':
+          'voice, read aloud, text to speech, speech synthesis, speak, tts, openai, mistral',
+        'config.meeting.audio': 'audio, sound, mic, microphone, headset, audio input, device',
+        'config.meeting.audio.mic': 'mic, microphone, headset, input, device',
+        'config.meeting.audio.system':
+          'video call, computer sound, speaker, blackhole, vb-cable, stereo mix, firefox, safari, teams, zoom, meet',
+        'config.actions': 'actions, after meeting, send, share, export, minutes',
+        'config.actions.mail': 'mail, email, e-mail, send, recipients, subject',
+        'config.actions.mail.send': 'mail, email, recipients, subject, copy, cc',
+        'config.actions.mail.tagRecipients': 'tags, recipients per tag, mailing list',
+        'config.actions.mail.filename':
+          'file name, naming, rename, attachment, pdf, docx, download',
+        'config.actions.mail.afterSummary': 'window, what next, offer, popup, after the summary',
+        'config.actions.storage':
+          'store, upload, drive, onedrive, sharepoint, folder, file, save, archive',
+        'config.actions.storage.folder':
+          'folder, drive, onedrive, sharepoint, library, confirmation, subfolder',
+        'config.actions.storage.tagFolders': 'folder per tag, tags, subfolder, filing',
+        'config.actions.mybrain': 'mybrain, brain, knowledge base, team',
+        'config.actions.mybrain.send': 'mybrain, brain, share, send my meetings',
+        'config.actions.mybrain.recent': 'mybrain, sent meetings, failure, retry',
+        'config.mail':
+          'google, microsoft, gmail, outlook, office 365, linked account, connection, authorization, oauth',
+        'config.usage': 'statistics, stats, consumption, quota, credit, minutes, time left',
+        'config.templates': 'templates, format, layout, minutes, summary, structure',
+        'config.tags': 'labels, folders, categories, colors, organize, clients, projects',
+        'config.tools': 'tools, utilities, import, extension',
+        'config.tools.import':
+          'audio file, mp3, m4a, wav, upload, existing recording, voice recorder, dictaphone',
+        'config.tools.extension': 'chrome, browser, extension, keyboard shortcut, edge, brave',
+        'config.help': 'help, documentation, docs, guide, manual, tutorial, faq',
+        'config.feedback': 'bug, issue, problem, idea, suggestion, report, feedback, support',
+        'admin.dashboard': 'home, dashboard, diagnostics, alerts, activity',
+        'admin.users':
+          'users, accounts, people, role, administrator, create account, disable, delete, reset password',
+        'admin.groups':
+          'groups, teams, members, quota, minutes per month, rights, infographics, ai help',
+        'admin.ai': 'api keys, api key, token, providers, openai, mistral, speechmatics',
+        'admin.ai.openai': 'api key, gpt, chatgpt',
+        'admin.ai-models': 'models, llm, gpt, transcription, writing, summary, price, cost',
+        'admin.ai-models.summary': 'summary model, minutes, writing, gpt, llm',
+        'admin.ai-models.transcription':
+          'transcription model, speech recognition, speech to text, real time',
+        'admin.ai-models.infographic': 'image, drawing, visual, illustration, graphic style',
+        'admin.templates': 'templates, layouts, minutes formats, default templates, organization',
+        'admin.actions': 'buttons, send, store, download, after meeting, smtp, relay',
+        'admin.actions.email': 'mail, smtp, relay, maximum recipients, subject, third parties',
+        'admin.actions.storage': 'drive, onedrive, sharepoint, target folder, upload',
+        'admin.actions.download': 'download, pdf, docx, file',
+        'admin.actions.account':
+          'google, microsoft, gmail, outlook, sharepoint, provider, linked account',
+        'admin.actions.naming': 'file name, naming, format',
+        'admin.aihelp': 'assistant, meeting, wake word, domains, interventions',
+        'admin.aihelp.access': 'groups, rights, access, who',
+        'admin.aihelp.wake': 'first name, name, wake word, trigger',
+        'admin.aihelp.pace': 'interventions, spontaneous, alerts, frequency',
+        'admin.mybrain': 'mybrain, brain, knowledge base, key, connection',
+        'admin.mybrain.connection': 'address, url, api key, test connection',
+        'admin.mybrain.policy': 'sending meetings, mandatory, enforced, optional',
+        'admin.credits': 'credit, quota, minutes, time, exhausted, per account',
+        'admin.stats':
+          'statistics, consumption, costs, spending, budget, pdf report, export, prices, usage',
+        'admin.company': 'company, vocabulary, glossary, jargon, acronyms, corrections',
+        'admin.company.context': 'vocabulary, glossary, jargon, acronyms, proper names, context',
+        'admin.company.corrections':
+          'corrections, replace, spelling, mistranscribed words, dictionary',
+        'admin.branding': 'brand, branding, appearance, logo, colors, theme, style guide',
+        'admin.branding.logo': 'logo, image, icon, brand',
+        'admin.branding.tagline': 'slogan, subtitle, welcome line, tagline',
+        'admin.branding.colors': 'color, colour, theme, palette, primary, secondary',
+        'admin.auth': 'sign in, login, sso, authentication, sign-in page',
+        'admin.auth.password': 'password, email, credentials',
+        'admin.auth.google': 'google, workspace, sso, oauth, client id, secret',
+        'admin.auth.entra': 'microsoft, entra, azure ad, office 365, sso, oauth',
+        'admin.auth.domains': 'allowed domains, restriction, addresses, company',
+      },
+    },
     home: {
       greeting: 'Welcome',
       greetingNamed: 'Welcome {name}',
@@ -5137,6 +6939,8 @@ export const uiTextData = {
     },
     meetingType: {
       title: 'What kind of meeting?',
+      consentTitle: 'Consent required:',
+      consent: 'every participant must agree to the recording about to start.',
       inPerson: 'In-person meeting',
       visio: 'Video meeting',
       visioHint:
@@ -5148,7 +6952,7 @@ export const uiTextData = {
       title: 'Partially compatible browser',
       lead: 'Firefox and Safari cannot share the sound of a video call or an app: here, myBrief only records your microphone.',
       detail:
-        'To also record the other side, open myBrief in Google Chrome or Microsoft Edge, or install a virtual audio device and choose it in My configuration → Audio settings.',
+        'To also record the other side, open myBrief in Google Chrome or Microsoft Edge, or install a virtual audio device and choose it in Settings → During the meeting → Microphone and sound.',
       note: 'The microphone works normally.',
       configure: 'Set up computer sound',
       ack: 'Got it',
@@ -5185,12 +6989,12 @@ export const uiTextData = {
         'The document is too large to send as an attachment. Download it and send it manually.',
       actionEmailError: 'Sending by email failed. Please try again shortly.',
       actionStorageNotConnected:
-        'Storing to {provider} is not configured. Connect your account in "My configuration", or contact your administrator.',
+        'Storing to {provider} is not configured. Connect your account in "Settings → Connected accounts", or contact your administrator.',
       actionStorageReconnect:
-        'Your account does not (or no longer) allow file storage. Reconnect it in "My configuration" to grant this access.',
+        'Your account does not (or no longer) allow file storage. Reconnect it in "Settings → Connected accounts" to grant this access.',
       actionStorageError: 'Storing failed. Please try again shortly.',
       actionEmailDropped:
-        'Document sent to you only: this server is not allowed to write to external recipients. Connect your account in "My configuration" so your mail leaves from your own mailbox.',
+        'Document sent to you only: this server is not allowed to write to external recipients. Connect your account in "Settings → Connected accounts" so your mail leaves from your own mailbox.',
       actionTestEmailOk: 'Test email sent to {recipients} (via {via}).',
       actionTestStorageOk: 'Test file "{filename}" stored in "{folder}".',
       actionTestTooMany: 'Too many tests in a short time. Try again in a few minutes.',
@@ -5288,13 +7092,20 @@ export const uiTextData = {
       running: 'In progress: {steps}…',
       tagApplied: 'Meeting filed under "{tag}".',
       tagFailed: 'The tag could not be set: nothing was sent, try again from "Share".',
-      offerOff: 'This window will no longer open. Turn it back on in My settings, under Actions.',
+      offerOff: 'This window will no longer open. Turn it back on in Settings → After the meeting.',
     },
     aiNotice: {
       creditTitle: 'AI credit exhausted',
       serviceTitle: 'AI service unavailable',
       networkTitle: 'Connection lost',
       dismiss: 'Close',
+    },
+    lazyLoad: {
+      failed:
+        'This screen could not load. A new version of MyBrief may be online: reload the page.',
+      failedRecording:
+        'This screen could not load. Reload the page once the meeting is over: a new version of MyBrief may be online.',
+      reload: 'Reload',
     },
     continueRecording: {
       title: 'Still in a meeting?',

@@ -17,8 +17,8 @@ compte : voir [Gérer les comptes](gerer-les-comptes.md).
 
 ## Étapes
 
-1. **Administration → Utilisateurs**, cliquez le compte, puis **Supprimer le compte**. Sur ordinateur,
-   la corbeille qui apparaît au survol de sa ligne mène au même endroit.
+1. **Administration → Personnes → Comptes**, cliquez le compte, puis **Supprimer le compte**. Sur
+   ordinateur, la corbeille qui apparaît au survol de sa ligne mène au même endroit.
 2. Lisez l'avertissement, puis saisissez l'adresse du compte pour confirmer.
 3. Cliquez **Supprimer définitivement**.
 

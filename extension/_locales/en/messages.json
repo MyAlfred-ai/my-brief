@@ -44,7 +44,7 @@
     "message": "History"
   },
   "config": {
-    "message": "My configuration"
+    "message": "Settings"
   },
   "signedIn": {
     "message": "Signed in · $NAME$",
@@ -103,5 +103,21 @@
   },
   "titleVideoCall": {
     "message": "MyBrief — a video call is open: start a meeting?"
+  },
+  "reauthHint": {
+    "message": "The extension has no access to $HOST$ on this computer: no REC badge, and your open MyBrief tab isn't found.",
+    "placeholders": {
+      "host": {
+        "content": "$1"
+      }
+    }
+  },
+  "reauthUse": {
+    "message": "Allow $HOST$",
+    "placeholders": {
+      "host": {
+        "content": "$1"
+      }
+    }
   }
 }

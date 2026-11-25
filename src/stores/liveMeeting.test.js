@@ -19,6 +19,7 @@ const {
   startLiveMeeting,
   stopLiveMeeting,
   flushLiveTranscription,
+  closeInterruptedMeeting,
   disposeLiveMeeting,
 } = await import('./liveMeeting.js');
 
@@ -244,5 +245,93 @@ describe('sauvegardes périodiques', () => {
 
     await vi.advanceTimersByTimeAsync(60_000);
     expect(post).not.toHaveBeenCalled();
+  });
+});
+
+describe('reprise d’une réunion interrompue', () => {
+  it('reprend dans SON document : pas de seconde réunion dans l’historique', async () => {
+    post.mockResolvedValue(ok());
+    const id = await startLiveMeeting({ readTranscription: () => transcript, resumeId: 'm-avant' });
+    expect(id).toBe('m-avant');
+    expect(get(liveMeetingIdStore)).toBe('m-avant');
+    expect(post.mock.calls[0][1].meetingId).toBe('m-avant');
+  });
+
+  it('renvoie toute la transcription au premier envoi : la base rattrape la copie locale', async () => {
+    post.mockResolvedValue(ok());
+    transcript = 'Tout ce qui avait été dit avant la coupure.';
+    await startLiveMeeting({ readTranscription: () => transcript, resumeId: 'm-avant' });
+    post.mockClear();
+    expect(await flushLiveTranscription()).toBe(true);
+    expect(post).toHaveBeenCalledWith('/transcription/update', {
+      meetingId: 'm-avant',
+      transcription: transcript,
+    });
+  });
+
+  it('réseau absent à la reprise : la réunion est quand même suivie — son document existe déjà', async () => {
+    post.mockResolvedValue(ko(0));
+    const id = await startLiveMeeting({ readTranscription: () => transcript, resumeId: 'm-avant' });
+    expect(id).toBe('m-avant');
+    expect(get(liveMeetingIdStore)).toBe('m-avant');
+  });
+});
+
+describe('page qui passe en arrière-plan', () => {
+  it('courte transcription : envoi « keepalive », qui survit à la page', async () => {
+    post.mockResolvedValue(ok());
+    await start();
+    transcript = 'Une phrase.';
+    post.mockClear();
+    await flushLiveTranscription({ leaving: true });
+    expect(post.mock.calls[0][2]).toEqual({ keepalive: true });
+  });
+
+  it('longue réunion : sans « keepalive », que le navigateur refuse au-delà de 64 Ko', async () => {
+    post.mockResolvedValue(ok());
+    await start();
+    transcript = 'é'.repeat(40_000);
+    post.mockClear();
+    await flushLiveTranscription({ leaving: true });
+    expect(post.mock.calls[0]).toHaveLength(2);
+  });
+});
+
+describe('closeInterruptedMeeting — réunion interrompue, non reprise', () => {
+  it('écrit la copie locale puis clôt, avec durée, notes et actions', async () => {
+    post.mockResolvedValue(ok({ discarded: false }));
+    const res = await closeInterruptedMeeting({
+      meetingId: 'm-1',
+      transcription: '  Tout ce qui a été dit.  ',
+      duration: 754,
+      notes: 'Dupont, pas Dupond',
+      actions: [{ id: 1 }],
+    });
+    expect(res).toEqual({ meetingId: 'm-1', discarded: false });
+    expect(post.mock.calls.map((c) => c[0])).toEqual(['/transcription/update', '/history/stop']);
+    expect(post.mock.calls[0][1]).toEqual({
+      meetingId: 'm-1',
+      transcription: 'Tout ce qui a été dit.',
+    });
+    expect(post.mock.calls[1][1]).toEqual({
+      meetingId: 'm-1',
+      duration: 754,
+      discardIfEmpty: true,
+      notes: 'Dupont, pas Dupond',
+      actions: [{ id: 1 }],
+    });
+  });
+
+  it('sans réunion en base (démarrage hors ligne) : aucun appel', async () => {
+    expect(await closeInterruptedMeeting({ meetingId: null, transcription: 'x' })).toBeNull();
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it('rien de dit : pas d’écriture de transcription, le serveur purge la ligne vide', async () => {
+    post.mockResolvedValue(ok({ discarded: true }));
+    const res = await closeInterruptedMeeting({ meetingId: 'm-1', transcription: '  ' });
+    expect(res.discarded).toBe(true);
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(post.mock.calls[0][0]).toBe('/history/stop');
   });
 });

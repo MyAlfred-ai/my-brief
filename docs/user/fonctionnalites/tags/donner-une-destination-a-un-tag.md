@@ -18,9 +18,11 @@ Un tag peut porter **ses destinataires** — pour **Envoyer par mail** — et **
 
 ## La fiche du tag
 
-Dans **Ma configuration → Mes tags**, choisissez le tag dans la liste. Sa fiche pose deux questions,
-chacune avec deux réponses : la règle **commune** à tous vos tags, ou une règle **à lui**. La réponse
-retenue prend la couleur du tag. Chaque choix s'enregistre aussitôt : il n'y a pas de bouton
+Dans **Réglages → Mes tags**, choisissez le tag dans la liste. En bas de sa fiche, deux questions
+tiennent sur une ligne chacune, avec la réponse retenue : **Où ranger ses comptes rendus ?** et **À qui
+envoyer ses comptes rendus ?**. Cliquez **Modifier** pour voir les deux réponses possibles : la règle
+**commune** à tous vos tags, ou une règle **à lui**. La réponse retenue prend la couleur du tag.
+**Fermer** replie la question. Chaque choix s'enregistre aussitôt : il n'y a pas de bouton
 **Enregistrer**.
 
 ## Où ranger ses comptes rendus ?
@@ -72,15 +74,15 @@ message de dépôt nomme le dossier et la bibliothèque utilisés : « Document 
 
 ## Où d'autre régler la même chose
 
-**Ma configuration → Envoi d'email → Destinataires par tag** et **Ma configuration → Entreposer →
-Destinations par tag** donnent les mêmes réglages, tag par tag, avec un bouton **Enregistrer** pour la
-page. Dans **Mes tags**, chaque geste s'enregistre tout seul.
+**Réglages → Après la réunion → Envoi d'email → Destinataires par tag** et **Réglages → Après la réunion → Entreposer →
+Destinations par tag** donnent les mêmes réglages, tag par tag, avec un bouton **Enregistrer** pour
+l'onglet. Dans **Mes tags**, chaque geste s'enregistre tout seul.
 
 ## En cas de problème
 
 | Ce qui arrive | Quoi faire |
 |---|---|
 | Les choix du rangement sont grisés | Le dépôt est fermé par votre administrateur, ou votre compte n'est pas relié avec l'accès aux fichiers : la note sous les choix dit lequel. |
-| « Reliez votre compte Google ou Microsoft (Ma configuration → Connexion) pour choisir des dossiers. » | Reliez votre compte — voir [Relier son compte Google ou Microsoft](../connexion/relier-son-compte-google-ou-microsoft.md). |
+| « Reliez votre compte Google ou Microsoft (Réglages → Comptes connectés) pour choisir des dossiers. » | Reliez votre compte — voir [Relier son compte Google ou Microsoft](../connexion/relier-son-compte-google-ou-microsoft.md). |
 | « Impossible d'enregistrer la destination. Réessayez. » | Le serveur n'a pas répondu : la fiche est restée sur l'ancien choix. Réessayez. |
 | Le compte rendu d'un client est parti à vos destinataires habituels | La réunion n'avait pas de tag, ou le tag est réglé sur **Aux destinataires habituels**. Vérifiez la fiche du tag. |

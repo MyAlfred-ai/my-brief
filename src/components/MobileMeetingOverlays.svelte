@@ -21,7 +21,18 @@
    * (onNotesInput), comme sur desktop. La feuille de fin se referme AVANT
    * l'action : la carte de génération ou la confirmation de suppression
    * s'ouvrent sous rien.
+   *
+   * C'est aussi par ici que l'Aide IA écrit une note quand on le lui demande
+   * (« Alfred, note que… ») : ce composant est monté tant qu'une réunion est
+   * ouverte, à l'ordinateur comme au téléphone, et il est LIÉ aux notes
+   * d'App.svelte — qui est à son plafond et n'a pas à connaître l'Aide IA.
+   * Pour la même raison, c'est lui qui monte le pont des gestes sur la réunion
+   * (AiHelpMeetingBridge : pause, reprise, fin, compte rendu) et lui passe les
+   * fonctions qu'il tient déjà pour la barre de réunion.
    */
+  import { tick } from 'svelte';
+  import { aiHelpNotes, takeAiHelpNotes } from '../stores/aiHelp.js';
+  import AiHelpMeetingBridge from './aiHelp/AiHelpMeetingBridge.svelte';
   import MobileActionsModal from './MobileActionsModal.svelte';
   import MobileNotesModal from './MobileNotesModal.svelte';
   import MobileMeetingBar from './MobileMeetingBar.svelte';
@@ -55,9 +66,28 @@
   export let onSave = () => {};
   export let onRequestDelete = () => {};
 
+  // ── Ce que l'Aide IA peut faire de la réunion (AiHelpMeetingBridge) ────
+  /** Arrêter et rédiger le compte rendu, avec ou sans template nommé. */
+  export let onSummarize = () => {};
+  /** Les templates proposés, et celui d'App — lié : l'IA peut le retenir pour la fin. */
+  export let templateOptions = [];
+  export let currentTemplate = '';
+
   let showActionsModal = false;
   let showNotesModal = false;
   let showEndSheet = false;
+
+  // Une note dictée à l'IA : ajoutée à la suite, sur sa ligne, puis sauvée
+  // comme une frappe — après le rendu, quand App a reçu le nouveau texte.
+  $: if ($aiHelpNotes.length) writeAiNotes();
+  async function writeAiNotes() {
+    const added = takeAiHelpNotes();
+    if (!added.length) return;
+    const before = String(notes || '').replace(/\s+$/, '');
+    notes = [...(before ? [before] : []), ...added].join('\n');
+    await tick();
+    onNotesInput();
+  }
 
   function closeNotesModal() {
     showNotesModal = false;
@@ -86,6 +116,17 @@
 </script>
 
 <svelte:window on:keydown={handleEscape} />
+
+<AiHelpMeetingBridge
+  {live}
+  {isPaused}
+  {onPause}
+  {onResume}
+  {onSave}
+  {onSummarize}
+  {templateOptions}
+  bind:currentTemplate
+/>
 
 {#if live}
   <MobileMeetingBar

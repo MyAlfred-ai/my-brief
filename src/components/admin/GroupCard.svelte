@@ -6,7 +6,7 @@
    *
    * Tant qu'un compte est « en main » (glissé ou sélectionné depuis la
    * colonne Utilisateurs), la carte devient une CIBLE qui dit ce qu'elle
-   * fera : « Déposer ici », « Ajouter … ici », ou « Déjà dans ce groupe ».
+   * fera : « Déposer ici », « Placer … ici », ou « Déjà dans ce groupe ».
    * Ses boutons sortent alors du jeu (`inert`) : un clic ne doit pas ouvrir
    * les membres quand on croit choisir un groupe.
    *
@@ -21,6 +21,7 @@
   import IconUserPlus from '~icons/solar/user-plus-rounded-linear';
   import IconUserCheck from '~icons/solar/user-check-rounded-linear';
   import IconGallery from '~icons/solar/gallery-linear';
+  import IconAiHelp from '../icons/AiHelpIcon.svelte';
   import { groupColorVars } from '../../utils/groupColors.js';
   import { fill } from '../../utils/i18nFormat.js';
 
@@ -50,6 +51,12 @@
   $: accepts = !!held && !member && !adding;
   $: heldName = held ? held.name || held.email : '';
   $: quotaLimited = Number.isInteger(group.meetingMinutesPerMonth);
+
+  /** Ce que dit une carte sans description : le rôle d'un groupe fixe, sinon rien. */
+  function fixedHint(g) {
+    if (g.isDefault) return texts.defaultHint;
+    return g.isAdmin ? texts.adminHint : texts.noDescription;
+  }
 
   function countLabel(n) {
     if (n === 0) return texts.membersNone;
@@ -113,13 +120,15 @@
     <span class="gc-name">{group.name}</span>
     {#if group.isDefault}
       <span class="gc-default">{texts.defaultBadge}</span>
+    {:else if group.isAdmin}
+      <span class="gc-default">{texts.adminBadge}</span>
     {/if}
   </button>
 
   <div class="gc-body">
     <div class="gc-content" inert={covered}>
       <p class="gc-desc" class:gc-desc-empty={!group.description}>
-        {group.description || (group.isDefault ? texts.defaultHint : texts.noDescription)}
+        {group.description || fixedHint(group)}
       </p>
       <!-- Les visages avant le nombre, comme sur MIA : un groupe se
            reconnaît à ses membres. -->
@@ -158,6 +167,15 @@
               {texts.infographicPill}
             </span>
           {/if}
+          {#if group.aiHelpAllowed}
+            <span
+              class="gc-right"
+              title={group.aiHelpMyBrainAllowed ? texts.aiHelpMyBrainLabel : texts.aiHelpLabel}
+            >
+              <IconAiHelp width="13" height="13" aria-hidden="true" />
+              {group.aiHelpMyBrainAllowed ? texts.aiHelpMyBrainPill : texts.aiHelpPill}
+            </span>
+          {/if}
         </div>
         <div class="gc-actions">
           <button
@@ -169,7 +187,8 @@
           >
             <IconPen width="15" height="15" />
           </button>
-          {#if !group.isDefault}
+          <!-- Les deux groupes fixes ne se suppriment pas (cf. le serveur). -->
+          {#if !group.isDefault && !group.isAdmin}
             <button
               type="button"
               class="gc-icon-btn gc-icon-danger"

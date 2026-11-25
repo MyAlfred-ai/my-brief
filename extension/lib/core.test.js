@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   originOf,
   hostLabel,
@@ -10,6 +10,7 @@ import {
   isVideoCallUrl,
   badgeFor,
   formatElapsed,
+  fetchConfigFromPage,
 } from './core.js';
 
 describe('originOf', () => {
@@ -141,5 +142,39 @@ describe('formatElapsed', () => {
     expect(formatElapsed(65_000)).toBe('01:05');
     expect(formatElapsed(3_600_000 + 61_000)).toBe('1:01:01');
     expect(formatElapsed(-5)).toBe('00:00');
+  });
+});
+
+describe('fetchConfigFromPage', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('interroge la sonde de SA propre origine, sans cookie', async () => {
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ branding: {} }) }));
+    vi.stubGlobal('location', { origin: 'https://mybrief.acme.fr' });
+    vi.stubGlobal('fetch', fetchMock);
+    expect(await fetchConfigFromPage(1000)).toEqual({ branding: {} });
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://mybrief.acme.fr/api/auth/config');
+    expect(init.credentials).toBe('omit');
+  });
+
+  it('null sur erreur HTTP, JSON illisible ou réseau', async () => {
+    vi.stubGlobal('location', { origin: 'https://x.fr' });
+    vi.stubGlobal('fetch', async () => ({ ok: false }));
+    expect(await fetchConfigFromPage(1000)).toBe(null);
+    vi.stubGlobal('fetch', async () => ({ ok: true, json: async () => JSON.parse('<html>') }));
+    expect(await fetchConfigFromPage(1000)).toBe(null);
+    vi.stubGlobal('fetch', async () => {
+      throw new TypeError('Failed to fetch');
+    });
+    expect(await fetchConfigFromPage(1000)).toBe(null);
+  });
+
+  it('autonome : Chrome la sérialise pour l’exécuter dans la page', () => {
+    // Aucune référence à un import de core.js : seuls des globaux de page.
+    const source = fetchConfigFromPage.toString();
+    for (const name of ['isMyBriefConfig', 'originOf', 'hostPattern', 'chrome.']) {
+      expect(source, name).not.toContain(name);
+    }
   });
 });

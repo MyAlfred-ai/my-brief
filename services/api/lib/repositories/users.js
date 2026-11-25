@@ -21,15 +21,16 @@
  * Gardée sur le compte, pas sur la session : elle reste affichée après une
  * connexion par mot de passe.
  *
- * `groupIds` : les groupes du compte (cf. lib/repositories/groups.js — le
- * pourquoi de l'appartenance SUR le compte, et le groupe par défaut). Lu via
+ * `groupIds` : LE groupe du compte, tableau d'un seul identifiant (cf.
+ * lib/repositories/groups.js — le pourquoi du tableau, de l'appartenance SUR
+ * le compte, et des deux groupes fixes). Lu via `groupIdOf` /
  * `normalizeGroupIds` partout : un document sans le champ, ou vidé, est dans
  * le groupe par défaut.
  *
  * `lastConnecion` conserve la faute de frappe historique (cf. routes/core.js).
  */
 import { ownerPurgeFilter, OWNED_COLLECTIONS } from '../ownerScope.js';
-import { DEFAULT_GROUP_ID, normalizeGroupIds } from './groups.js';
+import { DEFAULT_GROUP_ID, groupForRole, groupIdOf, normalizeGroupIds } from './groups.js';
 import { escapeRegExp } from '../text.js';
 
 export const ROLES = ['user', 'admin'];
@@ -92,9 +93,9 @@ export function toPublicUser(doc) {
  * Identité renvoyée au frontend après connexion — même forme que /api/init,
  * pour que le store front n'ait qu'un seul format à connaître.
  *
- * `groups` : les groupes RÉSOLUS du compte (`app.groups.forUser`), nom et
- * couleur compris — l'utilisateur ne peut pas interroger les routes
- * d'administration pour traduire ses identifiants.
+ * `groups` : le groupe RÉSOLU du compte, en liste d'un élément
+ * (`app.groups.forUser`), nom et couleur compris — l'utilisateur ne peut pas
+ * interroger les routes d'administration pour traduire son identifiant.
  */
 export function toSessionUser(
   doc,
@@ -102,7 +103,7 @@ export function toSessionUser(
     authMode = 'password',
     authProvider = 'password',
     groups = [],
-    rights = { infographic: false },
+    rights = { infographic: false, aiHelp: false, aiHelpMyBrain: false },
   } = {},
 ) {
   if (!doc) return null;
@@ -164,9 +165,9 @@ export function createUsersRepo(db) {
           { name: { $regex: escapeRegExp(term), $options: 'i' } },
         ];
       }
-      // Égalité sur un tableau : Mongo retient le document dès qu'un élément
+      // Égalité sur un tableau : Mongo retient le document dont l'élément
       // correspond. Les comptes antérieurs au champ sont couverts par le
-      // backfill du démarrage (cf. lib/bootstrap.js, backfillUserGroups).
+      // backfill du démarrage (cf. lib/bootstrap.js, seedGroups).
       if (group) filter.groupIds = String(group);
       const total = await users().countDocuments(filter);
       const docs = await users()
@@ -191,14 +192,15 @@ export function createUsersRepo(db) {
      * minimale — pas d'`$aggregate` : le faux Mongo des tests ne l'implémente
      * pas, et une installation compte des dizaines de comptes, pas des
      * millions. Un compte sans champ compte dans le groupe par défaut, comme le
-     * veut `normalizeGroupIds`.
+     * veut `groupIdOf`.
      * @returns {Promise<Map<string, number>>}
      */
     async groupMemberCounts() {
       const docs = await users().find(SERVED_ACCOUNT).project({ _id: 0, groupIds: 1 }).toArray();
       const counts = new Map();
       for (const doc of docs) {
-        for (const id of normalizeGroupIds(doc.groupIds)) counts.set(id, (counts.get(id) || 0) + 1);
+        const id = groupIdOf(doc.groupIds);
+        counts.set(id, (counts.get(id) || 0) + 1);
       }
       return counts;
     },
@@ -228,8 +230,9 @@ export function createUsersRepo(db) {
         disabled: false,
         mustChangePassword: !!mustChangePassword,
         // Jamais vide : sans choix explicite, le compte naît dans le groupe
-        // par défaut (cf. lib/repositories/groups.js).
-        groupIds: normalizeGroupIds(groupIds),
+        // de son rôle — « Admin » pour un administrateur, le groupe par
+        // défaut sinon (cf. lib/repositories/groups.js).
+        groupIds: normalizeGroupIds(groupIds === undefined ? [groupForRole(role)] : groupIds),
         createdAt: now,
         updatedAt: now,
         lastConnecion: null,
@@ -257,7 +260,11 @@ export function createUsersRepo(db) {
       );
     },
 
-    /** Champs modifiables par l'administration : nom, rôle, activation, groupes. */
+    /**
+     * Champs modifiables par l'administration : nom, rôle, activation, groupe.
+     * Écrit ce qu'on lui donne : le groupe qui suit un changement de rôle est
+     * décidé par la route (routes/admin/users.js), qui connaît le rôle d'avant.
+     */
     async update(emailLower, { name, role, disabled, groupIds }) {
       const $set = { updatedAt: new Date().toISOString() };
       if (name !== undefined) $set.name = String(name).trim();
@@ -269,10 +276,12 @@ export function createUsersRepo(db) {
     },
 
     /**
-     * Ajoute ou retire des comptes d'un groupe, par adresse. L'appartenance est
-     * relue puis réécrite compte par compte : c'est ce qui applique l'invariant
-     * « jamais sans groupe » — un compte retiré de son dernier groupe retombe
-     * dans le groupe par défaut, au lieu de se retrouver avec un tableau vide.
+     * Fait entrer des comptes dans un groupe, ou les en fait sortir, par
+     * adresse. Un compte n'ayant qu'un groupe (cf. lib/repositories/groups.js),
+     * entrer ici, c'est QUITTER son groupe précédent ; sortir, c'est revenir
+     * dans le groupe par défaut — d'où l'on ne sort donc pas : un retrait du
+     * groupe par défaut ne change rien et ne compte pas. Un geste sans effet
+     * (déjà membre, pas membre) n'écrit rien.
      * @param {string} groupId
      * @param {{add?: string[], remove?: string[]}} changes - emailLower
      * @returns {Promise<{added: number, removed: number}>}
@@ -283,28 +292,17 @@ export function createUsersRepo(db) {
       let removed = 0;
       for (const emailLower of add) {
         const doc = await this.findByEmailLower(emailLower);
-        if (!doc) continue;
-        const current = normalizeGroupIds(doc.groupIds);
-        if (current.includes(groupId)) continue;
-        await users().updateOne(
-          { emailLower },
-          { $set: { groupIds: [...current, groupId], updatedAt: now } },
-        );
+        if (!doc || groupIdOf(doc.groupIds) === groupId) continue;
+        await users().updateOne({ emailLower }, { $set: { groupIds: [groupId], updatedAt: now } });
         added += 1;
       }
       for (const emailLower of remove) {
+        if (groupId === DEFAULT_GROUP_ID) break;
         const doc = await this.findByEmailLower(emailLower);
-        if (!doc) continue;
-        const current = normalizeGroupIds(doc.groupIds);
-        if (!current.includes(groupId)) continue;
+        if (!doc || groupIdOf(doc.groupIds) !== groupId) continue;
         await users().updateOne(
           { emailLower },
-          {
-            $set: {
-              groupIds: normalizeGroupIds(current.filter((id) => id !== groupId)),
-              updatedAt: now,
-            },
-          },
+          { $set: { groupIds: [DEFAULT_GROUP_ID], updatedAt: now } },
         );
         removed += 1;
       }
@@ -312,22 +310,15 @@ export function createUsersRepo(db) {
     },
 
     /**
-     * Retire un groupe de TOUS les comptes — appelé avant sa suppression.
-     * Deux écritures : le retrait, puis le retour au groupe par défaut des
-     * comptes que le retrait a laissés sans groupe. L'ordre garantit qu'un
-     * échec entre les deux laisse au pire un tableau vide, que
-     * `normalizeGroupIds` lit déjà comme « par défaut ».
+     * Renvoie dans le groupe par défaut TOUS les membres d'un groupe — appelé
+     * avant sa suppression. Une seule écriture : un compte n'ayant qu'un
+     * groupe, il n'y a pas de reste à trier.
      * @returns {Promise<number>} nombre de comptes qui appartenaient au groupe
      */
     async detachGroup(groupId) {
-      const now = new Date().toISOString();
       const res = await users().updateMany(
         { groupIds: groupId },
-        { $pull: { groupIds: groupId }, $set: { updatedAt: now } },
-      );
-      await users().updateMany(
-        { groupIds: { $size: 0 } },
-        { $set: { groupIds: [DEFAULT_GROUP_ID], updatedAt: now } },
+        { $set: { groupIds: [DEFAULT_GROUP_ID], updatedAt: new Date().toISOString() } },
       );
       return res?.modifiedCount || 0;
     },

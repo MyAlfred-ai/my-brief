@@ -5,8 +5,8 @@ sidebar:
   order: 3
 ---
 
-**Ma configuration → Détection d'actions.** Ces réglages n'appartiennent qu'à vous et valent pour toutes
-vos réunions, y compris celle en cours.
+**Réglages → Pendant la réunion → Détection d'actions.** Ces réglages n'appartiennent qu'à vous et valent
+pour toutes vos réunions, y compris celle en cours.
 
 ## Les réglages
 
@@ -19,7 +19,7 @@ vos réunions, y compris celle en cours.
 
 | Réglage | Valeurs | Par défaut |
 |---|---|---|
-| **Sensibilité** | **Stricte** : seulement ce qui est annoncé comme une action. **Équilibrée** : aussi ce que quelqu'un prend en charge ou se voit confier — « je m'en occupe », « tu peux relancer le client ? ». **Large** : tout ce qui ressemble à une tâche, même sans porteur — « il faut envoyer le devis » | **Équilibrée** |
+| **Sensibilité** | **Stricte** : seulement ce qui est annoncé comme une action. **Équilibrée** : aussi ce que quelqu'un prend en charge ou se voit confier — « je m'en occupe », « tu peux relancer le client ? ». **Large** : tout ce qui ressemble à une tâche, même sans porteur — « il faut envoyer le devis » | **Stricte** |
 | **Mots déclencheurs** | Des mots, séparés par des virgules, qui annoncent une action — 20 au plus. Laissé vide, le champ reprend « action » | action |
 | **Corriger les actions au fil de la réunion** | Activé : une action se complète quand la suite précise son porteur, son échéance ou ce qu'il faut livrer. Désactivé : chaque action reste telle qu'elle a été détectée | Activé |
 

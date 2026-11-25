@@ -10,6 +10,8 @@ import {
   DEFAULT_EDITABLE_TEMPLATES,
   combinePromptFields,
   buildTemplateOptions,
+  summaryActions,
+  withoutActionsSection,
 } from './templates.js';
 import { scaffoldToTiptapDoc, tiptapDocToScaffold } from './scaffold.js';
 
@@ -147,6 +149,58 @@ describe("resolveSystemPrompt — contexte d'organisation dans les DEUX chemins"
   });
 });
 
+describe('contexte du tag (dossier)', () => {
+  const TAG_MARK = 'CONTEXTE DU DOSSIER';
+  const baseCtx = {
+    language: 'fr',
+    actions: [],
+    meetingDurationFormatted: '00:10:00',
+    authorName: 'Alex',
+  };
+  const atlas = {
+    tagLabel: 'Projet Atlas',
+    tagContext: 'Cliente : Claire Martin. PAC = pompe à chaleur.',
+  };
+
+  it('le bloc nomme le dossier, porte le texte et dit qu’il n’est pas une source', () => {
+    const out = buildPersonalizationBlock(atlas);
+    expect(out).toContain(`${TAG_MARK} « Projet Atlas »`);
+    expect(out).toContain('Claire Martin');
+    expect(out).toContain("ce n'est PAS une source");
+  });
+
+  it('entre l’organisation et la personne : du général au particulier', () => {
+    const out = buildPersonalizationBlock({
+      ...atlas,
+      orgContext: 'Sigles maison',
+      userContext: 'Je suis CTO chez Acme.',
+    });
+    expect(out.indexOf(ORG_MARK)).toBeLessThan(out.indexOf(TAG_MARK));
+    expect(out.indexOf(TAG_MARK)).toBeLessThan(out.indexOf(CONTEXT_MARK));
+  });
+
+  it('NON-RÉGRESSION : un tag sans contexte ne change rien au prompt', () => {
+    const without = resolveSystemPrompt('standard', { ...baseCtx });
+    expect(resolveSystemPrompt('standard', { ...baseCtx, tagLabel: null, tagContext: null })).toBe(
+      without,
+    );
+    expect(buildPersonalizationBlock({ tagContext: '   ' })).toBe('');
+  });
+
+  it('présent dans les TROIS chemins : template fourni, V1, scaffold', () => {
+    expect(resolveSystemPrompt('standard', { ...baseCtx, ...atlas })).toContain(TAG_MARK);
+    expect(resolveSystemPrompt('v1', { ...baseCtx, ...atlas }, [v1Template])).toContain(TAG_MARK);
+    const userTemplate = {
+      value: 'mon-tpl',
+      labels: { fr: 'Mon Tpl', en: 'My Tpl' },
+      prompt: '#INSTRUCTIONS#\nRésume.\n#SCAFFOLD#\n# Titre\n{{résumé}}',
+    };
+    expect(resolveSystemPrompt('mon-tpl', { ...baseCtx, ...atlas }, [userTemplate])).toContain(
+      'Claire Martin',
+    );
+  });
+});
+
 describe('buildNotesBlock — notes de réunion', () => {
   it('inclut les notes et la consigne d’orthographe des noms', () => {
     const out = buildNotesBlock({ meetingNotes: 'M. Globex, sigle SDIS' });
@@ -268,6 +322,78 @@ describe('actions dans le prompt — seules les actions NON MASQUÉES', () => {
     expect(p).not.toContain('À définir');
     expect(p).not.toContain("Description de l'action");
     expect(p).not.toContain('<strong>Action</strong>');
+  });
+});
+
+describe('option « Actions détectées » de la carte de génération', () => {
+  const actions = [
+    { id: 1, title: 'Relancer le fournisseur', owner: 'Alex' },
+    { id: 2, title: 'Commander les badges', show: false },
+    { id: 3, title: '', owner: '', dueDate: '', description: '' },
+  ];
+
+  it('le nombre affiché est celui des actions que le compte rendu listerait', () => {
+    expect(summaryActions(actions).map((a) => a.title)).toEqual(['Relancer le fournisseur']);
+    expect(summaryActions(undefined)).toEqual([]);
+  });
+
+  it('décochée : ni la liste ni son titre de section ; la synthèse reste', () => {
+    const p = resolveSystemPrompt('standard', { language: 'fr', actions, includeActions: false });
+    expect(p).not.toContain('Relancer le fournisseur');
+    expect(p).not.toContain('Actions à mener');
+    expect(p).not.toContain('Aucune action');
+    expect(p).toContain('<h2>Synthèse</h2>');
+    expect(p).toContain('[[AI_RESUME_BLOCK]]');
+  });
+
+  it('absente (dock, fin de réunion) : la section reste, comme avant', () => {
+    const p = resolveSystemPrompt('standard', { language: 'en', actions });
+    expect(p).toContain('<h2>Action items</h2>');
+    expect(p).toContain('Relancer le fournisseur');
+  });
+
+  it('template personnalisé et template V1 : la ligne {{actions}} part aussi', () => {
+    const scaffolded = {
+      value: 'perso',
+      labels: { fr: 'Perso' },
+      prompt: combinePromptFields({
+        instructions: '- Factuel',
+        scaffold: '# Point hebdo\n\n{{résumé}}\n\n## À faire\n\n{{actions}}',
+      }),
+    };
+    const legacy = { ...v1Template, prompt: `${v1Template.prompt}\nActions : {{actions}}` };
+    const ctx = { language: 'fr', actions, includeActions: false };
+    const p1 = resolveSystemPrompt('perso', ctx, [scaffolded]);
+    expect(p1).not.toContain('À faire');
+    expect(p1).toContain('Point hebdo');
+    const p2 = resolveSystemPrompt('v1', ctx, [legacy]);
+    expect(p2).not.toContain('Relancer le fournisseur');
+    expect(p2).toContain('en listant les décisions');
+  });
+
+  it('un titre qui garde du contenu reste ; seul celui laissé vide part', () => {
+    const md = [
+      '## Suivi',
+      'Point sur les engagements.',
+      '{{actions}}',
+      '## Actions',
+      '',
+      '- {{actions}}',
+      '### Détail',
+      'Texte',
+      '## Fin',
+    ].join('\n');
+    expect(withoutActionsSection(md).split('\n')).toEqual([
+      '## Suivi',
+      'Point sur les engagements.',
+      '## Actions',
+      '',
+      '### Détail',
+      'Texte',
+      '## Fin',
+    ]);
+    // Les lignes vides restent : de simples séparateurs (scaffoldMdToHtml).
+    expect(withoutActionsSection('## Actions\n\n{{actions}}\n\n## Fin').trim()).toBe('## Fin');
   });
 });
 

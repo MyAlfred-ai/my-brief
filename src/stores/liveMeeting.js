@@ -52,6 +52,13 @@ export function newMeetingId() {
   return `m_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
+/**
+ * Plafond de `fetch(…, {keepalive})` : 64 Kio de corps en vol, tous envois
+ * confondus. Compté en caractères avec de la marge — une lettre accentuée pèse
+ * deux octets, et l'enveloppe JSON s'ajoute.
+ */
+const KEEPALIVE_MAX_CHARS = 24_000;
+
 /** Lecture du texte à sauvegarder, fournie par App (le direct peut vivre dans un snapshot). */
 let readTranscription = () => '';
 /** Dernier texte accepté par le serveur : un échec réseau doit être rejoué, pas oublié. */
@@ -68,12 +75,20 @@ function stopSaves() {
  * Exportée pour l'arrêt (dernier envoi avant la clôture) et pour les tests.
  * @returns {Promise<boolean>} true si un envoi a été accepté
  */
-export async function flushLiveTranscription() {
+export async function flushLiveTranscription({ leaving = false } = {}) {
   const meetingId = get(liveMeetingIdStore);
   if (!meetingId) return false;
   const text = (readTranscription() || '').trim();
   if (!text || text === lastSaved) return false;
-  const res = await post('/transcription/update', { meetingId, transcription: text });
+  // `keepalive` laisse la requête aboutir quand la page meurt juste après, mais
+  // le navigateur le refuse au-delà de 64 Ko de corps en vol : une longue
+  // réunion part donc sans lui (elle aboutit si la page vit encore un instant,
+  // et le prochain battement, ou la reprise, la rejouera).
+  const small = leaving && text.length < KEEPALIVE_MAX_CHARS;
+  const body = { meetingId, transcription: text };
+  const res = small
+    ? await post('/transcription/update', body, { keepalive: true })
+    : await post('/transcription/update', body);
   if (!res?.ok) return false;
   lastSaved = text;
   return true;
@@ -82,16 +97,26 @@ export async function flushLiveTranscription() {
 /**
  * Ouvre la réunion en base et démarre les sauvegardes périodiques.
  *
- * @param {{readTranscription: () => string}} deps - lecture du texte courant du
- *   direct. Une FONCTION et non une valeur : pendant la consultation d'une
- *   archive, le direct vit dans le snapshot d'App, et lire la mauvaise source
- *   écraserait la réunion en cours avec la transcription de celle qu'on lit.
+ * `resumeId` — reprise d'une réunion interrompue (page fermée, application
+ * tuée en arrière-plan) : elle continue dans SON document. Sans lui, la
+ * reprise ouvrait une seconde réunion, complète, à côté de la première restée
+ * figée à la coupure — deux lignes dans l'historique pour une seule réunion.
+ * `/history/start` ne réécrit rien d'un document déjà là (`$setOnInsert`) :
+ * le rejouer est sans effet, et la transcription repart d'où elle en était.
+ *
+ * @param {{readTranscription: () => string, resumeId?: string|null}} deps -
+ *   lecture du texte courant du direct. Une FONCTION et non une valeur :
+ *   pendant la consultation d'une archive, le direct vit dans le snapshot
+ *   d'App, et lire la mauvaise source écraserait la réunion en cours avec la
+ *   transcription de celle qu'on lit.
  * @returns {Promise<string|null>} meetingId ouvert, ou null si l'appel a échoué
  */
 export async function startLiveMeeting(deps) {
-  const meetingId = newMeetingId();
+  const meetingId = deps?.resumeId || newMeetingId();
   const res = await post('/history/start', { meetingId, startedAt: new Date().toISOString() });
-  if (!res?.ok) {
+  // Une reprise n'a pas besoin de la réponse : son document existe déjà. Les
+  // envois périodiques échoueront tant que le réseau manque, puis rattraperont.
+  if (!res?.ok && !deps?.resumeId) {
     console.warn('[live] /history/start refusé — réunion créée au premier résumé', res?.status);
     return null;
   }
@@ -148,6 +173,38 @@ export async function stopLiveMeeting({ duration = null, readNotesActions, settl
     discardIfEmpty: true,
     ...(typeof side?.notes === 'string' ? { notes: side.notes } : {}),
     ...(Array.isArray(side?.actions) ? { actions: side.actions } : {}),
+  });
+  return { meetingId, discarded: res?.data?.discarded === true };
+}
+
+/**
+ * Réunion interrompue que l'utilisateur ne reprend PAS : elle est close comme
+ * par un arrêt normal. Sans cela elle restait en base « en cours », sans
+ * durée — donc hors du compteur de minutes — et arrêtée au dernier envoi
+ * périodique, jusqu'à 20 s avant la coupure. La copie locale, écrite à chaque
+ * phrase, est la plus complète : c'est elle qui part.
+ *
+ * @param {{meetingId: string|null, transcription?: string, duration?: number|null,
+ *   notes?: string, actions?: Array}} meeting
+ * @returns {Promise<{meetingId: string, discarded: boolean}|null>} null sans
+ *   réunion en base (démarrage hors ligne)
+ */
+export async function closeInterruptedMeeting({
+  meetingId,
+  transcription = '',
+  duration = null,
+  notes,
+  actions,
+}) {
+  if (!meetingId) return null;
+  const text = (transcription || '').trim();
+  if (text) await post('/transcription/update', { meetingId, transcription: text });
+  const res = await post('/history/stop', {
+    meetingId,
+    duration,
+    discardIfEmpty: true,
+    ...(typeof notes === 'string' ? { notes } : {}),
+    ...(Array.isArray(actions) ? { actions } : {}),
   });
   return { meetingId, discarded: res?.data?.discarded === true };
 }

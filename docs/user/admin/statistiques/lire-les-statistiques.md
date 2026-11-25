@@ -1,11 +1,11 @@
 ---
 title: Lire les statistiques
-description: Ce que mesure chaque indicateur, la santé de l'adoption, le tableau par utilisateur et chaque graphique de l'onglet Statistiques, et comment les filtrer.
+description: Ce que mesure chaque indicateur, la santé de l'adoption, le tableau par utilisateur et chaque graphique de la page Consommation, et comment les filtrer.
 sidebar:
   order: 1
 ---
 
-**Administration → Statistiques.** Choisissez d'abord la période, puis, si besoin, un périmètre.
+**Administration → Coûts → Consommation.** Choisissez d'abord la période, puis, si besoin, un périmètre.
 
 ## Les filtres
 

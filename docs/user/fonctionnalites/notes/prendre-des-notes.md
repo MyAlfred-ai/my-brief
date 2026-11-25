@@ -30,7 +30,7 @@ avec la réunion, dans l'historique.
   résumé**.
 - **Une réunion démarrée sans connexion** n'arrive dans l'historique qu'à son premier résumé : d'ici là,
   ses notes ne sont gardées que dans votre navigateur.
-- **Réduire le panneau des actions** masque aussi les notes : dépliez-le pour les retrouver.
+- **Réduire les actions** masque aussi les notes : **Afficher les actions** les fait revenir.
 - **Sur téléphone**, fermer le plein écran enregistre les notes ; un point sur le bouton **Notes**
   signale qu'il y en a.
 - Le survol de l'icône d'aide, dans l'en-tête du panneau, rappelle comment les notes sont utilisées.

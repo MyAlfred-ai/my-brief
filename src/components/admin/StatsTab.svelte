@@ -680,7 +680,7 @@
 
 <style>
   /* Palette des figures : jetons `--viz-*` de styles/tokens.css, partagés
-     avec « Mes statistiques ». */
+     avec « Usage & crédits ». */
   .st-wrap {
     display: flex;
     flex-direction: column;

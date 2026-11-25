@@ -12,11 +12,22 @@
  * slug du serveur, et l'appelant (panneau, sélecteur) décide du message et du
  * toast. Les slugs possibles : `duplicate_label`, `limit_reached`,
  * `label_required`, `label_too_long`, `color_invalid`, `shape_invalid`,
- * `tag_not_found`, `meeting_not_found`.
+ * `context_too_long`, `logo_invalid`, `logo_too_big`, `tag_not_found`,
+ * `meeting_not_found`.
  */
 import { writable, derived, get as getStore } from 'svelte/store';
-import { fetchTags, saveTag, deleteTag, setMeetingTag } from '../services/tagsApi.js';
+import {
+  fetchTags,
+  saveTag,
+  saveTagContextRequest,
+  fetchTagLogo,
+  saveTagLogoRequest,
+  deleteTagLogoRequest,
+  deleteTag,
+  setMeetingTag,
+} from '../services/tagsApi.js';
 import { historyItems, meetingIdOf } from './history.js';
+import { liveMeetingIdStore } from './recording.js';
 
 /** Repli quand un tag porte une couleur sans jeton CSS (palette élargie côté serveur seul). */
 export const TAG_COLOR_FALLBACK = 'slate';
@@ -41,6 +52,30 @@ const TAG_HUE_RE = /^hue-(0|[1-9]\d{0,2})(?:-([1-9]\d))?$/;
  */
 export const TAG_HUE_LIGHTNESS = { min: 35, max: 68, default: 60 };
 
+/**
+ * Longueur maximale du contexte d'un tag — COPIE de `TAG_CONTEXT_MAX`
+ * (services/api/lib/tagContext.js), qui fait foi et que `GET /tags` sert
+ * (`contextMax`). Même régime que les bornes de clarté : tags.test.js vérifie
+ * qu'elles sont égales.
+ */
+export const TAG_CONTEXT_MAX = 1500;
+
+/**
+ * Écriture canonique d'un contexte — MIROIR de `normalizeTagContext`
+ * (services/api/lib/tagContext.js) : la fiche compare ce qu'on a tapé à ce que
+ * le serveur a gardé, et ne réenregistre pas un texte qui ne diffère que par
+ * ses espaces. Le serveur reste juge : c'est sa version que garde le store.
+ * @param {unknown} text
+ * @returns {string}
+ */
+export function normalizeTagContext(text) {
+  return String(text ?? '')
+    .replace(/\r\n?/g, '\n')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 export const tags = writable([]);
 export const isLoadingTags = writable(false);
 
@@ -53,9 +88,97 @@ export const tagColors = writable([TAG_COLOR_FALLBACK]);
 export const tagShapes = writable([TAG_SHAPE_FALLBACK]);
 export const tagHueLightness = writable(TAG_HUE_LIGHTNESS);
 export const tagsMax = writable(0);
+export const tagContextMax = writable(TAG_CONTEXT_MAX);
 
 /** Résolution d'un tag par son id — la sidebar en fait une par ligne affichée. */
 export const tagsById = derived(tags, (list) => new Map(list.map((t) => [t.id, t])));
+
+/**
+ * Logos des tags déjà lus : id → `{ at, dataUrl }`. Un logo ne vient pas avec
+ * GET /tags (il pèserait sur chaque ouverture) : le tag n'annonce que
+ * `logoAt`, et `ensureTagLogo` le lit à la demande, une fois par version.
+ */
+export const tagLogos = writable(new Map());
+const logoRequests = new Map();
+
+/**
+ * Le logo d'un tag, lu s'il ne l'est pas déjà dans sa version annoncée. Sans
+ * effet pour un tag sans logo. Deux demandes simultanées n'en font qu'une.
+ * Un échec laisse le tag sans logo affiché : jamais bloquant.
+ * @param {{id: string, logoAt?: string}|null|undefined} tag
+ */
+export async function ensureTagLogo(tag) {
+  if (!tag?.logoAt) return null;
+  const known = getStore(tagLogos).get(tag.id);
+  if (known?.at === tag.logoAt) return known.dataUrl;
+  const key = `${tag.id}\n${tag.logoAt}`;
+  if (!logoRequests.has(key)) {
+    logoRequests.set(
+      key,
+      fetchTagLogo(tag.id)
+        .then((res) => {
+          const dataUrl = res.ok && typeof res.data?.dataUrl === 'string' ? res.data.dataUrl : '';
+          if (dataUrl) {
+            tagLogos.update((map) => new Map(map).set(tag.id, { at: tag.logoAt, dataUrl }));
+          }
+          return dataUrl || null;
+        })
+        .catch(() => null)
+        .finally(() => logoRequests.delete(key)),
+    );
+  }
+  return logoRequests.get(key);
+}
+
+/**
+ * Pose ou remplace le logo d'un tag (data URL déjà préparé, utils/tagLogo.js).
+ * Le catalogue et la copie locale prennent la date que rend le serveur.
+ * @param {string} id
+ * @param {string} dataUrl
+ */
+export async function saveTagLogo(id, dataUrl) {
+  const res = await saveTagLogoRequest(id, dataUrl);
+  if (!res.ok) return outcome(res);
+  const at = res.data?.tag?.logoAt || new Date().toISOString();
+  tags.update((list) => list.map((t) => (t.id === id ? { ...t, logoAt: at } : t)));
+  tagLogos.update((map) => new Map(map).set(id, { at, dataUrl }));
+  return { ok: true };
+}
+
+/**
+ * Retire le logo d'un tag.
+ * @param {string} id
+ */
+export async function removeTagLogo(id) {
+  const res = await deleteTagLogoRequest(id);
+  if (!res.ok) return outcome(res);
+  tags.update((list) =>
+    list.map((t) => {
+      if (t.id !== id) return t;
+      const { logoAt: _logoAt, ...rest } = t;
+      return rest;
+    }),
+  );
+  tagLogos.update((map) => {
+    const next = new Map(map);
+    next.delete(id);
+    return next;
+  });
+  return { ok: true };
+}
+
+/**
+ * Le logo à afficher pour un tag : celui de sa version annoncée, sinon rien
+ * (une copie d'une autre version n'est plus le bon logo).
+ * @param {Map<string, {at: string, dataUrl: string}>} logos
+ * @param {{id: string, logoAt?: string}|null|undefined} tag
+ * @returns {string}
+ */
+export function logoOf(logos, tag) {
+  if (!tag?.logoAt) return '';
+  const known = logos.get(tag.id);
+  return known?.at === tag.logoAt ? known.dataUrl : '';
+}
 
 /**
  * Angle et clarté d'une couleur libre, ou `null` si le slug n'en est pas une
@@ -148,6 +271,7 @@ export async function loadTags() {
       tagHueLightness.set({ min: bounds.min, max: bounds.max, default: bounds.default });
     }
     if (Number.isFinite(res.data?.max)) tagsMax.set(res.data.max);
+    if (Number.isFinite(res.data?.contextMax)) tagContextMax.set(res.data.contextMax);
     return { ok: true };
   } finally {
     isLoadingTags.set(false);
@@ -175,6 +299,78 @@ export async function upsertTag(tag) {
     return next.sort((a, b) => a.label.localeCompare(b.label, 'fr', { sensitivity: 'base' }));
   });
   return { ok: true, tag: saved };
+}
+
+/**
+ * Enregistre ce que l'IA doit savoir du dossier. Pas d'optimisme non plus :
+ * la fiche garde le texte saisi tant que le serveur ne l'a pas accepté, et le
+ * catalogue ne prend que la version normalisée qu'il renvoie — celle que
+ * liront le compte rendu, l'infographie et l'Aide IA.
+ * @param {string} id
+ * @param {string} context
+ */
+export async function saveTagContext(id, context) {
+  const res = await saveTagContextRequest(id, context);
+  if (!res.ok) return outcome(res);
+  const saved = typeof res.data?.tag?.context === 'string' ? res.data.tag.context : '';
+  tags.update((list) => list.map((t) => (t.id === id ? { ...t, context: saved } : t)));
+  return { ok: true, context: saved };
+}
+
+/**
+ * La fiche de projet myBrain que le serveur vient de relier au tag (`null` :
+ * déliée). Le lien s'écrit par l'Aide IA (stores/aiHelpTagLink.js), qui en
+ * fait la requête ; la liste des tags, elle, se tient ici.
+ *
+ * @param {string} id
+ * @param {{path: string, title: string}|null} project
+ */
+export function adoptTagProject(id, project) {
+  tags.update((list) =>
+    list.map((t) => {
+      if (t.id !== id) return t;
+      if (project) return { ...t, myBrainProject: project };
+      const rest = { ...t };
+      delete rest.myBrainProject;
+      return rest;
+    }),
+  );
+}
+
+/**
+ * Ce que le compte rendu doit savoir du tag d'une conversation : son id (pour
+ * le serveur, qui relit le contexte pour l'infographie), son nom et son
+ * contexte (pour le prompt du compte rendu, assemblé ici —
+ * config/templates.js). Un tag sans contexte, inconnu ou absent rend des
+ * champs vides : le prompt reste celui d'avant les contextes de tag.
+ * @param {string|null|undefined} tagId
+ * @returns {{tagId: string|null, tagLabel: string|null, tagContext: string|null}}
+ */
+export function summaryTag(tagId) {
+  const tag = tagId ? getStore(tagsById).get(tagId) : null;
+  const context = typeof tag?.context === 'string' ? tag.context.trim() : '';
+  return {
+    tagId: tag ? tag.id : null,
+    tagLabel: context ? tag.label : null,
+    tagContext: context || null,
+  };
+}
+
+/**
+ * Le tag de la réunion qui S'ENREGISTRE — pas celle affichée, qu'on peut
+ * changer en consultant une archive — avec son contexte, ou `null` (pas de
+ * réunion en direct, pas de tag, tag sans contexte). Lu par la relecture de
+ * la transcription en direct (utils/transcriptRefine.js) : les noms et sigles
+ * du tag y servent de référence de graphie, comme les notes.
+ * @returns {{tagId: string, context: string}|null}
+ */
+export function liveTagContext() {
+  const meetingId = getStore(liveMeetingIdStore);
+  if (!meetingId) return null;
+  const tagId = getStore(historyItems).find((it) => meetingIdOf(it) === meetingId)?.tagId;
+  const tag = tagId ? getStore(tagsById).get(tagId) : null;
+  const context = typeof tag?.context === 'string' ? tag.context.trim() : '';
+  return context ? { tagId: tag.id, context } : null;
 }
 
 /**

@@ -11,7 +11,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { createOpenAiClient, REASONING_EFFORTS, VERBOSITY_LEVELS } from '../lib/openai.js';
-import { SUMMARY_MODELS } from '../lib/summaryModels.js';
+import { SUMMARY_MODELS, summaryProvider } from '../lib/summaryModels.js';
 import { buildTestApp, identityHeaders, userDoc } from './helpers.js';
 
 function spyFetch() {
@@ -44,13 +44,16 @@ describe('chat() — réglages de volume et de profondeur', () => {
     expect(calls[0].body.reasoning_effort).toBe('medium');
   });
 
-  it('les transmet à TOUS les modèles proposés dans l’administration', async () => {
+  it('les transmet à TOUS les modèles OpenAI proposés dans l’administration', async () => {
     // Vérifié en dur sur la liste réelle : un identifiant ajouté à
     // SUMMARY_MODELS sans que la regex le reconnaisse partirait sans réglage de
     // volume, et le compte rendu redeviendrait court — la panne d'origine, mais
-    // silencieuse. Les paliers 5.6 (`gpt-5.6-sol`) sont le cas qui compte : le
-    // point dans le numéro de version ne doit pas casser la reconnaissance.
-    for (const model of SUMMARY_MODELS) {
+    // silencieuse. Les paliers 5.6 (`gpt-5.6-sol`) et 6.1 (`gpt-6.1-sol`) sont
+    // le cas qui compte : le point dans le numéro de version ne doit pas casser
+    // la reconnaissance. Les modèles Mistral ne passent pas par ce client.
+    const openaiModels = SUMMARY_MODELS.filter((model) => summaryProvider(model) === 'openai');
+    expect(openaiModels).toContain('gpt-6-astra');
+    for (const model of openaiModels) {
       const { calls, fetchImpl } = spyFetch();
       const client = createOpenAiClient({ apiKey: 'sk-test-000000000000000', fetchImpl });
       await client.chat({
@@ -59,8 +62,11 @@ describe('chat() — réglages de volume et de profondeur', () => {
         verbosity: 'high',
         reasoningEffort: 'medium',
       });
-      expect(calls[0].body.verbosity, model).toBe('high');
       expect(calls[0].body.reasoning_effort, model).toBe('medium');
+      // GPT-6 : l'effort seulement — sa documentation ne dit rien de
+      // `verbosity` (relu le 2026-10-29), et un champ refusé ferait répondre
+      // 400 à chaque compte rendu (cf. lib/openai.js).
+      expect(calls[0].body.verbosity, model).toBe(model.startsWith('gpt-6') ? undefined : 'high');
     }
   });
 

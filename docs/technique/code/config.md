@@ -1,161 +1,54 @@
 # config
 
 ### src/config/constants.js
-
-- **Rôle du fichier :**
-  - Centralise toutes les constantes de configuration de l'application (URLs API, modèles IA, intervalles de temps, URLs de feedback, paramètres audio, config WebRTC…).
-  - Garantit la cohérence des valeurs partagées entre les modules et limite les duplications.
-
-- **Fonctions exportées :**
-  - **resolveApiOrigin(envVar)** : (importée depuis `./apiBase.js`)
-    - **Paramètre :** `envVar` (string) URL de base de l’API (depuis variables d’environnement, e.g., VITE_API_BASE_URL).
-    - **Retour :** URL d’origine API adaptée à l’environnement (plateforme web : chaîne vide pour URLs relatives, mobile : absolue).
-    - **Effet de bord :** Aucun dans ce fichier.
-    - **Dépendance :** `./apiBase.js`.
-  - _(La majorité des exports sont des constantes, pas des fonctions.)_
-
-- **Constantes exportées principales :**
-  - **apiOrigin** : Origine API déterminée dynamiquement (via `resolveApiOrigin`).
-  - **baseUrl** : `${apiOrigin}/api`
-  - **aiBaseUrl** : Endpoint Realtime OpenAI (`https://api.openai.com/v1/realtime`)
-    - ⚠️ Ne jamais ajouter `/calls` ici (voir commentaire détaillé dans le code).
-  - **BACKLOG_URL** : URL du formulaire de feedback utilisateur.
-  - **model, transcriptionModel** : Identifiants des modèles IA utilisés.
-  - **Variables liées au temps** : CHUNK_MS, LIVE_TRANSCRIBE_MS, LIVE_CHUNK_COUNT, RECONNECT_INTERVAL_MS, MAX_RECORDING_DURATION_MS, CONTINUE_PROMPT_AFTER_MS, CONTINUE_PROMPT_INTERVAL_MS, CONTINUE_PROMPT_TIMEOUT_MS.
-  - **ICE_SERVERS** : Liste de serveurs STUN pour WebRTC.
-  - **Audio** : SILENCE_THRESHOLD_MS, KEEP_ALIVE_INTERVAL_MS, KEEP_ALIVE_VOLUME, AUDIO_ACTIVITY_THRESHOLD.
-
-- **Points d’attention / Edge cases :**
-  - **aiBaseUrl** :
-    - N’ajouter en aucun cas `/calls` → utilisé différemment par modules WebSocket (utilisé) et WebRTC (non utilisé actuellement).
-    - cf. incident historique : un patch de prod modifiant cette constante a provoqué des régressions.
-    - Si besoin d’intégrer (à nouveau) le chemin WebRTC, créer une constante dédiée, ne pas modifier aiBaseUrl.
-  - **apiOrigin / baseUrl** :
-    - Leur valeur dépend de la plateforme (web vs mobile/Capacitor) et de la variable d’environnement.
-    - S'assurer de bien gérer la propagation des modifications de la variable d’environnement lors d’un build ou déploiement.
-  - **LIVE_CHUNK_COUNT** :
-    - Calcule automatiquement le nombre de chunks selon LIVE_TRANSCRIBE_MS et CHUNK_MS → toute modification de l’un affecte l’autre.
-  - **RECONNECT_INTERVAL_MS** :
-    - Prévoir les rotations pour éviter les coupures serveur (hard-close d’OpenAI ≥45 min). Valeur très inférieure à la limite pour assurer robustesse.
-  - **Continuité d’enregistrement** :
-    - Prompts utilisateur déclenchés à des durées précises, mais n’interrompent pas le flux (l’enregistrement continue pendant les prompts).
-  - **Configuration WebRTC (ICE_SERVERS)** :
-    - Prévoir la synchronisation de cette constante avec `utils/peerConnection.js` si (ré)utilisation.
-
-- **Dépendances notables :**
-  - `resolveApiOrigin` depuis `./apiBase.js` (gestion contextuelle de l’URL d’API).
-  - Consommateurs principaux : modules Svelte, utils/peerConnection.js, store.js, gestion de l’audio/Realtime.
-
-- **Résumé :**
-  - Tout changement ici impacte potentiellement de multiples points critiques de l'application, notamment la connexion Realtime et le flux d’audio/feedback. Lisez tous les commentaires avant modification.
+- Centralise les URLs et les constantes de durée, d’audio, de mise en page et de seuils d’affichage de crédit. N’exporte aucune fonction.
+- Exporte `apiOrigin`, calculée par `resolveApiOrigin(import.meta.env.VITE_API_BASE_URL)`, et `baseUrl`, égal à `${apiOrigin}/api`. Dépend de `src/config/apiBase.js` et de l’environnement Vite.
+- `aiBaseUrl` est la base Realtime OpenAI, sans suffixe : ne pas lui ajouter `/calls`.
+- `DOCS_URL`, `EXTENSION_STORE_URL` et `EXTENSION_ZIP_PATH` définissent les liens de documentation et d’extension. L’URL du store est vide jusqu’à la publication de l’extension.
+- Les constantes temporelles règlent notamment la rotation et la détection de silence Realtime, la durée maximale d’enregistrement, les sauvegardes et les invites de poursuite. Les valeurs sont en millisecondes.
+- Les constantes audio définissent les seuils de silence et d’activité ainsi que le keep-alive. Les constantes de mise en page sont des largeurs en pixels CSS, répétées en dur dans les styles ; veiller à les synchroniser. Les seuils `CREDIT_TONE_HIGH` et `CREDIT_TONE_LOW` correspondent aux parts de crédit restantes.
 
 ### src/config/scaffold.js
 
-- **Rôle du fichier**
-  - Conversion bidirectionnelle entre le format "scaffold" markdown restreint (stocké côté backend) et le format de document JSON ProseMirror (utilisé par l’éditeur WYSIWYG TipTap).
-  - Gère la grammaire et la sérialisation des variables dynamiques (`{{variable}}`), styles (`**gras**`, `*italique*`, `<u>souligné</u>`), titres (`#`, `##`) et listes.
-
-- **Fonctions exportées**
-  - `scaffoldToTiptapDoc(scaffold)`
-    - **Paramètre** : `scaffold` (string, markdown).
-    - **Retour** : Objet document ProseMirror (`{ type: "doc", content: [...] }`).
-    - **Effets de bord** : Normalise/ignore toutes les variables inconnues et n’imbrique que les variables présentes dans `VARIABLE_CATALOG`. Les alias 'resume'/'summary' sont convertis en 'résumé'.
-
-  - `tiptapDocToScaffold(doc)`
-    - **Paramètre** : `doc` (objet ProseMirror).
-    - **Retour** : Chaîne au format scaffold markdown, mimant la structure originale.
-    - **Effets de bord** : Seul le sous-ensemble supporté est émis (titres, listes, marqué). Toute tentative d’injecter une variable inconnue est ignorée. L’ordre et le nesting des styles sont strictement définis pour assurer une réversibilité maximale.
-
-  - `docHasResume(doc)`
-    - **Paramètre** : `doc` (objet ProseMirror).
-    - **Retour** : Booléen, vrai si au moins une variable `{{résumé}}` est présente.
-    - **Effets de bord** : Aucun.
-
-  - `KNOWN_VARIABLE_KEYS`
-    - **Export** : Set contenant les clés autorisées pour les variables (`VARIABLE_CATALOG.map(v => v.key)`).
-
-- **Points d’attention**
-  - **Edge cases**
-    - Les variables `{{...}}` non présentes dans `VARIABLE_CATALOG` sont traitées comme texte littéral, pas comme une variable.
-    - Impossible d’injecter une variable custom (non whitelistée) via l’éditeur WYSIWYG.
-    - Les styles (gras, italique, souligné) sont imbriqués dans un ordre précis (underline > bold > italic) ; le déséquilibre des balises dans le markdown source peut conduire à un rendu inattendu.
-    - La grammaire prise en charge est volontairement restrictive : tout le reste est aplati / ignoré lors du round-trip.
-    - Les lignes vides servent de séparateurs de blocs.
-  - **Dépendances**
-    - Nécessite `VARIABLE_CATALOG` (liste des variables connues) depuis `./templates.js`.
-    - Les alias de variable 'resume'/'summary' sont systématiquement convertis en 'résumé'.
-  - **Sérialisation**
-    - Toute modification du sous-ensemble markdown supporté doit être alignée entre ce fichier, le backend et la fonction `renderPreviewHtml`.
-    - Les nœuds inattendus dans le document ProseMirror sont sérialisés avec une approche "best effort" (aplatissement inline).
+- Convertit le scaffold Markdown pris en charge en document JSON TipTap, et inversement, sans modifier le format stocké côté backend.
+- Exports :
+  - `KNOWN_VARIABLE_KEYS` : `Set` des clés autorisées, dérivé de `VARIABLE_CATALOG`.
+  - `scaffoldToTiptapDoc(scaffold)` : chaîne de scaffold → document ProseMirror `{ type: 'doc', content }`. N’effectue pas d’écriture externe.
+  - `tiptapDocToScaffold(doc)` : document ProseMirror → chaîne de scaffold. N’effectue pas d’écriture externe.
+- Syntaxe gérée : titres `#`/`##`, listes à puces et ordonnées, gras, italique, souligné, variables reconnues et paragraphes vides via `<br>`.
+- Points d’attention :
+  - Dépend de `VARIABLE_CATALOG` (`./templates.js`) pour valider les variables. `resume` et `summary` sont normalisés en `résumé` ; les marqueurs inconnus restent du texte et les nœuds `variable` sont sérialisés depuis leur clé.
+  - Le parseur inline bascule les marques à chaque délimiteur ; il ne valide pas leur appariement. Les lignes vides séparent les blocs ; `<br>` seul représente un paragraphe vide.
+  - La sérialisation ne préserve que le sous-ensemble pris en charge. Les nœuds inconnus sont aplatis en contenu inline ; un document composé uniquement de paragraphes vides produit une chaîne vide.
 
 ### src/config/templates.js
 
-- **Rôle du fichier**
-  - Définit la structure et la logique de génération des prompts système pour l’IA, destinés à résumer des réunions selon différents templates (standard, décision, RH, brainstorming, etc).
-  - Gère à la fois des templates codés en dur et des templates personnalisés par l’utilisateur (incluant instructions personnalisées et scaffolding semi-verbatim).
-
-- **Fonctions exportées**
-
-  - `buildPersonalizationBlock(ctx)`
-    - **Paramètres :** `ctx` (contexte utilisateur/template)
-    - **Retour :** Chaîne de caractères (bloc de personnalisation à insérer dans le prompt)
-    - **Effet de bord notable :** Aucun
-    - **Notes :** Retourne une section impérative si des préférences utilisateur sont définies (ton, longueur, instructions custom, contexte utilisateur ou organisation).
-
-  - `buildNotesBlock(ctx)`
-    - **Paramètres :** `ctx`
-    - **Retour :** Chaîne de caractères (bloc « notes de réunion » si notes présentes, sinon chaîne vide)
-    - **Effet de bord notable :** Aucun
-
-  - `templates`
-    - **Type :** Tableau d’objets template prédéfinis incluant un champ `buildPrompt(ctx)` pour générer le prompt adapté au contexte.
-
-  - `templateMap`
-    - **Type :** Objet `{ valeur: template }` pour lookup rapide par clef.
-
-  - `templateOptions`
-    - **Type :** Tableau `{ value, icon, labels }` pour alimenter choix UI.
-
-  - `VARIABLE_CATALOG`
-    - **Type :** Tableau décrivant les variables disponibles dans l’éditeur de template utilisateur.
-
-  - `SCAFFOLD_MARKER_RE`
-    - **Type :** RegEx pour matcher le marqueur `{{résumé}}`, `{{resume}}`, `{{summary}}`
-
-  - `splitPromptFields(promptStr)`
-    - **Paramètres :** `promptStr` (string)
-    - **Retour :** `{ instructions, scaffold }` (objets séparant consignes et scaffold dans un prompt utilisateur)
-    - **Edge case :** Si séparateur absent, tout est « scaffold » (backward compat)
-
-  - `combinePromptFields({ instructions, scaffold })`
-    - **Paramètres :** Objet `{instructions, scaffold}`
-    - **Retour :** Chaîne reconstituée avec séparateur
-
-  - `STARTER_TEMPLATES`, `STARTER_BODIES`
-    - **Type :** Liste d’identifiants de templates de démarrage et leurs structures markdown associées, destinées à l’éditeur utilisateur ; utilise la syntaxe `{{variable}}`.
-
-  - `interpolateTemplate(promptStr, ctx)`
-    - **Paramètres :** chaîne template à trous, contexte
-    - **Retour :** chaîne où les `{{variables}}` sont remplacées
-    - **Note :** Pour toutes les variables connues, dont actions sérialisées, date, auteur, ton, longueur, instructions custom…
-
-  - `resolveSystemPrompt(templateValue, ctx, customTemplates)`
-    - **Paramètres :** identifiant de template, contexte, tableau d’éventuels templates custom côté DB
-    - **Retour :** chaîne de prompt complet prête à être envoyée à l’API OpenAI
-    - **Note :** Prend toujours en priorité le template custom si présent ; sinon fallback sur hardcoded ; sandwich : header système + template + rappels de format.
-
-  - `buildSystemPrompt(templateValue, ctx)`
-    - **Paramètres** : identifiant template, contexte
-    - **Retour** : prompt complet selon template dur (pas custom DB)
-    - **Note :** Wrapper de `resolveSystemPrompt` en mode hardcoded.
-
-- **Points d’attention / Edge Cases / Dépendances**
-  - Les actions sont sérialisées en markdown, puis converties en HTML côté client avant envoi à l’IA : ne pas sérialiser en JSON (le LLM recopierait littéralement).
-  - Le prompt système impose toujours la sortie HTML structurée (jamais Markdown pur, jamais texte brut).
-  - Lorsqu’un template utilisateur contient un séparateur `@@SCAFFOLD@@` ou un marqueur résumé, mode « scaffold » activé : tout sauf le bloc résumé est recopié littéralement.
-  - Les labels (ton, longueur, instructions custom, vocabulaire, contexte) sont toujours prioritaires si renseignés dans le contexte utilisateur.
-  - Les variables `{{résumé}}`, `{{actions}}`, etc. utilisées dans les scaffolds doivent être présentes dans `VARIABLE_CATALOG` pour cohérence éditeur / interpolation.
-  - Fonctionne indépendamment côté client (formatage HTML des scaffolds) et côté serveur (génération prompt), sans dépend
+- Définit les templates de compte rendu et construit les prompts système utilisés pour la génération, en mode scaffold comme en mode prompt libre.
+- Exports de données :
+  - `templates`, `templateMap`, `templateOptions` : templates codés en dur, indexés par `value`, et options simplifiées pour l’interface. Seul le template `standard` définit un `pageMeter`.
+  - `VARIABLE_CATALOG`, `SCAFFOLD_MARKER_RE`, `FIXED_AI_BLOCKS`, `ANY_AI_BLOCK_RE` : variables et marqueurs utilisables dans l’éditeur et détectés dans les scaffolds.
+  - `STARTER_TEMPLATES` : slugs proposés comme modèles de départ.
+  - `DEFAULT_EDITABLE_TEMPLATES` : version éditable des templates codés en dur.
+- Fonctions exportées :
+  - `summaryActions(actions)` → tableau d’actions conservées ; normalise les actions stockées, puis exclut celles masquées (`show === false`) ou sans contenu. Pas d’effet de bord notable.
+  - `withoutActionsSection(md)` → chaîne Markdown sans les lignes `{{actions}}` ni les titres de section devenus vides. Les titres qui conservent du contenu sont maintenus.
+  - `buildPersonalizationBlock(ctx)` → bloc texte ou `''` ; ajoute au prompt les préférences de ton, longueur, instructions et contextes utilisateur/organisation.
+  - `buildNotesBlock(ctx)` → bloc texte ou `''` ; injecte les notes de réunion et des règles strictes de référence orthographique.
+  - `buildAttributionBlock(ctx)` → bloc texte ou `''` ; ajoute les consignes d’attribution si `ctx.transcriptAttribution` contient les labels requis.
+  - `buildReferenceContextBlock(ctx)` → bloc texte ou `''` ; ajoute les contextes d’organisation et d’utilisateur comme référence orthographique.
+  - `buildFixedBlockPrompt(block, ctx)` → prompt système d’un bloc IA à consigne fixe. Destiné à un appel LLM distinct ; les réglages de longueur et instructions supplémentaires du Dock ne s’y appliquent pas.
+  - `buildTemplateOptions(userTemplates = [], customTemplates = [])` → options ordonnées par groupe `user`, `admin`, puis templates codés non recouverts. Déduplique par `value`, en donnant priorité aux templates personnels puis à ceux d’administration.
+  - `templateListFrom(data)` → liste de templates valides. Accepte une liste, un objet seul ou `{ templates }` ; ne garde que les entrées avec `value`.
+  - `splitPromptFields(promptStr)` → `{ instructions, scaffold }` ; les prompts sans séparateur `@@SCAFFOLD@@` sont traités comme des scaffolds historiques.
+  - `combinePromptFields({ instructions, scaffold })` → chaîne combinée ; sans instructions, renvoie le scaffold seul.
+  - `interpolateTemplate(promptStr, ctx)` → chaîne interpolée (`actions`, date, durée, auteur, langue et paramètres de personnalisation). La date et l’heure sont calculées à l’appel.
+  - `resolveSummaryPlan(templateValue, ctx, customTemplates = [])` → objet `{ systemPrompt, blocks, length }` ; choisit un template personnalisé ou codé, construit le prompt et prépare les blocs IA fixes et les consignes du Pagimètre. Un template inconnu déclenche un `console.warn` et retombe sur `standard`.
+  - `resolveSystemPrompt(templateValue, ctx, customTemplates = [])` → chaîne contenant le `systemPrompt` de `resolveSummaryPlan`.
+- Points d’attention :
+  - Dépend de `liveActionsMerge.js` pour normaliser/filtrer les actions et de `pageMeter.js` pour valider et calculer les longueurs.
+  - Les regex de marqueurs ont le flag `g` et sont réutilisées : le code réinitialise `lastIndex` avant/après les tests concernés.
+  - Le Pagimètre ne s’applique que si le template le propose et si `ctx.pages` est valide ; les blocs IA fixes sont générés séparément.
+  - Les scaffolds sont convertis du sous-ensemble Markdown pris en charge vers HTML ; les marqueurs IA doivent rester isolés sur leur ligne. Les alias anglais du résumé sont reconnus, mais les templates codés utilisent des scaffolds français ou anglais explicites.
 
 ### src/config/templates.test.js
 
@@ -190,94 +83,37 @@
 
 ### src/config/uiText.js
 
-- **Rôle du fichier**
-  - Centralise tous les textes d’interface utilisateur ("UI text") pour l’application MyBrief, en français et en anglais.
-  - Permet de gérer facilement la traduction et la personnalisation de l’application pour l’ensemble des composants (menus, boutons, messages, erreurs, etc.).
-  - Fournit également des textes par défaut pour les résumés à afficher avant la génération.
-
-- **Exportations**
-  - `uiTextData`
-    - **Type** : objet `{ fr: { ... }, en: { ... } }`
-    - **Description** : Regroupe l’ensemble des chaînes de caractères par langue. Structure hiérarchique par module/page (app, signIn, adminAuth, boutons, etc.).
-    - **Paramètres** : aucun (c’est une simple constante exportée).
-    - **Retour** : objet contenant tous les textes par langue.
-    - **Effet de bord** : aucun.
-  - `defaultSummaryTexts`
-    - **Type** : objet `{ fr: string, en: string }`
-    - **Description** : Texte de placeholder affiché dans la zone de résumé, avant toute génération.
-    - **Paramètres** : aucun (constante).
-    - **Retour** : objet avec texte FR/EN prêt à être affiché.
-    - **Effet de bord** : aucun.
-
-- **Points d’attention / Edge cases / Dépendances**
-  - **Dépendances**
-    - Ce fichier ne dépend d’aucune autre librairie ni module JS.
-    - Certains textes font référence à des fichiers ou logiques externes, ex : la popup « Quoi de neuf ? » dépend de `src/whats-new.json`.
-  - **Edge cases**
-    - Certains libellés utilisent des variables (ex : `{version}`, `{email}`, `{max}`) attendues par interpolation côté front : attention si le code appelle une clé de texte sans fournir la variable attendue.
-    - Les structures internes peuvent évoluer (ex : clés d’erreur comme `signIn.errors` ou `adminAi.errors`) : si une clé d’erreur serveur évolue ou une nouvelle apparaît, il faut la synchroniser ici.
-    - Certaines valeurs (modèles, listes) sont utilisées pour du rendu dynamique (ex : `adminAi.models`) : une modification ou suppression inattendue d’une clé peut casser le rendu.
-    - Les deux langues (FR/EN) doivent être mises à jour strictement en même temps pour éviter une expérience d’interface incohérente (fallback non prévu).
-    - Certains chemins attendent des listes (par ex. `sections`, `dockCard.toneOptions`, etc.) : structure à respecter pour le composant appelant.
-    - Certaines chaînes contiennent volontairement des balises HTML (`<b>`, `<br>`...), attendues pour un rendu "dangerouslySetInnerHTML" ou équivalent : sécuriser ces usages côté vue.
-    - Les nouvelles additions ou suppressions de sections doivent être coordonnées avec les composants du front qui attendent ces clés.
-
-- **Résumé**
-  - Fichier purement déclaratif, sans logique ; il doit rester synchronisé avec les besoins/requêtes du front-end, en particulier pour la correspondance des clés et la gestion des placeholders dynamiques. Toute modification doit être testée dans l’UI pour vérifier l’absence de "undefined" ou d’interpolation non résolue.
+- Fournit les textes d’interface de MyBrief en français et en anglais, regroupés par écran et fonctionnalité, ainsi que les textes de résumé affichés par défaut.
+- Exports :
+  - `uiTextData` — objet de données indexé par langue (`fr`, `en`), contenant les libellés, messages et gabarits de l’interface. Les chaînes peuvent inclure des marqueurs `{...}` à interpoler par leurs appelants. Aucun effet de bord.
+  - `defaultSummaryTexts` — objet de données indexé par langue, avec le texte initial du résumé. Aucun effet de bord.
+- Points d’attention :
+  - Ce fichier ne contient pas de fonction d’interpolation ni de sélection de langue : ces opérations sont à la charge des appelants.
+  - Les clés et marqueurs des deux langues doivent rester cohérents avec les usages du code ; certaines clés correspondent à des slugs d’erreur ou à des identifiants de modèles fournis par d’autres modules.
+  - Pas de dépendance externe ni d’effet de bord à l’import.
 
 ### src/config/apiBase.js
 
-- **Rôle du fichier**
-  - Fournit une fonction utilitaire pour déterminer l'origine de l'API à utiliser dans l'application, à partir de la variable d'environnement `VITE_API_BASE_URL`.
-  - Garantit que seul l'origine (protocole + domaine éventuellement port) est utilisée, jamais le chemin `/api`.
-  - Permet de conserver des URLs API relatives (utilisation locale/web) ou absolues (utilisation mobile via Capacitor).
-
-- **Fonction exportée**
-  - `resolveApiOrigin(raw)`
-    - **Paramètres**
-      - `raw` (`string | any`) : chaîne contenant l’URL ou origine potentielle, typiquement issue d'une variable d'environnement.
-    - **Retour**
-      - `string` : Origine de l’API (ex : `https://example.com`), ou chaîne vide si non spécifiée/valide.
-    - **Effet de bord notable**
-      - Aucun.
-      
-- **Points d'attention**
-  - Si le paramètre `raw` est nul, vide, ou ne contient que des espaces, la fonction retourne une chaîne vide (`''`) : toutes les URLs API resteront relatives.
-  - Supprime tous les slashs (/) finaux et tolère la présence accidentelle d'un suffixe `/api` qui sera ignoré.
-  - **Dépendances externes** : aucune.
-  - Pour une origine incomplète ou mal formée, le comportement est de ne retourner que la partie avant `/api` ou de vider la valeur.
-  - **Edge case** : passer une URL de type `https://foo.com/api/` retournera `https://foo.com`, ce qui évite la duplication du segment `/api` dans les requêtes ultérieures.
+- Résout l’origine de l’API à partir de `VITE_API_BASE_URL`. La valeur attendue est une origine, sans chemin complet.
+- `resolveApiOrigin(raw)` :
+  - Paramètre : `raw`, valeur à normaliser.
+  - Retour : chaîne vide si la valeur est absente ou vide ; sinon, valeur nettoyée des espaces et `/` finaux, avec le suffixe `/api` retiré s’il est présent.
+  - Effet de bord : aucun.
+- Points d’attention :
+  - Dépend de la valeur fournie par l’environnement de build ; aucun accès direct à `import.meta.env`.
+  - Une valeur vide produit des URL API relatives. Dans une WebView `capacitor://localhost`, elles n’atteignent pas le serveur ; un bundle embarqué doit donc définir l’origine.
+  - Les valeurs non vides sont converties en chaîne avant normalisation.
 
 ### src/config/configSections.js
 
-- **Rôle du fichier :**
-  - Source unique listant et centralisant toutes les sections de configuration (« Ma configuration ») de l’application.
-  - Permet d’unifier la navigation dans [SettingsPanel] et l’aide contextuelle dans [HelpSection], en évitant la divergence entre navigation et documentation utilisateur.
-  - Sert de référence unique pour tester la correspondance entre sections et aide (test dédié : `HelpSection.component.test.js`).  
-
-- **Exports principaux :**
-  - `CONFIG_SECTIONS`
-    - Tableau ordonné d’objets : chaque objet décrit une section (id, groupe, fonction label, éventuelle condition `requires`).
-    - Pas d’effet de bord.
-  - `CONFIG_SECTION_IDS`
-    - Tableau des identifiants (`id`s) des sections, calculé à partir de `CONFIG_SECTIONS`.
-    - Pas d’effet de bord.
-  - `visibleConfigSections({ connectable = false } = {})`
-    - **Paramètre :**
-      - `connectable?` : booléen (optionnel, défaut `false`). Indique si des fournisseurs externes peuvent être connectés (ex. Google/Microsoft).
-    - **Retour :**  
-      - Tableau filtré (`ConfigSection[]`) contenant seulement les sections autorisées dans le contexte courant (ignore celles qui nécessitent `connectable` si `connectable` est `false`).
-    - **Effet de bord :** Aucun.
-
-- **Points d’attention :**
-  - **Ajout d’une section** : nécessite ajout ici, d’une icône dans `SettingsPanel`, textes FR/EN dans `uiText.welcome.rubrics.config.sections.<id>`. Un test signale tout oubli.
-  - **Edge cases :**  
-    - L’aide [HelpSection] impose qu’une entrée existe en FR et EN pour chaque id de section, y compris celles cachées conditionnellement.
-    - Si un id est ajouté ici sans son texte d’aide ou icône/id UI associé, le test échouera explicitement.
-  - **Dépendances** :
-    - Les groupes référencent les clés dans `uiText.config`.
-    - Fonctions `label` attendent un objet de traduction (`t`).
-    - Les conditions sur `requires` (exemple, `'connectable'`) sont liées à des contextes techniques côté intégration (ex. présence d’un connecteur OAuth).
+- Catalogue unique des entrées de navigation de « Ma configuration », dans leur ordre d’affichage : sections du panneau et liens externes.
+- **`CONFIG_SECTIONS`** — tableau de descripteurs `ConfigSection` (`id`, `group`, fonction `label`, éventuellement `requires` ou `href`). Les libellés sont résolus à partir de `uiText` par le composant appelant. N’effectue pas d’effet de bord.
+- **`visibleConfigSections(ctx = {})`** — prend les indicateurs `connectable`, `native`, `myBrain`, ainsi que `feedbackUrl` et `docsUrl` ; retourne une nouvelle liste filtrée. Retire les entrées conditionnelles indisponibles et remplace les URL de `help` et `feedback` selon le contexte. N’effectue pas d’effet de bord.
+- Points d’attention :
+  - `connectable`, `myBrain` et `native` valent `false` par défaut ; une URL de feedback vide masque l’entrée correspondante.
+  - Une URL de documentation vide utilise `DOCS_URL`, importée de `./constants.js`.
+  - Les entrées `help` et `feedback` sont des liens, pas des sections sélectionnables. Les clés des URL sont déterminées par les identifiants `help` et `feedback`.
+  - Ajouter une section implique aussi de mettre à jour son icône et son écran dans `SettingsPanel`, ainsi que la documentation utilisateur.
 
 ### src/config/helpShots.js
 

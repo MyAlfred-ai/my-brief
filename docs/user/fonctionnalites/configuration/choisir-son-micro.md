@@ -10,10 +10,10 @@ conférence donne souvent une meilleure transcription.
 
 ## Étapes
 
-1. Ouvrez **Ma configuration → Réglages audio**.
+1. Ouvrez **Réglages → Pendant la réunion → Micro et son**.
 2. Si les noms des micros n'apparaissent pas, cliquez **Autoriser le microphone** et acceptez.
-3. Dans **Microphone**, choisissez le micro. **Microphone par défaut du système** suit le choix de votre
-   système.
+3. Dans la carte **Microphone**, sous **Périphérique**, choisissez le micro. **Microphone par défaut
+   du système** suit le choix de votre système.
 
 Le choix est enregistré aussitôt : « Enregistré » s'affiche un instant.
 
@@ -22,7 +22,8 @@ Le choix est enregistré aussitôt : « Enregistré » s'affiche un instant.
 - **Le choix vaut pour cet appareil** seulement : un micro n'a pas de sens d'une machine à l'autre.
 - **Si le micro choisi est absent** au démarrage d'une réunion, myBrief prend celui du système, sans le
   signaler. Vérifiez la vague sonore en début de réunion.
-- **La liste est lue à l'ouverture** de la section : branchez le micro, puis rouvrez **Réglages audio**.
+- **La liste est lue à l'ouverture** de la page : branchez le micro, puis rouvrez l'onglet **Micro et
+  son**.
 - L'annulation d'écho, la réduction de bruit et le réglage automatique du volume sont toujours actifs.
 - **Dans Firefox et Safari**, une seconde carte, **Son de l'ordinateur**, choisit le périphérique qui
   capte vos interlocuteurs en visio — voir
@@ -32,6 +33,6 @@ Le choix est enregistré aussitôt : « Enregistré » s'affiche un instant.
 
 | Ce qui arrive | Quoi faire |
 |---|---|
-| « Aucun microphone détecté. » | Branchez un micro, puis rouvrez la section. |
+| « Aucun microphone détecté. » | Branchez un micro, puis rouvrez la page. |
 | Les micros s'appellent « Microphone 1 », « Microphone 2 » | Le navigateur n'a pas encore l'autorisation : **Autoriser le microphone**. |
 | La vague sonore ne bouge pas quand vous parlez | Le micro choisi n'est pas celui que vous utilisez : changez-le ici. |

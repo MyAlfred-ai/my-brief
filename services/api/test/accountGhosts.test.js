@@ -44,7 +44,7 @@ const seed = () => ({
     ghost(ALEX),
     userDoc(ADMIN, { role: 'admin', groupIds: ['default'] }),
     userDoc(ALEX, {
-      groupIds: ['default', 'g-myalfred'],
+      groupIds: ['g-myalfred'],
       lastConnecion: '2026-09-25T14:00:53.000Z',
     }),
   ],
@@ -69,9 +69,9 @@ describe('l administration ne montre qu une ligne par compte', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json().users.map((u) => u.email)).toEqual([ALEX, ADMIN]);
     expect(res.json().total).toBe(2);
-    // La ligne restante est le compte servi : ses deux groupes, sa connexion.
+    // La ligne restante est le compte servi : son groupe, sa connexion.
     expect(res.json().users[0]).toMatchObject({
-      groupIds: ['default', 'g-myalfred'],
+      groupIds: ['g-myalfred'],
       lastConnecion: '2026-09-25T14:00:53.000Z',
     });
   });
@@ -79,14 +79,15 @@ describe('l administration ne montre qu une ligne par compte', () => {
   it('la recherche et le filtre par groupe aussi', async () => {
     const { app } = buildTestApp({ seed: seed() });
     expect((await getAs(app, '/api/admin/users?q=alex')).json().total).toBe(1);
+    // Le doublon est rangé dans le groupe par défaut : il n'en sort pas pour autant.
     const members = (await getAs(app, '/api/admin/users?group=default')).json();
-    expect(members.users.map((u) => u.email)).toEqual([ALEX, ADMIN]);
+    expect(members.users.map((u) => u.email)).toEqual([ADMIN]);
   });
 
   it('les effectifs des groupes ne comptent pas le doublon', async () => {
     const { app } = buildTestApp({ seed: seed() });
     const groups = (await getAs(app, '/api/admin/groups')).json().groups;
-    expect(groups.find((g) => g.id === 'default').memberCount).toBe(2);
+    expect(groups.find((g) => g.id === 'default').memberCount).toBe(1);
     expect(groups.find((g) => g.id === 'g-myalfred').memberCount).toBe(1);
   });
 

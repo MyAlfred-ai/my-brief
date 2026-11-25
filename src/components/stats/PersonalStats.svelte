@@ -1,6 +1,6 @@
 <script>
   /**
-   * « Mes statistiques » — la page d'UN compte : son crédit de temps du mois
+   * « Usage & crédits » — la page d'UN compte : son crédit de temps du mois
    * (jauge, rythme, « Au fil du mois »), puis son usage sur la période choisie
    * (réunions, temps, modèles, jours, durées).
    *

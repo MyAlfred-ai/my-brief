@@ -14,35 +14,19 @@
  *
  * Session OpenAI Realtime plafonnée à 60 min : la rotation préventive est
  * cadencée par le superviseur (supervisor.js), pas ici.
+ *
+ * Un DIALECTE par fournisseur (dialects.js), choisi à chaque rotation
+ * d'après le modèle que /tempkey vient de renvoyer : OpenAI, Mistral,
+ * Speechmatics, AssemblyAI. Ils ne diffèrent que sur le fil — URL, jeton,
+ * ouverture, format de l'audio, nom des événements — et traduisent ce qu'ils
+ * reçoivent dans la langue d'OpenAI : la pile, le superviseur et App.svelte
+ * ne savent pas qui transcrit.
  */
 
-/** PCM float32 [-1,1] → int16, format attendu par l'API Realtime. */
-export function float32ToPcm16(float32Array) {
-  const pcm16 = new Int16Array(float32Array.length);
-  for (let i = 0; i < float32Array.length; i++) {
-    const s = Math.max(-1, Math.min(1, float32Array[i]));
-    pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
-  }
-  return pcm16;
-}
+import { createDialect } from './dialects.js';
+import { float32ToPcm16 } from './pcm.js';
 
-export function arrayBufferToBase64(buffer) {
-  const bytes = new Uint8Array(buffer);
-  let binary = '';
-  for (let i = 0; i < bytes.byteLength; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
-}
-
-const TARGET_RATE = 24000;
-
-/**
- * Repli si /tempkey ne dit pas quel modèle il a utilisé (serveur d'une version
- * antérieure) : le modèle historique, celui pour lequel l'app a été écrite.
- * Doit rester aligné sur services/api/lib/transcriptionModels.js.
- */
-const DEFAULT_TRANSCRIPTION_MODEL = 'gpt-realtime-whisper';
+export { float32ToPcm16, arrayBufferToBase64 } from './pcm.js';
 
 /**
  * @param {Object} opts
@@ -72,6 +56,8 @@ export function createRealtimeChannel({
   WebSocketImpl = globalThis.WebSocket,
 }) {
   let current = null;
+  // Dialecte du socket COURANT : l'audio part au format de celui qui l'écoute.
+  let dialect = null;
   let closedByUs = false;
 
   return {
@@ -98,62 +84,58 @@ export function createRealtimeChannel({
      */
     rotate({ secret, lang }) {
       const previousWs = current;
+      const previousDialect = dialect;
       closedByUs = false;
+      const next = createDialect({ model: getModel(), secret, wsUrl });
+      const language = lang || 'fr';
 
       return new Promise((resolve, reject) => {
         const timeout = setTimeout(
           () => reject(new Error('WebSocket connection timeout')),
           timeoutMs,
         );
-        const ws = new WebSocketImpl(wsUrl, ['realtime', `openai-insecure-api-key.${secret}`]);
-        let opened = false;
+        const ws = next.protocols
+          ? new WebSocketImpl(next.url, next.protocols)
+          : new WebSocketImpl(next.url);
+        // Configuré = basculé : jusque-là, une erreur fait échouer la rotation.
+        let configured = false;
+        const send = (message) => message && ws.send(JSON.stringify(message));
 
-        ws.onopen = () => {
+        const configure = () => {
           clearTimeout(timeout);
-          opened = true;
-          ws.send(
-            JSON.stringify({
-              type: 'session.update',
-              session: {
-                type: 'transcription',
-                audio: {
-                  input: {
-                    format: { type: 'audio/pcm', rate: TARGET_RATE },
-                    transcription: {
-                      model: getModel() || DEFAULT_TRANSCRIPTION_MODEL,
-                      language: lang || 'fr',
-                    },
-                    // VAD serveur explicite. prefix_padding_ms passe de 300 (défaut)
-                    // à 500 : c'est l'audio ré-inclus AVANT le seuil de détection —
-                    // à 300, les premiers mots d'une prise de parole après un
-                    // silence (changement d'interlocuteur en visio) partaient
-                    // tronqués. threshold et silence_duration_ms restent aux
-                    // défauts, écrits ici pour être visibles et réglables.
-                    turn_detection: {
-                      type: 'server_vad',
-                      threshold: 0.5,
-                      prefix_padding_ms: 500,
-                      silence_duration_ms: 500,
-                    },
-                  },
-                },
-              },
-            }),
-          );
+          configured = true;
+          send(next.readyMessage(language));
           // Bascule : l'audio part désormais sur le nouveau socket.
           current = ws;
+          dialect = next;
           onSwitched();
           if (previousWs && previousWs !== ws) {
             try {
-              previousWs.close(1000);
+              previousDialect.retire(previousWs);
             } catch (e) {}
           }
           resolve();
         };
 
+        ws.onopen = () => {
+          send(next.openMessage(language));
+          if (!next.readyEvent) configure();
+        };
+
         ws.onmessage = (event) => {
           try {
-            onMessage(JSON.parse(event.data));
+            const message = JSON.parse(event.data);
+            // `type` chez OpenAI, Mistral et AssemblyAI ; `message` chez Speechmatics.
+            const kind = message?.type ?? message?.message;
+            if (!configured && next.readyEvent && kind === next.readyEvent) configure();
+            const translated = next.translate(message);
+            onMessage(translated);
+            // Refus AVANT d'être prêt (clé, modèle, configuration) : la rotation
+            // échoue tout de suite plutôt qu'au bout du délai d'ouverture.
+            if (!configured && translated?.type === 'error') {
+              clearTimeout(timeout);
+              reject(new Error(`Realtime: refus à l'ouverture (${translated.error?.code || '?'})`));
+            }
           } catch (e) {
             console.error('Erreur parsing message WebSocket:', e);
           }
@@ -167,7 +149,7 @@ export function createRealtimeChannel({
 
         ws.onerror = (error) => {
           clearTimeout(timeout);
-          if (!opened) {
+          if (!configured) {
             // Échec d'ouverture : l'ancien socket (s'il existe) reste en
             // service, l'appelant décide du retry.
             reject(error);
@@ -177,15 +159,17 @@ export function createRealtimeChannel({
     },
 
     /**
-     * Envoie une frame audio float32 : rééchantillonnage naïf vers 24 kHz,
-     * PCM16, base64. No-op si le socket courant n'est pas ouvert.
+     * Envoie une frame audio float32 : rééchantillonnage naïf vers le débit du
+     * dialecte (24 kHz OpenAI, 16 kHz les autres), PCM16, puis au format du
+     * dialecte (JSON base64, ou trame binaire). No-op si le socket courant
+     * n'est pas ouvert.
      * @param {Float32Array} float32
      * @param {number} sourceRate - sampleRate de l'AudioContext
      */
     sendAudioFrame(float32, sourceRate) {
       if (!this.isOpen()) return;
       const pcm16 = float32ToPcm16(float32);
-      const ratio = sourceRate / TARGET_RATE;
+      const ratio = sourceRate / dialect.rate;
       let audioData;
       if (ratio !== 1) {
         const downsampled = new Int16Array(Math.floor(pcm16.length / ratio));
@@ -196,12 +180,24 @@ export function createRealtimeChannel({
       } else {
         audioData = pcm16.buffer;
       }
-      current.send(
-        JSON.stringify({
-          type: 'input_audio_buffer.append',
-          audio: arrayBufferToBase64(audioData),
-        }),
-      );
+      current.send(dialect.encode(audioData));
+    },
+
+    /**
+     * Le socket courant est tenu pour perdu AVANT que le navigateur ne le
+     * ferme : réseau annoncé absent (`offline`). Il peut rester `OPEN` des
+     * dizaines de secondes en avalant l'audio ; l'abandonner tout de suite
+     * fait partir la perte par le chemin habituel — reconnexion, et capture
+     * du passage pour une transcription différée. No-op sans socket ouvert.
+     */
+    abandon() {
+      if (!this.isOpen()) return;
+      const ws = current;
+      current = null; // son `onclose` ne signalera rien une seconde fois
+      try {
+        ws.close();
+      } catch (e) {}
+      onUnexpectedClose();
     },
 
     /** Fermeture volontaire (stopRecording) — n'émet pas onUnexpectedClose. */

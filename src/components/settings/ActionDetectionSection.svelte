@@ -1,6 +1,6 @@
 <script>
   /**
-   * Section « Détection d'actions » de « Ma configuration ».
+   * Section « Détection d'actions » de « Réglages ».
    *
    * C'était un onglet d'ADMINISTRATION : ce que l'assistant repère pendant une
    * réunion valait alors pour toute l'installation. C'est un réglage personnel

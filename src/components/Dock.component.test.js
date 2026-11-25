@@ -148,3 +148,47 @@ describe('Dock — hors réunion', () => {
     expect(screen.getByRole('button', { name: SAVE_LABEL }).disabled).toBe(true);
   });
 });
+
+describe('Dock — reprendre une réunion arrêtée', () => {
+  const RESUME = /Reprendre l’enregistrement/;
+
+  it('« Reprendre » à gauche, avant les deux conclusions ; il relaie', async () => {
+    const onResumeMeeting = vi.fn();
+    render(Dock, {
+      props: { isRecording: false, hasTranscription: true, canSave: true, onResumeMeeting },
+    });
+    const buttons = screen.getAllByRole('button');
+    expect(buttons.map((b) => b.textContent.trim())[0]).toBe('Reprendre');
+    expect(buttons).toHaveLength(3);
+    await userEvent.click(screen.getByRole('button', { name: RESUME }));
+    expect(onResumeMeeting).toHaveBeenCalledTimes(1);
+  });
+
+  it('sans `onResumeMeeting` (App ne l’offre pas) : rien de plus qu’avant', () => {
+    render(Dock, { props: { isRecording: false, hasTranscription: true, canSave: true } });
+    expect(screen.queryByRole('button', { name: RESUME })).toBeNull();
+  });
+
+  it('jamais pendant la réunion ni en pause : « Reprendre » y est celui de la pause', () => {
+    render(Dock, {
+      props: { isRecording: true, isPaused: true, onResumeMeeting: vi.fn() },
+    });
+    expect(screen.queryByRole('button', { name: RESUME })).toBeNull();
+  });
+
+  it('inactif pendant la demande du micro et pendant une génération', async () => {
+    const { rerender } = render(Dock, {
+      props: {
+        isRecording: false,
+        hasTranscription: true,
+        isRequestingMic: true,
+        onResumeMeeting: vi.fn(),
+      },
+    });
+    const button = screen.getByRole('button', { name: RESUME });
+    expect(button.disabled).toBe(true);
+    expect(button.getAttribute('aria-busy')).toBe('true');
+    await rerender({ isRequestingMic: false, isGeneratingSummary: true });
+    expect(screen.getByRole('button', { name: RESUME }).disabled).toBe(true);
+  });
+});

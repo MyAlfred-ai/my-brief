@@ -16,7 +16,10 @@ import {
   TAG_HUE_LIGHTNESS,
   USER_TAGS_MAX,
   TAG_LABEL_MAX,
+  TAG_LOGO_MAX,
+  TAG_LOGOS_COLLECTION,
 } from '../routes/tags.js';
+import { TAG_CONTEXT_MAX } from '../lib/tagContext.js';
 import { uiTextData } from '../../../src/config/uiText.js';
 
 const EMAIL = 'alex@myalfred.ai';
@@ -71,6 +74,8 @@ describe('GET /api/tags', () => {
       shapes: TAG_SHAPES,
       hueLightness: TAG_HUE_LIGHTNESS,
       max: USER_TAGS_MAX,
+      contextMax: TAG_CONTEXT_MAX,
+      logoMax: TAG_LOGO_MAX,
     });
   });
 
@@ -368,6 +373,215 @@ describe('POST /api/tags/save — modification', () => {
       color: 'pink',
     });
     expect(res.statusCode).toBe(200);
+  });
+});
+
+describe('POST /api/tags/context', () => {
+  const ATLAS = 'Rénovation du siège. Acteurs : Claire Martin, cliente.';
+
+  it('enregistre le contexte, et GET /tags le sert avec le tag', async () => {
+    const { app } = buildTestApp({
+      seed: seedUsers({ userTags: [tagDoc(EMAIL, 't-1', 'Projet Atlas')] }),
+    });
+    const res = await postJson(app, '/api/tags/context', { id: 't-1', context: ATLAS });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().tag).toMatchObject({ id: 't-1', context: ATLAS });
+    expect((await getTags(app)).json().tags[0].context).toBe(ATLAS);
+  });
+
+  it('normalise : fins de ligne, lignes vides en série, espaces de bord', async () => {
+    const { app } = buildTestApp({
+      seed: seedUsers({ userTags: [tagDoc(EMAIL, 't-1', 'Projet Atlas')] }),
+    });
+    const res = await postJson(app, '/api/tags/context', {
+      id: 't-1',
+      context: '  Projet.  \r\n\r\n\r\n\r\nActeurs : Claire.   \n',
+    });
+    expect(res.json().tag.context).toBe('Projet.\n\nActeurs : Claire.');
+  });
+
+  it('un contexte vide le retire : le tag redevient un simple classeur', async () => {
+    const { app, db } = buildTestApp({
+      seed: seedUsers({
+        userTags: [{ ...tagDoc(EMAIL, 't-1', 'Projet Atlas'), context: ATLAS }],
+      }),
+    });
+    const res = await postJson(app, '/api/tags/context', { id: 't-1', context: '   ' });
+    expect(res.statusCode).toBe(200);
+    expect(db.data.get('userTags')[0]).not.toHaveProperty('context');
+  });
+
+  it(`400 au-delà de ${TAG_CONTEXT_MAX} caractères — refusé, jamais coupé en silence`, async () => {
+    const { app, db } = buildTestApp({
+      seed: seedUsers({ userTags: [tagDoc(EMAIL, 't-1', 'Projet Atlas')] }),
+    });
+    const res = await postJson(app, '/api/tags/context', {
+      id: 't-1',
+      context: 'x'.repeat(TAG_CONTEXT_MAX + 1),
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({ error: 'context_too_long', max: TAG_CONTEXT_MAX });
+    expect(db.data.get('userTags')[0]).not.toHaveProperty('context');
+  });
+
+  it('404 sur le tag d’un autre compte — et son contexte reste intact', async () => {
+    const { app, db } = buildTestApp({
+      seed: seedUsers({
+        userTags: [{ ...tagDoc(AUTRE, 't-2', 'À Bob'), context: 'Secret de Bob' }],
+      }),
+    });
+    const res = await postJson(app, '/api/tags/context', { id: 't-2', context: 'pris' });
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toEqual({ error: 'tag_not_found' });
+    expect(db.data.get('userTags')[0].context).toBe('Secret de Bob');
+  });
+
+  it('/tags/save laisse le contexte en place', async () => {
+    const { app } = buildTestApp({
+      seed: seedUsers({
+        userTags: [{ ...tagDoc(EMAIL, 't-1', 'Projet Atlas'), context: ATLAS }],
+      }),
+    });
+    await postJson(app, '/api/tags/save', { id: 't-1', label: 'Atlas', color: 'teal' });
+    expect((await getTags(app)).json().tags[0]).toMatchObject({ label: 'Atlas', context: ATLAS });
+  });
+
+  it('400 sans contexte ou avec un id objet — jamais d’opérateur Mongo', async () => {
+    const { app } = buildTestApp({
+      seed: seedUsers({ userTags: [tagDoc(EMAIL, 't-1', 'Projet Atlas')] }),
+    });
+    expect((await postJson(app, '/api/tags/context', { id: 't-1' })).statusCode).toBe(400);
+    const res = await postJson(app, '/api/tags/context', { id: { $ne: '' }, context: 'x' });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('401 sans identité', async () => {
+    const { app } = buildTestApp({ seed: seedUsers() });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/tags/context',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id: 't-1', context: 'x' }),
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it.each(['fr', 'en'])('le refus d’un contexte trop long a son message (%s)', (lang) => {
+    expect(uiTextData[lang].tagsPanel.errors.context_too_long).toContain('{max}');
+  });
+});
+
+describe('logo d’un tag', () => {
+  // Les vrais premiers octets d'un PNG, d'un JPEG et d'un WebP.
+  const PNG =
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  const JPEG = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ==';
+  const getLogo = (app, id, email = EMAIL) =>
+    app.inject({ method: 'GET', url: `/api/tags/logo?id=${id}`, headers: identityHeaders(email) });
+
+  it('se pose, s’annonce par `logoAt` dans la liste, et se lit à part', async () => {
+    const { app } = buildTestApp({
+      seed: seedUsers({ userTags: [tagDoc(EMAIL, 't-1', 'Projet Atlas')] }),
+    });
+    const res = await postJson(app, '/api/tags/logo', { id: 't-1', dataUrl: PNG });
+    expect(res.statusCode).toBe(200);
+    const { logoAt } = res.json().tag;
+    expect(logoAt).toBeTruthy();
+    const listed = (await getTags(app)).json().tags[0];
+    expect(listed.logoAt).toBe(logoAt);
+    // La liste ne transporte JAMAIS l'image.
+    expect(JSON.stringify(listed)).not.toContain('base64');
+    expect((await getLogo(app, 't-1')).json()).toEqual({ id: 't-1', dataUrl: PNG, logoAt });
+  });
+
+  it('remplacer laisse un seul logo, avec son appartenance', async () => {
+    const { app, db } = buildTestApp({
+      seed: seedUsers({ userTags: [tagDoc(EMAIL, 't-1', 'Projet Atlas')] }),
+    });
+    await postJson(app, '/api/tags/logo', { id: 't-1', dataUrl: PNG });
+    await postJson(app, '/api/tags/logo', { id: 't-1', dataUrl: JPEG });
+    const stored = db.data.get(TAG_LOGOS_COLLECTION);
+    expect(stored).toHaveLength(1);
+    expect(stored[0]).toMatchObject({
+      email: EMAIL,
+      emailLower: EMAIL,
+      tagId: 't-1',
+      dataUrl: JPEG,
+    });
+  });
+
+  it('refuse ce qui n’est pas une image PNG, JPEG ou WebP — SVG compris', async () => {
+    const { app, db } = buildTestApp({
+      seed: seedUsers({ userTags: [tagDoc(EMAIL, 't-1', 'Projet Atlas')] }),
+    });
+    for (const dataUrl of [
+      'data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=',
+      'data:image/png;base64,PHNjcmlwdD4=', // annoncé PNG, contenu autre
+      'data:text/html;base64,PGgxPg==',
+      'https://exemple.fr/logo.png',
+    ]) {
+      const res = await postJson(app, '/api/tags/logo', { id: 't-1', dataUrl });
+      expect(res.statusCode).toBe(400);
+      expect(res.json().error).toBe('logo_invalid');
+    }
+    expect(db.data.get(TAG_LOGOS_COLLECTION) || []).toHaveLength(0);
+  });
+
+  it(`400 au-delà de ${TAG_LOGO_MAX} caractères`, async () => {
+    const { app } = buildTestApp({
+      seed: seedUsers({ userTags: [tagDoc(EMAIL, 't-1', 'Projet Atlas')] }),
+    });
+    const big = `data:image/png;base64,iVBORw0KGgo${'A'.repeat(TAG_LOGO_MAX)}`;
+    const res = await postJson(app, '/api/tags/logo', { id: 't-1', dataUrl: big });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('le tag d’un autre compte : 404, ni écriture ni lecture', async () => {
+    const { app, db } = buildTestApp({
+      seed: seedUsers({
+        userTags: [tagDoc(AUTRE, 't-2', 'À Bob')],
+        [TAG_LOGOS_COLLECTION]: [{ email: AUTRE, emailLower: AUTRE, tagId: 't-2', dataUrl: PNG }],
+      }),
+    });
+    expect((await postJson(app, '/api/tags/logo', { id: 't-2', dataUrl: JPEG })).statusCode).toBe(
+      404,
+    );
+    expect((await getLogo(app, 't-2')).statusCode).toBe(404);
+    expect(db.data.get(TAG_LOGOS_COLLECTION)[0].dataUrl).toBe(PNG);
+  });
+
+  it('retirer : plus d’annonce, plus de logo', async () => {
+    const { app, db } = buildTestApp({
+      seed: seedUsers({ userTags: [tagDoc(EMAIL, 't-1', 'Projet Atlas')] }),
+    });
+    await postJson(app, '/api/tags/logo', { id: 't-1', dataUrl: PNG });
+    const res = await postJson(app, '/api/tags/logo/delete', { id: 't-1' });
+    expect(res.json()).toEqual({ tag: { id: 't-1', logoAt: null } });
+    expect((await getTags(app)).json().tags[0]).not.toHaveProperty('logoAt');
+    expect(db.data.get(TAG_LOGOS_COLLECTION)).toHaveLength(0);
+    expect((await getLogo(app, 't-1')).statusCode).toBe(404);
+  });
+
+  it('supprimer le tag emporte son logo', async () => {
+    const { app, db } = buildTestApp({
+      seed: seedUsers({ userTags: [tagDoc(EMAIL, 't-1', 'Projet Atlas')] }),
+    });
+    await postJson(app, '/api/tags/logo', { id: 't-1', dataUrl: PNG });
+    await postJson(app, '/api/tags/delete', { id: 't-1' });
+    expect(db.data.get(TAG_LOGOS_COLLECTION)).toHaveLength(0);
+  });
+
+  it('401 sans identité', async () => {
+    const { app } = buildTestApp({ seed: seedUsers() });
+    const res = await app.inject({ method: 'GET', url: '/api/tags/logo?id=t-1' });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it.each(['fr', 'en'])('chaque refus du logo a son message (%s)', (lang) => {
+    const errors = uiTextData[lang].tagsPanel.errors;
+    for (const slug of ['logo_invalid', 'logo_too_big', 'logo_unreadable']) {
+      expect(errors[slug], slug).toBeTruthy();
+    }
   });
 });
 

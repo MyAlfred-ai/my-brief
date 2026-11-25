@@ -5,7 +5,7 @@
    * Un seul composant pour les deux écrans qui l'ouvrent :
    *   - « Mes tags », qui ENREGISTRE la liste dès qu'on valide (le panneau n'a
    *     pas de brouillon) ;
-   *   - l'onglet « Envoi d'email » de Ma configuration, qui la pose dans son
+   *   - l'onglet « Envoi d'email » de Réglages, qui la pose dans son
    *     brouillon et l'enregistre avec le reste.
    * La fenêtre ne sait pas lequel l'a ouverte : elle rend une liste à `onSave`
    * et c'est tout. C'est le même contrat que DriveFolderPicker pour le dossier,

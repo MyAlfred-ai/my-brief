@@ -1,0 +1,1725 @@
+/*
+ * Feuilles d'infographie (InfographicSheet.svelte et ses gabarits).
+ *
+ * Une seule feuille de style pour les six gabarits. Le CADRE est commun : une
+ * couverture pleine largeur en dégradé de la marque (formes de verre,
+ * pictogramme du gabarit en filigrane, trame de points, vague), une carte
+ * « essentiel » blanche qui chevauche la vague, des titres de section à
+ * pastille, un pied en bandeau sombre. Chaque gabarit a ensuite SA pièce
+ * maîtresse : cartes à tuiles (Synthèse), sceau et option en vedette
+ * (Décision), frise horizontale (Feuille de route), tuile vedette, jauges et
+ * colonnes (Tableau de bord), blocs-notes et podium (Atelier), piliers (Bilan).
+ *
+ * Tout est préfixé `.igx` et mesuré en `--u` : 1 % de la largeur de la feuille
+ * (conteneur `.igx`, unité `cqw`) multiplié par l'échelle d'ajustement à la
+ * page A4 (`--ig-k`). Seule la hauteur de la page reste en `cqw` pur. Les
+ * couleurs sont les variables `--ig-…` posées par la feuille (palette.js) :
+ * aucune couleur de marque ici. Les grands chiffres jouent sur les graisses de
+ * Lexend (300 contre 700) plutôt que sur une seconde police.
+ *
+ * Contraintes de l'export PNG (html2canvas) : pas de `-webkit-line-clamp`
+ * (la coupure des textes est faite côté serveur), pas de transformation, pas
+ * de pseudo-élément porteur de texte, pas de texte en dégradé, pas de
+ * variable CSS dans un <svg> (cf. Icon.svelte, Ring.svelte), et pas d'ombre en
+ * guise de CONTOUR : un `box-shadow` à étalement sans flou disparaît du PNG,
+ * un `inset` y devient un aplat (constaté au banc d'essai) — les contours sont
+ * de vraies bordures. Dégradés linéaires, ombres portées, arrondis et SVG à
+ * couleurs littérales passent.
+ *
+ * Le texte passe TOUJOURS devant les formes décoratives : voir la dernière
+ * section du fichier, où chaque bloc décoré monte son contenu d'un cran.
+ */
+
+.igx {
+  container-type: inline-size;
+  width: 100%;
+  font-family: 'Lexend', system-ui, sans-serif;
+}
+
+.igx .ig-sheet {
+  /* Une page A4, toujours : sa hauteur suit la largeur (√2), JAMAIS
+     l'échelle du contenu. Tout le reste se mesure en `--u` — 1 % de la
+     largeur, multiplié par `--ig-k`, l'échelle que la feuille se donne pour
+     tenir dans la page (src/lib/infographic/fit.js). */
+  --u: calc(1cqw * var(--ig-k, 1));
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 141.42cqw;
+  overflow: hidden;
+  background: var(--ig-paper);
+  color: var(--ig-ink);
+  font-size: calc(1.95 * var(--u));
+  line-height: 1.36;
+  text-align: left;
+}
+
+.igx .ig-sheet * {
+  box-sizing: border-box;
+}
+
+.igx p,
+.igx ul,
+.igx ol {
+  margin: 0;
+  padding: 0;
+}
+
+.igx ul,
+.igx ol {
+  list-style: none;
+}
+
+.igx .ig-ico {
+  display: inline-block;
+  flex: none;
+  line-height: 0;
+}
+
+.igx .ig-ico svg {
+  display: block;
+}
+
+/* ═════════════ Couverture ═════════════ */
+.igx .ig-cover {
+  position: relative;
+  flex: none;
+  overflow: hidden;
+  padding: calc(3.4 * var(--u)) calc(5 * var(--u)) calc(10.5 * var(--u));
+  background: linear-gradient(135deg, var(--ig-hero-from) 0%, var(--ig-hero-to) 100%);
+  color: var(--ig-on-hero);
+}
+
+.igx .ig-cover-blob {
+  position: absolute;
+  top: calc(-12 * var(--u));
+  left: calc(-10 * var(--u));
+  width: calc(26 * var(--u));
+  height: calc(26 * var(--u));
+  border-radius: 50%;
+  background: var(--ig-glass);
+}
+
+/* Le médaillon : un anneau autour du pictogramme du gabarit, dans la colonne
+   de droite, SOUS la date — le titre s'arrête avant (.ig-cover-title). */
+.igx .ig-cover-ring {
+  position: absolute;
+  top: calc(12 * var(--u));
+  right: calc(-4 * var(--u));
+  width: calc(28 * var(--u));
+  height: calc(28 * var(--u));
+  border: calc(1.3 * var(--u)) solid var(--ig-glass);
+  border-radius: 50%;
+}
+
+.igx .ig-cover-ghost {
+  position: absolute;
+  top: calc(14 * var(--u));
+  right: calc(-2 * var(--u));
+}
+
+/* Le logo du TAG (client, projet) : un médaillon blanc au centre de l'anneau,
+   dans la colonne de droite que le titre laisse libre (70 u). Entier, jamais
+   recadré (« contain »). La couverture s'allonge assez pour le porter : la
+   wave du bas ne le coupe pas. */
+.igx .ig-cover-tagged {
+  min-height: calc(40 * var(--u));
+}
+
+/* L'anneau se recentre sur le médaillon, décalé de la marge de page. */
+.igx .ig-cover-tagged .ig-cover-ring {
+  right: calc(-1.5 * var(--u));
+}
+
+.igx .ig-cover-medal {
+  position: absolute;
+  top: calc(16.5 * var(--u));
+  right: calc(3 * var(--u));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(19 * var(--u));
+  height: calc(19 * var(--u));
+  box-sizing: border-box;
+  padding: calc(3.4 * var(--u));
+  border-radius: 50%;
+  background: var(--ig-paper);
+  box-shadow: 0 calc(1.2 * var(--u)) calc(3 * var(--u)) calc(-1.2 * var(--u)) rgba(0, 0, 0, 0.4);
+}
+
+.igx .ig-cover-medal img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+/* La trame : au centre du bandeau du haut, entre le logo et la date. */
+.igx .ig-cover-dots {
+  position: absolute;
+  top: calc(3.6 * var(--u));
+  left: calc(44 * var(--u));
+  width: calc(14 * var(--u));
+  height: calc(8.75 * var(--u));
+  display: block;
+}
+
+.igx .ig-cover-top {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(3 * var(--u));
+}
+
+/* Le logo de l'entreprise, sur un badge blanc : lisible sur n'importe quel
+   dégradé, toujours au même endroit. */
+.igx .ig-logo-badge {
+  display: flex;
+  align-items: center;
+  width: auto;
+  max-width: calc(34 * var(--u));
+  height: calc(9 * var(--u));
+  padding: calc(1.4 * var(--u)) calc(2.2 * var(--u));
+  border-radius: calc(2.2 * var(--u));
+  background: var(--ig-paper);
+  box-shadow: 0 calc(1.2 * var(--u)) calc(3 * var(--u)) calc(-1.2 * var(--u)) rgba(0, 0, 0, 0.4);
+}
+
+.igx .ig-logo-badge img {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: left center;
+}
+
+.igx .ig-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: calc(0.9 * var(--u));
+  min-width: 0;
+  text-align: right;
+}
+
+.igx .ig-kind {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(1 * var(--u));
+  padding: calc(0.9 * var(--u)) calc(2 * var(--u)) calc(0.9 * var(--u)) calc(1.5 * var(--u));
+  border: calc(0.25 * var(--u)) solid var(--ig-glass-strong);
+  border-radius: 99px;
+  background: var(--ig-glass);
+  font-size: calc(1.55 * var(--u));
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.igx .ig-when {
+  font-size: calc(1.65 * var(--u));
+  font-weight: 500;
+  opacity: 0.88;
+}
+
+.igx .ig-cover-title {
+  position: relative;
+  margin-top: calc(3.6 * var(--u));
+  /* Deux tiers de la largeur : le dernier tiers est au médaillon. */
+  max-width: calc(70 * var(--u));
+}
+
+.igx .ig-h {
+  font-size: calc(5.4 * var(--u));
+  font-weight: 700;
+  line-height: 1.04;
+  letter-spacing: -0.022em;
+  text-wrap: balance;
+}
+
+.igx .ig-h-long {
+  font-size: calc(4.6 * var(--u));
+}
+
+.igx .ig-sub {
+  margin-top: calc(1.1 * var(--u));
+  font-size: calc(1.95 * var(--u));
+  font-weight: 400;
+  opacity: 0.9;
+}
+
+.igx .ig-wave {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(-0.3 * var(--u));
+  display: block;
+  width: 100%;
+  height: calc(7 * var(--u));
+}
+
+/* ═════════════ Corps ═════════════ */
+.igx .ig-body {
+  position: relative;
+  flex: 1 0 auto;
+  padding-bottom: calc(2.8 * var(--u));
+  background: linear-gradient(180deg, var(--ig-paper) 55%, var(--ig-p-wash) 100%);
+}
+
+.igx .ig-section {
+  padding: calc(2.6 * var(--u)) calc(5 * var(--u)) 0;
+}
+
+/* ── Carte « essentiel », à cheval sur la vague ── */
+.igx .ig-hero {
+  position: relative;
+  z-index: 2;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: calc(2.8 * var(--u));
+  margin: calc(-8 * var(--u)) calc(5 * var(--u)) 0;
+  padding: calc(2.6 * var(--u)) calc(3.2 * var(--u));
+  border: calc(0.22 * var(--u)) solid var(--ig-rule);
+  border-radius: calc(2.8 * var(--u));
+  background: var(--ig-paper);
+  box-shadow: 0 calc(2 * var(--u)) calc(5 * var(--u)) calc(-2 * var(--u)) rgba(15, 20, 35, 0.4);
+}
+
+.igx .ig-hero-stats-only {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.igx .ig-hero-deco {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+/* Deux accents de coin, dans la marge de la carte : aucun texte n'y passe. */
+.igx .ig-hero-deco-a {
+  top: calc(-8 * var(--u));
+  left: calc(-8 * var(--u));
+  width: calc(12 * var(--u));
+  height: calc(12 * var(--u));
+  background: var(--ig-p-wash);
+}
+
+.igx .ig-hero-deco-b {
+  right: calc(-5 * var(--u));
+  bottom: calc(-5 * var(--u));
+  width: calc(8 * var(--u));
+  height: calc(8 * var(--u));
+  background: var(--ig-s-soft);
+}
+
+.igx .ig-hero-visual {
+  display: flex;
+}
+
+.igx .ig-seal {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(12 * var(--u));
+  height: calc(12 * var(--u));
+  border: calc(1 * var(--u)) solid var(--ig-p-soft);
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--ig-p-light) 0%, var(--ig-p-deep) 100%);
+  box-shadow: 0 calc(1.2 * var(--u)) calc(2.6 * var(--u)) calc(-1 * var(--u)) var(--ig-shadow-p);
+}
+
+.igx .ig-hero-ring-value {
+  color: var(--ig-p-ink);
+  font-size: calc(3.2 * var(--u));
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.igx .ig-hero-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.igx .ig-hero-eyebrow {
+  color: var(--ig-p-ink);
+  font-size: calc(1.4 * var(--u));
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.igx .ig-hero-value {
+  margin-top: calc(0.4 * var(--u));
+  color: var(--ig-ink);
+  font-size: calc(7 * var(--u));
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.035em;
+  font-variant-numeric: tabular-nums;
+}
+
+.igx .ig-hero-label {
+  margin-top: calc(0.8 * var(--u));
+  color: var(--ig-mute);
+  font-size: calc(1.95 * var(--u));
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.igx .ig-hero-statement {
+  margin-top: calc(0.6 * var(--u));
+  font-size: calc(2.7 * var(--u));
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+
+.igx .ig-hero-pill {
+  align-self: flex-start;
+  margin-top: calc(0.8 * var(--u));
+  padding: calc(0.5 * var(--u)) calc(1.6 * var(--u));
+  border-radius: 99px;
+  background: linear-gradient(135deg, var(--ig-p-light), var(--ig-p-deep));
+  color: var(--ig-on-grad-p);
+  font-size: calc(1.7 * var(--u));
+  font-weight: 700;
+}
+
+.igx .ig-hero-stats {
+  display: flex;
+  flex-direction: column;
+  gap: calc(1 * var(--u));
+  min-width: calc(17 * var(--u));
+  max-width: calc(26 * var(--u));
+}
+
+.igx .ig-hero-stats li {
+  display: flex;
+  flex-direction: column;
+  padding: calc(0.2 * var(--u)) 0 calc(0.2 * var(--u)) calc(1.8 * var(--u));
+  border-left: calc(0.45 * var(--u)) solid var(--ig-p-mid);
+}
+
+.igx .ig-hero-stats b {
+  color: var(--ig-p-ink);
+  font-size: calc(3.6 * var(--u));
+  font-weight: 300;
+  line-height: 1.02;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.igx .ig-hero-stats span {
+  color: var(--ig-mute);
+  font-size: calc(1.4 * var(--u));
+  font-weight: 500;
+}
+
+/* ── Titres de section ── */
+.igx .ig-stitle {
+  display: flex;
+  align-items: center;
+  gap: calc(1.3 * var(--u));
+  margin-bottom: calc(1.5 * var(--u));
+}
+
+.igx .ig-stitle-text {
+  font-size: calc(2.25 * var(--u));
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.igx .ig-stitle-line {
+  flex: 1;
+  height: calc(0.4 * var(--u));
+  border-radius: 99px;
+  background: linear-gradient(90deg, var(--ig-p-mid) 0%, var(--ig-paper) 100%);
+}
+
+.igx .ig-stitle-line-s {
+  background: linear-gradient(90deg, var(--ig-s-soft) 0%, var(--ig-paper) 100%);
+}
+
+/* ── Tuiles en dégradé (pictogrammes) ── */
+.igx .ig-tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  border-radius: 28%;
+}
+
+.igx .ig-tile-round {
+  border-radius: 50%;
+}
+
+.igx .ig-tile-p {
+  background: linear-gradient(135deg, var(--ig-p-light) 0%, var(--ig-p-deep) 100%);
+  box-shadow: 0 calc(0.8 * var(--u)) calc(1.8 * var(--u)) calc(-0.8 * var(--u)) var(--ig-shadow-p);
+}
+
+.igx .ig-tile-s {
+  background: linear-gradient(135deg, var(--ig-s-light) 0%, var(--ig-s-deep) 100%);
+  box-shadow: 0 calc(0.8 * var(--u)) calc(1.8 * var(--u)) calc(-0.8 * var(--u)) var(--ig-shadow-s);
+}
+
+.igx .ig-tile-ok {
+  background: linear-gradient(135deg, var(--ig-ok-light) 0%, var(--ig-ok) 100%);
+}
+
+.igx .ig-tile-warn {
+  background: linear-gradient(135deg, var(--ig-warn-light) 0%, var(--ig-warn) 100%);
+}
+
+.igx .ig-tile-glass {
+  background: var(--ig-glass);
+}
+
+.igx .ig-tile-white {
+  background: var(--ig-paper);
+  box-shadow: 0 calc(0.5 * var(--u)) calc(1.2 * var(--u)) calc(-0.6 * var(--u))
+    rgba(20, 30, 50, 0.35);
+}
+
+/* ── Grilles ── */
+.igx .ig-grid {
+  display: grid;
+  gap: calc(1.8 * var(--u));
+  align-items: stretch;
+}
+
+.igx .ig-cols-1 {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.igx .ig-cols-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.igx .ig-cols-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.igx .ig-first-wide > :first-child,
+.igx .ig-last-wide > :last-child {
+  grid-column: 1 / -1;
+}
+
+/* ── Puces ── */
+.igx .ig-bullets {
+  display: flex;
+  flex-direction: column;
+  gap: calc(0.6 * var(--u));
+}
+
+.igx .ig-bullets li {
+  position: relative;
+  padding-left: calc(2.2 * var(--u));
+  font-size: calc(1.82 * var(--u));
+}
+
+.igx .ig-bullets li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.55em;
+  width: calc(1.1 * var(--u));
+  height: calc(1.1 * var(--u));
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--ig-p-light), var(--ig-p-deep));
+}
+
+.igx .ig-bullets-s li::before {
+  background: linear-gradient(135deg, var(--ig-s-light), var(--ig-s-deep));
+}
+
+.igx .ig-bullets-ok li::before {
+  background: linear-gradient(135deg, var(--ig-ok-light), var(--ig-ok));
+}
+
+.igx .ig-bullets-warn li::before {
+  background: linear-gradient(135deg, var(--ig-warn-light), var(--ig-warn));
+}
+
+/* ── Panneaux (décisions, vigilances, suites) ── */
+.igx .ig-panel {
+  position: relative;
+  overflow: hidden;
+  padding: calc(2 * var(--u)) calc(2.4 * var(--u)) calc(2.2 * var(--u));
+  border-radius: calc(2.2 * var(--u));
+  min-width: 0;
+}
+
+.igx .ig-panel-brand {
+  border: calc(0.22 * var(--u)) solid var(--ig-p-mid);
+  background: linear-gradient(140deg, var(--ig-p-soft) 0%, var(--ig-paper) 100%);
+}
+
+.igx .ig-panel-warn {
+  border: calc(0.22 * var(--u)) solid var(--ig-warn-soft);
+  background: linear-gradient(140deg, var(--ig-warn-soft) 0%, var(--ig-paper) 100%);
+}
+
+.igx .ig-panel-title {
+  margin-bottom: calc(1.2 * var(--u));
+  color: var(--ig-p-ink);
+  font-size: calc(1.5 * var(--u));
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+.igx .ig-panel-warn .ig-panel-title {
+  color: var(--ig-warn);
+}
+
+.igx .ig-panel-list {
+  display: flex;
+  flex-direction: column;
+  gap: calc(0.9 * var(--u));
+}
+
+.igx .ig-panel-list li {
+  display: flex;
+  align-items: center;
+  gap: calc(1.3 * var(--u));
+  font-size: calc(1.82 * var(--u));
+  font-weight: 500;
+}
+
+/* ── Actions : deux colonnes, filets tracés par le fond de la grille ── */
+.igx .ig-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: calc(0.22 * var(--u));
+  overflow: hidden;
+  border: calc(0.22 * var(--u)) solid var(--ig-rule);
+  border-radius: calc(2.2 * var(--u));
+  background: var(--ig-rule);
+  box-shadow: 0 calc(1 * var(--u)) calc(2.6 * var(--u)) calc(-1.2 * var(--u)) rgba(20, 30, 50, 0.22);
+}
+
+.igx .ig-action {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: calc(1.4 * var(--u));
+  padding: calc(1.2 * var(--u)) calc(1.6 * var(--u));
+  background: var(--ig-paper);
+}
+
+.igx .ig-action:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+}
+
+.igx .ig-action-text {
+  display: flex;
+  flex-direction: column;
+  font-size: calc(1.78 * var(--u));
+  font-weight: 500;
+  line-height: 1.28;
+}
+
+.igx .ig-action-text small {
+  color: var(--ig-mute);
+  font-size: calc(1.45 * var(--u));
+  font-weight: 400;
+}
+
+.igx .ig-due {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(0.8 * var(--u));
+  padding: calc(0.45 * var(--u)) calc(1.2 * var(--u)) calc(0.45 * var(--u)) calc(0.9 * var(--u));
+  border-radius: 99px;
+  background: var(--ig-p-soft);
+  color: var(--ig-p-ink);
+  font-size: calc(1.5 * var(--u));
+  font-weight: 700;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.igx .ig-more {
+  margin-top: calc(1 * var(--u));
+  color: var(--ig-mute);
+  font-size: calc(1.55 * var(--u));
+}
+
+/* ═════════════ Pied : bandeau sombre ═════════════ */
+.igx .ig-foot {
+  position: relative;
+  flex: none;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(2.4 * var(--u));
+  padding: calc(2.2 * var(--u)) calc(5 * var(--u)) calc(2.5 * var(--u));
+  background: linear-gradient(110deg, var(--ig-foot-from) 0%, var(--ig-foot-to) 100%);
+  border-top: calc(0.6 * var(--u)) solid var(--ig-p);
+  color: var(--ig-paper);
+}
+
+.igx .ig-foot-main {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: calc(1.1 * var(--u));
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Participants et prochaine étape : une ligne chacun, pictogramme puis
+   texte — les noms en entier, qui peuvent passer à la ligne. */
+.igx .ig-people,
+.igx .ig-next {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(1 * var(--u));
+  max-width: 100%;
+  font-size: calc(1.6 * var(--u));
+}
+
+.igx .ig-people b,
+.igx .ig-next b {
+  font-weight: 700;
+}
+
+/* myBrief : discret, toujours en bas à droite. */
+.igx .ig-made {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(0.9 * var(--u));
+  flex: none;
+  font-size: calc(1.45 * var(--u));
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  opacity: 0.78;
+}
+
+.igx .ig-made-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(4 * var(--u));
+  height: calc(4 * var(--u));
+  padding: calc(0.45 * var(--u));
+  border-radius: 50%;
+  background: var(--ig-paper);
+}
+
+.igx .ig-made-badge img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* ═════════════ Synthèse ═════════════ */
+.igx .ig-card {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: calc(1.1 * var(--u));
+  padding: calc(2 * var(--u)) calc(2.2 * var(--u)) calc(2.2 * var(--u));
+  border: calc(0.22 * var(--u)) solid var(--ig-rule);
+  border-radius: calc(2.2 * var(--u));
+  background: var(--ig-paper);
+  box-shadow: 0 calc(1.2 * var(--u)) calc(3 * var(--u)) calc(-1.4 * var(--u)) rgba(20, 30, 50, 0.25);
+  min-width: 0;
+}
+
+/* Un disque teinté dans le coin de chaque carte : le rythme de la page. */
+.igx .ig-card::after {
+  content: '';
+  position: absolute;
+  top: calc(-6 * var(--u));
+  right: calc(-6 * var(--u));
+  width: calc(13 * var(--u));
+  height: calc(13 * var(--u));
+  border-radius: 50%;
+  background: var(--ig-p-wash);
+}
+
+.igx .ig-card-s::after {
+  background: var(--ig-s-soft);
+}
+
+.igx .ig-card-head {
+  display: flex;
+  align-items: center;
+  gap: calc(1.4 * var(--u));
+  /* Le disque du coin (::after) : le titre s'arrête avant. */
+  padding-right: calc(4 * var(--u));
+}
+
+.igx .ig-card-title {
+  font-size: calc(2.3 * var(--u));
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.igx .ig-cols-3 .ig-card-title {
+  font-size: calc(2.05 * var(--u));
+}
+
+.igx .ig-ribbon {
+  position: relative;
+  overflow: hidden;
+  padding: calc(2 * var(--u)) calc(2.6 * var(--u)) calc(2.2 * var(--u));
+  border-radius: calc(2.4 * var(--u));
+  background: linear-gradient(110deg, var(--ig-hero-from) 0%, var(--ig-hero-to) 100%);
+  color: var(--ig-on-hero);
+}
+
+.igx .ig-ribbon::after {
+  /* À droite du titre, au-dessus des lignes : le titre est court, et les
+     lignes, qui vont jusqu'au bord, commencent sous l'anneau. */
+  content: '';
+  position: absolute;
+  top: calc(-12 * var(--u));
+  right: calc(-7 * var(--u));
+  width: calc(18 * var(--u));
+  height: calc(18 * var(--u));
+  border: calc(1 * var(--u)) solid var(--ig-glass);
+  border-radius: 50%;
+}
+
+.igx .ig-ribbon-title {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: calc(1.3 * var(--u));
+  margin-bottom: calc(1.3 * var(--u));
+  font-size: calc(2.2 * var(--u));
+  font-weight: 700;
+}
+
+.igx .ig-ribbon-list {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: calc(1 * var(--u)) calc(2.4 * var(--u));
+}
+
+.igx .ig-ribbon-two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.igx .ig-ribbon-list li {
+  display: flex;
+  align-items: center;
+  gap: calc(1.2 * var(--u));
+  font-size: calc(1.82 * var(--u));
+  font-weight: 500;
+}
+
+/* ═════════════ Décision ═════════════ */
+.igx .ig-options {
+  align-items: start;
+}
+
+.igx .ig-option {
+  overflow: hidden;
+  border: calc(0.22 * var(--u)) solid var(--ig-rule);
+  border-radius: calc(2.2 * var(--u));
+  background: var(--ig-paper);
+  box-shadow: 0 calc(1 * var(--u)) calc(2.4 * var(--u)) calc(-1.4 * var(--u)) rgba(20, 30, 50, 0.22);
+  min-width: 0;
+}
+
+/* L'option retenue : tout le dégradé, et le relief qui la sort du lot. */
+.igx .ig-option-retained {
+  border: calc(0.22 * var(--u)) solid var(--ig-p-deep);
+  background: linear-gradient(160deg, var(--ig-hero-from) 0%, var(--ig-hero-to) 100%);
+  color: var(--ig-on-hero);
+  box-shadow: 0 calc(2.2 * var(--u)) calc(4.4 * var(--u)) calc(-1.8 * var(--u)) var(--ig-shadow-p);
+}
+
+.igx .ig-option-head {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: calc(0.8 * var(--u));
+  padding: calc(1.8 * var(--u)) calc(2.2 * var(--u));
+  background: var(--ig-soft);
+}
+
+.igx .ig-option-retained .ig-option-head {
+  background: var(--ig-glass);
+}
+
+.igx .ig-option-title {
+  font-size: calc(2.2 * var(--u));
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.igx .ig-option:not(.ig-option-retained) .ig-option-title {
+  color: var(--ig-mute);
+}
+
+.igx .ig-option-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(0.7 * var(--u));
+  padding: calc(0.45 * var(--u)) calc(1.4 * var(--u)) calc(0.45 * var(--u)) calc(1 * var(--u));
+  border-radius: 99px;
+  background: var(--ig-paper);
+  color: var(--ig-p-ink);
+  font-size: calc(1.35 * var(--u));
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.igx .ig-option-body {
+  display: flex;
+  flex-direction: column;
+  gap: calc(0.9 * var(--u));
+  padding: calc(1.6 * var(--u)) calc(2 * var(--u)) calc(2 * var(--u));
+}
+
+.igx .ig-arg {
+  display: flex;
+  align-items: flex-start;
+  gap: calc(1 * var(--u));
+  font-size: calc(1.78 * var(--u));
+}
+
+.igx .ig-arg-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(2.8 * var(--u));
+  height: calc(2.8 * var(--u));
+  margin-top: calc(-0.3 * var(--u));
+  border-radius: 50%;
+  flex: none;
+}
+
+.igx .ig-arg-pro {
+  background: var(--ig-ok-soft);
+}
+
+.igx .ig-arg-con {
+  background: var(--ig-bad-soft);
+}
+
+/* ═════════════ Feuille de route : frise horizontale ═════════════ */
+.igx .ig-tl {
+  display: grid;
+  grid-template-rows: auto calc(9 * var(--u)) auto;
+  padding: 0 calc(0.4 * var(--u));
+}
+
+.igx .ig-tl-track {
+  position: relative;
+  grid-row: 2;
+  grid-column: 1 / -1;
+  align-self: center;
+  height: calc(1.6 * var(--u));
+  border-radius: 99px;
+  background: var(--ig-p-soft);
+}
+
+.igx .ig-tl-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  border-radius: 99px;
+  background: linear-gradient(90deg, var(--ig-p) 0%, var(--ig-s) 100%);
+}
+
+.igx .ig-tl-cell {
+  position: relative;
+  grid-row: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.igx .ig-tl-stem {
+  position: absolute;
+  left: 50%;
+  width: calc(0.4 * var(--u));
+  margin-left: calc(-0.2 * var(--u));
+  background: var(--ig-p-mid);
+}
+
+.igx .ig-tl-cell.ig-tl-up .ig-tl-stem {
+  top: 0;
+  bottom: 50%;
+}
+
+.igx .ig-tl-cell:not(.ig-tl-up) .ig-tl-stem {
+  top: 50%;
+  bottom: 0;
+}
+
+.igx .ig-tl-node {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(5.4 * var(--u));
+  height: calc(5.4 * var(--u));
+  border: calc(0.7 * var(--u)) solid var(--ig-p);
+  border-radius: 50%;
+  background: var(--ig-paper);
+}
+
+.igx .ig-tl-node-fait {
+  border-color: var(--ig-p-soft);
+  background: linear-gradient(135deg, var(--ig-p-light), var(--ig-p-deep));
+  box-shadow: 0 calc(0.8 * var(--u)) calc(1.8 * var(--u)) calc(-0.8 * var(--u)) var(--ig-shadow-p);
+}
+
+.igx .ig-tl-node-objectif {
+  width: calc(8.4 * var(--u));
+  height: calc(8.4 * var(--u));
+  border: calc(1.1 * var(--u)) solid var(--ig-s-soft);
+  background: linear-gradient(135deg, var(--ig-s-light), var(--ig-s-deep));
+  box-shadow: 0 calc(1 * var(--u)) calc(2.2 * var(--u)) calc(-0.8 * var(--u)) var(--ig-shadow-s);
+}
+
+.igx .ig-tl-num {
+  color: var(--ig-p-ink);
+  font-size: calc(2 * var(--u));
+  font-weight: 700;
+}
+
+.igx .ig-tl-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: calc(0.4 * var(--u));
+  justify-self: center;
+  /* Deux colonnes séparent deux cartes d'une même rangée : centrée, une
+     carte peut prendre 180 % de sa colonne ; calée au bord (première,
+     dernière), 150 % — il reste toujours un jour entre deux cartes. */
+  width: min(180%, calc(30 * var(--u)));
+  padding: calc(1.2 * var(--u)) calc(1.4 * var(--u)) calc(1.3 * var(--u));
+  border: calc(0.22 * var(--u)) solid var(--ig-rule);
+  border-radius: calc(1.6 * var(--u));
+  background: var(--ig-paper);
+  box-shadow: 0 calc(1 * var(--u)) calc(2.2 * var(--u)) calc(-1.2 * var(--u)) rgba(20, 30, 50, 0.25);
+  min-width: 0;
+}
+
+.igx .ig-tl-up {
+  grid-row: 1;
+  align-self: end;
+}
+
+.igx .ig-tl-down {
+  grid-row: 3;
+  align-self: start;
+}
+
+.igx .ig-tl-cell.ig-tl-up {
+  grid-row: 2;
+  align-self: stretch;
+}
+
+.igx .ig-tl-first {
+  justify-self: start;
+  width: min(150%, calc(26 * var(--u)));
+}
+
+.igx .ig-tl-last {
+  justify-self: end;
+  width: min(150%, calc(26 * var(--u)));
+}
+
+.igx .ig-tl-card-fait {
+  border-color: var(--ig-p-mid);
+  background: linear-gradient(160deg, var(--ig-p-soft) 0%, var(--ig-paper) 80%);
+}
+
+.igx .ig-tl-card-objectif {
+  border: calc(0.4 * var(--u)) solid var(--ig-s);
+  background: linear-gradient(160deg, var(--ig-s-soft) 0%, var(--ig-paper) 85%);
+  box-shadow: 0 calc(1.2 * var(--u)) calc(2.6 * var(--u)) calc(-1.2 * var(--u)) var(--ig-shadow-s);
+}
+
+/* La date en pastille de dégradé : l'œil suit le calendrier. */
+.igx .ig-tl-when {
+  padding: calc(0.25 * var(--u)) calc(1.1 * var(--u));
+  border-radius: 99px;
+  background: linear-gradient(135deg, var(--ig-p-light), var(--ig-p-deep));
+  color: var(--ig-on-grad-p);
+  font-size: calc(1.6 * var(--u));
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.igx .ig-tl-card-objectif .ig-tl-when {
+  background: linear-gradient(135deg, var(--ig-s-light), var(--ig-s-deep));
+  color: var(--ig-on-grad-s);
+}
+
+.igx .ig-tl-card b {
+  font-size: calc(1.72 * var(--u));
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.igx .ig-tl-detail {
+  color: var(--ig-mute);
+  font-size: calc(1.48 * var(--u));
+  line-height: 1.3;
+}
+
+.igx .ig-tl-tag {
+  color: var(--ig-mute);
+  font-size: calc(1.2 * var(--u));
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.igx .ig-tl-card-fait .ig-tl-tag {
+  color: var(--ig-p-ink);
+}
+
+.igx .ig-tl-card-objectif .ig-tl-tag {
+  color: var(--ig-s-ink);
+}
+
+/* ═════════════ Tableau de bord ═════════════ */
+.igx .ig-kpis {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: calc(1.8 * var(--u));
+}
+
+.igx .ig-kpis-1 {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.igx .ig-kpis-3 > :first-child {
+  grid-column: 1 / -1;
+}
+
+.igx .ig-kpi {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: calc(0.8 * var(--u));
+  padding: calc(2 * var(--u)) calc(2.4 * var(--u)) calc(2.2 * var(--u));
+  border: calc(0.22 * var(--u)) solid var(--ig-rule);
+  border-radius: calc(2.2 * var(--u));
+  background: var(--ig-paper);
+  box-shadow: 0 calc(1.2 * var(--u)) calc(3 * var(--u)) calc(-1.4 * var(--u)) rgba(20, 30, 50, 0.25);
+  min-width: 0;
+}
+
+.igx .ig-kpi::after {
+  content: '';
+  position: absolute;
+  top: calc(-7 * var(--u));
+  right: calc(-7 * var(--u));
+  width: calc(12 * var(--u));
+  height: calc(12 * var(--u));
+  border-radius: 50%;
+  background: var(--ig-p-wash);
+}
+
+.igx .ig-kpi-featured {
+  border-color: var(--ig-p-deep);
+  background: linear-gradient(130deg, var(--ig-hero-from) 0%, var(--ig-hero-to) 100%);
+  color: var(--ig-on-hero);
+  box-shadow: 0 calc(2 * var(--u)) calc(4 * var(--u)) calc(-2 * var(--u)) var(--ig-shadow-p);
+}
+
+.igx .ig-kpi-featured::after {
+  background: var(--ig-glass);
+}
+
+.igx .ig-kpi-label {
+  color: var(--ig-mute);
+  font-size: calc(1.4 * var(--u));
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.igx .ig-kpi-featured .ig-kpi-label,
+.igx .ig-kpi-featured .ig-kpi-note {
+  color: var(--ig-on-hero);
+  opacity: 0.88;
+}
+
+.igx .ig-kpi-row {
+  display: flex;
+  align-items: center;
+  gap: calc(2 * var(--u));
+}
+
+.igx .ig-kpi-side {
+  display: flex;
+  flex-direction: column;
+  gap: calc(0.8 * var(--u));
+  min-width: 0;
+}
+
+.igx .ig-kpi-value {
+  font-size: calc(4.6 * var(--u));
+  font-weight: 300;
+  line-height: 1.02;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+.igx .ig-kpi-value-xl {
+  font-size: calc(5.4 * var(--u));
+}
+
+.igx .ig-kpi-featured .ig-kpi-value {
+  font-size: calc(5 * var(--u));
+}
+
+.igx .ig-kpi-ring-value {
+  font-size: calc(2.2 * var(--u));
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.igx .ig-kpi-featured .ig-kpi-ring-value {
+  font-size: calc(2.8 * var(--u));
+}
+
+.igx .ig-kpi-note {
+  color: var(--ig-mute);
+  font-size: calc(1.5 * var(--u));
+}
+
+.igx .ig-ring {
+  position: relative;
+  display: inline-block;
+  flex: none;
+}
+
+.igx .ig-ring svg {
+  display: block;
+}
+
+.igx .ig-ring-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.igx .ig-gauge {
+  position: relative;
+  width: 70%;
+  max-width: calc(26 * var(--u));
+  margin: calc(0.4 * var(--u)) auto 0;
+}
+
+.igx .ig-gauge svg {
+  display: block;
+}
+
+.igx .ig-gauge-value {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  text-align: center;
+  font-size: calc(3.8 * var(--u));
+  font-weight: 300;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.igx .ig-kpi-featured .ig-gauge-value {
+  font-size: calc(4.4 * var(--u));
+}
+
+.igx .ig-gauge + .ig-kpi-note {
+  text-align: center;
+}
+
+.igx .ig-track {
+  position: relative;
+  height: calc(2.2 * var(--u));
+  margin: calc(0.8 * var(--u)) calc(3.6 * var(--u)) calc(0.4 * var(--u)) 0;
+  border-radius: 99px;
+  background: var(--ig-p-soft);
+}
+
+.igx .ig-kpi-featured .ig-track {
+  background: var(--ig-hero-track);
+}
+
+.igx .ig-track-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  border-radius: 99px;
+  background: linear-gradient(90deg, var(--ig-p-light) 0%, var(--ig-p-deep) 100%);
+}
+
+.igx .ig-kpi-featured .ig-track-fill {
+  background: var(--ig-on-hero);
+}
+
+.igx .ig-track-goal {
+  position: absolute;
+  top: 50%;
+  right: calc(-3.6 * var(--u));
+  margin-top: calc(-1.3 * var(--u));
+}
+
+.igx .ig-evo-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(0.6 * var(--u));
+  width: fit-content;
+  padding: calc(0.5 * var(--u)) calc(1.4 * var(--u)) calc(0.5 * var(--u)) calc(1 * var(--u));
+  border-radius: 99px;
+  background: linear-gradient(135deg, var(--ig-p-light), var(--ig-p-deep));
+  color: var(--ig-paper);
+  font-size: calc(1.7 * var(--u));
+  font-weight: 700;
+}
+
+.igx .ig-kpi-featured .ig-evo-chip {
+  background: var(--ig-on-hero);
+  color: var(--ig-hero-from);
+}
+
+.igx .ig-evo-cols {
+  display: flex;
+  flex: none;
+  align-items: flex-end;
+  gap: calc(1 * var(--u));
+  height: calc(9 * var(--u));
+  margin-left: auto;
+}
+
+.igx .ig-evo-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: calc(0.6 * var(--u));
+  height: 100%;
+}
+
+.igx .ig-evo-col small {
+  color: var(--ig-mute);
+  font-size: calc(1.3 * var(--u));
+  white-space: nowrap;
+}
+
+.igx .ig-kpi-featured .ig-evo-col small {
+  color: var(--ig-on-hero);
+}
+
+.igx .ig-evo-bar {
+  display: block;
+  width: calc(3.4 * var(--u));
+  min-height: calc(1 * var(--u));
+  max-height: calc(100% - calc(2.6 * var(--u)));
+  border-radius: calc(1 * var(--u)) calc(1 * var(--u)) calc(0.3 * var(--u)) calc(0.3 * var(--u));
+  background: linear-gradient(180deg, var(--ig-p-light) 0%, var(--ig-p-deep) 100%);
+}
+
+.igx .ig-evo-before {
+  background: var(--ig-rule);
+}
+
+.igx .ig-kpi-featured .ig-evo-bar {
+  background: var(--ig-on-hero);
+}
+
+.igx .ig-kpi-featured .ig-evo-before {
+  background: var(--ig-hero-track);
+}
+
+/* Répartition en colonnes */
+.igx .ig-colchart {
+  display: flex;
+  align-items: stretch;
+  gap: calc(2 * var(--u));
+  padding: calc(1.8 * var(--u)) calc(2.4 * var(--u)) calc(1.6 * var(--u));
+  border: calc(0.22 * var(--u)) solid var(--ig-rule);
+  border-radius: calc(2.2 * var(--u));
+  background: linear-gradient(180deg, var(--ig-p-wash) 0%, var(--ig-paper) 100%);
+}
+
+.igx .ig-cc-col {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(0.8 * var(--u));
+  min-width: 0;
+}
+
+.igx .ig-cc-plot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  width: 100%;
+  height: calc(16 * var(--u));
+  border-bottom: calc(0.3 * var(--u)) solid var(--ig-rule);
+}
+
+.igx .ig-cc-value {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: calc(0.7 * var(--u));
+  font-variant-numeric: tabular-nums;
+}
+
+.igx .ig-cc-value b {
+  font-size: calc(2 * var(--u));
+  font-weight: 700;
+}
+
+.igx .ig-cc-value small {
+  color: var(--ig-mute);
+  font-size: calc(1.3 * var(--u));
+}
+
+.igx .ig-cc-bar {
+  display: block;
+  width: 72%;
+  max-width: calc(11 * var(--u));
+  max-height: calc(100% - calc(5 * var(--u)));
+  border-radius: calc(1.2 * var(--u)) calc(1.2 * var(--u)) 0 0;
+  background: linear-gradient(180deg, var(--ig-p-mid) 0%, var(--ig-p-light) 100%);
+}
+
+.igx .ig-cc-top {
+  /* La plus grande valeur, en couleur secondaire : la seule à attirer l'œil. */
+  background: linear-gradient(180deg, var(--ig-s-light) 0%, var(--ig-s-deep) 100%);
+}
+
+.igx .ig-cc-label {
+  font-size: calc(1.5 * var(--u));
+  font-weight: 600;
+  text-align: center;
+  line-height: 1.25;
+}
+
+/* ═════════════ Atelier ═════════════ */
+.igx .ig-note {
+  overflow: hidden;
+  border: calc(0.22 * var(--u)) solid var(--ig-rule);
+  border-radius: calc(2.2 * var(--u));
+  background: var(--ig-paper);
+  box-shadow: 0 calc(1.2 * var(--u)) calc(3 * var(--u)) calc(-1.4 * var(--u)) rgba(20, 30, 50, 0.25);
+  min-width: 0;
+}
+
+.igx .ig-note-head {
+  display: flex;
+  align-items: center;
+  gap: calc(1.2 * var(--u));
+  padding: calc(1.4 * var(--u)) calc(2 * var(--u));
+}
+
+.igx .ig-note-p .ig-note-head {
+  background: linear-gradient(120deg, var(--ig-hero-from) 0%, var(--ig-hero-to) 100%);
+  color: var(--ig-on-hero);
+}
+
+.igx .ig-note-s .ig-note-head {
+  background: linear-gradient(120deg, var(--ig-s-light) 0%, var(--ig-s-deep) 100%);
+  color: var(--ig-on-s);
+}
+
+.igx .ig-note-title {
+  flex: 1;
+  min-width: 0;
+  font-size: calc(2.05 * var(--u));
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.igx .ig-note-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: calc(3.4 * var(--u));
+  height: calc(3.4 * var(--u));
+  padding: 0 calc(1 * var(--u));
+  border-radius: 99px;
+  background: var(--ig-paper);
+  color: var(--ig-ink);
+  font-size: calc(1.55 * var(--u));
+  font-weight: 700;
+}
+
+.igx .ig-note-list {
+  display: flex;
+  flex-direction: column;
+  gap: calc(0.8 * var(--u));
+  padding: calc(1.5 * var(--u)) calc(2 * var(--u)) calc(1.8 * var(--u));
+}
+
+.igx .ig-note-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: calc(1 * var(--u));
+  font-size: calc(1.75 * var(--u));
+}
+
+.igx .ig-idea-dot {
+  width: calc(1.1 * var(--u));
+  height: calc(1.1 * var(--u));
+  margin: calc(0.7 * var(--u)) calc(0.6 * var(--u)) 0;
+  border-radius: 50%;
+  background: var(--ig-p-mid);
+  flex: none;
+}
+
+.igx .ig-idea-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.igx .ig-idea-retained .ig-idea-text {
+  font-weight: 700;
+}
+
+.igx .ig-votes {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(0.8 * var(--u));
+  flex: none;
+  margin-top: calc(0.4 * var(--u));
+}
+
+.igx .ig-votes-track {
+  display: block;
+  width: calc(5.6 * var(--u));
+  height: calc(1 * var(--u));
+  overflow: hidden;
+  border-radius: 99px;
+  background: var(--ig-soft);
+}
+
+.igx .ig-votes-track i {
+  display: block;
+  height: 100%;
+  border-radius: 99px;
+  background: linear-gradient(90deg, var(--ig-s-light), var(--ig-s-deep));
+}
+
+.igx .ig-votes b {
+  min-width: calc(2.6 * var(--u));
+  font-size: calc(1.5 * var(--u));
+  font-weight: 700;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Podium : le premier au centre, sur la plus haute marche. */
+.igx .ig-podium {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: calc(1.6 * var(--u));
+  padding: 0 calc(2 * var(--u));
+  border-bottom: calc(0.5 * var(--u)) solid var(--ig-p-mid);
+}
+
+.igx .ig-pod {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: stretch;
+  gap: calc(0.9 * var(--u));
+  max-width: calc(26 * var(--u));
+  min-width: 0;
+}
+
+.igx .ig-pod-text {
+  font-size: calc(1.7 * var(--u));
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: center;
+}
+
+.igx .ig-pod-1 .ig-pod-text {
+  font-size: calc(1.9 * var(--u));
+  font-weight: 700;
+}
+
+.igx .ig-pod-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: calc(0.4 * var(--u));
+  border-radius: calc(2 * var(--u)) calc(2 * var(--u)) 0 0;
+  background: linear-gradient(180deg, var(--ig-p-mid) 0%, var(--ig-p-light) 100%);
+  color: var(--ig-ink);
+}
+
+.igx .ig-pod-1 .ig-pod-block {
+  background: linear-gradient(180deg, var(--ig-hero-from) 0%, var(--ig-hero-to) 100%);
+  color: var(--ig-on-hero);
+  box-shadow: 0 calc(1.6 * var(--u)) calc(3.2 * var(--u)) calc(-1.4 * var(--u)) var(--ig-shadow-p);
+}
+
+.igx .ig-pod-2 .ig-pod-block {
+  background: linear-gradient(180deg, var(--ig-s-light) 0%, var(--ig-s-deep) 100%);
+  color: var(--ig-on-s);
+}
+
+.igx .ig-pod-rank {
+  font-size: calc(4.8 * var(--u));
+  font-weight: 300;
+  line-height: 1;
+}
+
+.igx .ig-pod-2 .ig-pod-rank,
+.igx .ig-pod-3 .ig-pod-rank {
+  font-size: calc(3.6 * var(--u));
+}
+
+.igx .ig-pod-votes {
+  font-size: calc(1.4 * var(--u));
+  font-weight: 600;
+  opacity: 0.9;
+}
+
+/* ═════════════ Bilan : trois piliers ═════════════ */
+.igx .ig-pillars {
+  align-items: stretch;
+}
+
+.igx .ig-pillar {
+  overflow: hidden;
+  border: calc(0.22 * var(--u)) solid var(--ig-rule);
+  border-radius: calc(2.2 * var(--u));
+  background: var(--ig-paper);
+  box-shadow: 0 calc(1.2 * var(--u)) calc(3 * var(--u)) calc(-1.4 * var(--u)) rgba(20, 30, 50, 0.25);
+  min-width: 0;
+}
+
+.igx .ig-pillar-head {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: calc(1 * var(--u));
+  padding: calc(2 * var(--u)) calc(2.2 * var(--u)) calc(1.8 * var(--u));
+  color: var(--ig-paper);
+}
+
+.igx .ig-pillar-head::after {
+  content: '';
+  position: absolute;
+  right: calc(-5 * var(--u));
+  bottom: calc(-6 * var(--u));
+  width: calc(12 * var(--u));
+  height: calc(12 * var(--u));
+  border: calc(0.9 * var(--u)) solid rgba(255, 255, 255, 0.22);
+  border-radius: 50%;
+}
+
+.igx .ig-pillar-ok .ig-pillar-head {
+  background: linear-gradient(135deg, var(--ig-ok-light) 0%, var(--ig-ok) 100%);
+}
+
+.igx .ig-pillar-warn .ig-pillar-head {
+  background: linear-gradient(135deg, var(--ig-warn-light) 0%, var(--ig-warn) 100%);
+}
+
+.igx .ig-pillar-p .ig-pillar-head {
+  background: linear-gradient(135deg, var(--ig-hero-from) 0%, var(--ig-hero-to) 100%);
+  color: var(--ig-on-hero);
+}
+
+.igx .ig-pillar-disc {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(6.6 * var(--u));
+  height: calc(6.6 * var(--u));
+  border: calc(0.4 * var(--u)) solid rgba(255, 255, 255, 0.35);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.igx .ig-pillar-p .ig-pillar-disc {
+  border-color: var(--ig-hero-track);
+  background: var(--ig-glass);
+}
+
+.igx .ig-pillar-title {
+  /* L'anneau du coin (::after) : le titre s'arrête avant. */
+  padding-right: calc(3.5 * var(--u));
+  font-size: calc(2.2 * var(--u));
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.igx .ig-cols-3 .ig-pillar-title {
+  font-size: calc(2 * var(--u));
+}
+
+.igx .ig-pillar-count {
+  position: absolute;
+  top: calc(1.6 * var(--u));
+  right: calc(2 * var(--u));
+  font-size: calc(5 * var(--u));
+  font-weight: 300;
+  line-height: 1;
+  opacity: 0.45;
+}
+
+.igx .ig-pillar .ig-bullets {
+  padding: calc(1.8 * var(--u)) calc(2 * var(--u)) calc(2 * var(--u));
+}
+
+/* ═════════════ Le texte devant les formes ═════════════
+   Une forme décorative en position absolue — disque, anneau, filigrane,
+   trame, `::after` — se peint APRÈS le contenu non positionné de son bloc,
+   quel que soit l'ordre du DOM, et un `::after` après ses frères
+   positionnés (CSS 2.1, annexe E). D'où l'anneau des piliers du Bilan tracé
+   sur leur titre, celui des rubans sur leurs lignes. Règle : le CONTENU de
+   chaque bloc décoré monte d'un cran, les formes restent au niveau 0 — pas
+   de z-index négatif, que l'export PNG rendrait moins sûrement. Une forme
+   nouvelle ajoute son bloc ici. */
+.igx .ig-cover-top,
+.igx .ig-cover-title,
+.igx .ig-hero > :not(.ig-hero-deco),
+.igx .ig-card > *,
+.igx .ig-kpi > *,
+.igx .ig-ribbon > *,
+.igx .ig-pillar-head > :not(.ig-pillar-count) {
+  position: relative;
+  z-index: 1;
+}
+
+.igx .ig-pillar-count {
+  z-index: 1;
+}

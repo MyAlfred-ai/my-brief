@@ -17,8 +17,13 @@ import { normalizePages, effectivePages, countWords, wordsForPages } from '../li
 // l'infographie (api/lib/prompts.js) : une action sans champ `show` est visible.
 // Ni carte vierge, ni texte de remplacement d'autrefois (« À définir »…) : ce
 // qui n'a pas été écrit ne se retrouve pas dans le compte rendu.
+// Exportée : la carte de génération compte ces actions-là, et pas d'autres.
+export function summaryActions(actions) {
+  return toStoredActions(actions).filter((a) => a.show !== false && hasActionContent(a));
+}
+
 function serializeActions(actions, language) {
-  const visible = toStoredActions(actions).filter((a) => a.show !== false && hasActionContent(a));
+  const visible = summaryActions(actions);
   if (visible.length === 0) return language === 'en' ? 'No actions' : 'Aucune action';
   // Rendu en PUCES MARKDOWN (converties en <ul><li> par scaffoldMdToHtml puis
   // recopiées telles quelles par le LLM). NE PAS sérialiser en JSON : le scaffold
@@ -40,6 +45,39 @@ function serializeActions(actions, language) {
       return line;
     })
     .join('\n');
+}
+
+/**
+ * Mise en forme SANS les actions : l'option « Actions détectées » décochée
+ * dans la carte de génération. Retire chaque ligne qui porte {{actions}},
+ * puis le titre de section qu'elle laisse vide — « ## Actions » suivi de rien
+ * annoncerait une liste absente. Un titre qui garde du contenu (une phrase, un
+ * sous-titre, le bloc ✨ Résumé IA) reste. Vaut pour le scaffold comme pour le
+ * prompt libre d'un template V1. Les lignes vides ne sont que des séparateurs
+ * (scaffoldMdToHtml) : en laisser deux de suite ne change pas le rendu.
+ */
+export function withoutActionsSection(md) {
+  const level = (line) => /^(#{1,6})\s/.exec(line.trim())?.[1].length ?? 0;
+  const kept = [];
+  const emptied = new Set(); // indices (dans `kept`) des titres qui ont perdu une ligne
+  let heading = -1;
+  for (const line of String(md ?? '').split('\n')) {
+    if (line.includes('{{actions}}')) {
+      if (heading >= 0) emptied.add(heading);
+      continue;
+    }
+    if (level(line)) heading = kept.length;
+    kept.push(line);
+  }
+  const stillHasContent = (i) => {
+    for (let j = i + 1; j < kept.length; j++) {
+      const next = level(kept[j]);
+      if (next && next <= level(kept[i])) return false;
+      if (kept[j].trim()) return true;
+    }
+    return false;
+  };
+  return kept.filter((_, i) => !emptied.has(i) || stillHasContent(i)).join('\n');
 }
 
 function formatNow() {
@@ -85,6 +123,20 @@ function longueurInstruction(longueur) {
 }
 
 /**
+ * Intitulé du contexte d'un TAG (« Mes tags » → Que doit savoir l'IA ?) : le
+ * projet ou le client que le tag range, ses acteurs, ses sigles. Le risque
+ * qu'il fait courir est propre à lui — l'organisation donne un vocabulaire,
+ * l'utilisateur dit qui il est, mais un dossier contient des FAITS (« livraison
+ * en juin ») qu'un compte rendu reprendrait comme dits en réunion. D'où la
+ * consigne : éclairage, jamais source. Même parti pris côté serveur pour
+ * l'infographie et l'Aide IA (services/api/lib/tagContext.js).
+ */
+function tagContextHeading(ctx) {
+  const label = ctx.tagLabel ? String(ctx.tagLabel).trim() : '';
+  return `CONTEXTE DU DOSSIER${label ? ` « ${label} »` : ''} (le projet ou le client de cette réunion, décrit par l'utilisateur : acteurs et rôles, sigles — sert à comprendre la réunion et à écrire correctement noms, rôles et sigles ; ce n'est PAS une source : n'écris aucun fait, chiffre ni date qui n'ait été dit en réunion)`;
+}
+
+/**
  * Build the high-priority personalization block. Inserted near the top of the
  * system prompt so user choices take precedence over template defaults.
  * Returns empty string when no customization is provided.
@@ -96,8 +148,9 @@ export function buildPersonalizationBlock(ctx) {
   const hasCustom = !!ctx.customPrompt;
   const userContext = (ctx.userContext && String(ctx.userContext).trim()) || '';
   const orgContext = (ctx.orgContext && String(ctx.orgContext).trim()) || '';
+  const tagContext = (ctx.tagContext && String(ctx.tagContext).trim()) || '';
 
-  if (!tonName && !longName && !hasCustom && !userContext && !orgContext) {
+  if (!tonName && !longName && !hasCustom && !userContext && !orgContext && !tagContext) {
     return '';
   }
 
@@ -122,12 +175,18 @@ export function buildPersonalizationBlock(ctx) {
   }
   // L'organisation AVANT la personne : le premier est un vocabulaire (noms de
   // clients, sigles maison), le second dit qui parle. Du général au particulier,
-  // et en cas de contradiction c'est le plus précis qui est lu en dernier.
+  // et en cas de contradiction c'est le plus précis qui est lu en dernier. Le
+  // dossier (contexte du tag) se place entre les deux : plus précis que
+  // l'organisation, il ne dit pas qui parle.
   if (orgContext) {
     lines.push(
       `• VOCABULAIRE ET CONTEXTE DE L'ORGANISATION (noms de clients, de projets, sigles maison — sert à écrire correctement ces termes et à comprendre les allusions, sans le recopier tel quel) :`,
     );
     lines.push(`  « ${orgContext} »`);
+  }
+  if (tagContext) {
+    lines.push(`• ${tagContextHeading(ctx)} :`);
+    lines.push(`  « ${tagContext} »`);
   }
   if (userContext) {
     lines.push(
@@ -856,7 +915,8 @@ function scaffoldMdToHtml(md, bareTokens = []) {
 export function buildReferenceContextBlock(ctx) {
   const userContext = (ctx.userContext && String(ctx.userContext).trim()) || '';
   const orgContext = (ctx.orgContext && String(ctx.orgContext).trim()) || '';
-  if (!userContext && !orgContext) return '';
+  const tagContext = (ctx.tagContext && String(ctx.tagContext).trim()) || '';
+  if (!userContext && !orgContext && !tagContext) return '';
   const lines = [];
   lines.push("#CONTEXTE_DE_RÉFÉRENCE (s'applique à TOUT le contenu généré — priorité absolue)");
   lines.push('');
@@ -867,6 +927,9 @@ export function buildReferenceContextBlock(ctx) {
     lines.push(
       `• ORGANISATION (vocabulaire : clients, projets, sigles maison) : « ${orgContext} »`,
     );
+  }
+  if (tagContext) {
+    lines.push(`• ${tagContextHeading(ctx)} : « ${tagContext} »`);
   }
   if (userContext) {
     lines.push(
@@ -1260,13 +1323,17 @@ function buildScaffoldPrompt(scaffoldStr, instructionsStr, ctx, pagePlan = null)
  * appel ISOLÉ par bloc à consigne fixe ({ marker, systemPrompt }). Le serveur
  * exécute les appels en parallèle et remplace chaque marker par le fragment
  * généré. `blocks` est vide hors mode scaffold ou sans bloc fixe.
+ * `ctx.includeActions === false` : la mise en forme part sans sa section
+ * Actions (withoutActionsSection) ; absent, elle la garde, comme avant.
  */
 export function resolveSummaryPlan(templateValue, ctx, customTemplates = []) {
   const custom = customTemplates.find((t) => t.value === templateValue);
+  const shape = (md) => (ctx.includeActions === false ? withoutActionsSection(md) : md);
   const customPromptStr = typeof custom?.prompt === 'string' ? custom.prompt.trim() : '';
 
   if (customPromptStr) {
-    const { instructions, scaffold } = splitPromptFields(customPromptStr);
+    const { instructions, scaffold: rawScaffold } = splitPromptFields(customPromptStr);
+    const scaffold = shape(rawScaffold);
     ANY_AI_BLOCK_RE.lastIndex = 0;
     const hasAiBlock = ANY_AI_BLOCK_RE.test(scaffold);
     ANY_AI_BLOCK_RE.lastIndex = 0;
@@ -1285,7 +1352,7 @@ export function resolveSummaryPlan(templateValue, ctx, customTemplates = []) {
     // sépare le résumé du reste du document, ni pour la consigne ni pour la
     // vérification. L'éditeur convertit tout template qu'il enregistre.
     return {
-      systemPrompt: buildInstructionPrompt(templateValue, customPromptStr, ctx, custom),
+      systemPrompt: buildInstructionPrompt(templateValue, shape(customPromptStr), ctx, custom),
       blocks: [],
       length: null,
     };
@@ -1299,7 +1366,7 @@ export function resolveSummaryPlan(templateValue, ctx, customTemplates = []) {
     );
     tmpl = templateMap.standard;
   }
-  const scaffold = ctx.language === 'en' ? tmpl.scaffoldEn : tmpl.scaffold;
+  const scaffold = shape(ctx.language === 'en' ? tmpl.scaffoldEn : tmpl.scaffold);
   return buildScaffoldPrompt(
     scaffold,
     tmpl.instructions,

@@ -14,7 +14,20 @@
  * Même discipline que l'ordonnanceur d'actions (actionDetectionScheduler.js) :
  * un seul appel en vol, débounce, relance de fin. La relecture est un plus —
  * tout échec est silencieux, rien ne bloque jamais l'enregistrement.
+ *
+ * ── Le contexte du tag, seconde référence ──────────────────────────────────
+ * Les noms et sigles écrits dans « Que doit savoir l'IA ? » (le tag de la
+ * réunion EN DIRECT, stores/tags.js `liveTagContext`) servent de référence
+ * comme les notes : le serveur les relit en base d'après `tagId` et les
+ * ajoute au prompt. Mais un tag ne s'écrit pas pendant la réunion : sans
+ * notes, payer un appel à CHAQUE phrase pour un dossier qui ne la concerne
+ * pas serait du gaspillage. D'où un filtre local, gratuit (`mentionsTerm`) :
+ * l'appel ne part que si une des phrases contient un mot proche — à
+ * l'oreille, ou par la casse et les accents — d'un nom ou d'un sigle du
+ * contexte, sans l'être déjà mot pour mot. Avec des notes, rien ne change :
+ * la relecture part comme avant, le contexte en plus.
  */
+import { liveTagContext } from '../stores/tags.js';
 
 export const REFINE_SENTENCE_COUNT = 2;
 export const REFINE_DEBOUNCE_MS = 1200;
@@ -116,7 +129,7 @@ function levenshtein(a, b) {
  * Similarité [0..1] entre les clés phonétiques de deux fragments. Deux clés
  * vides (fragments faits de ponctuation) sont identiques par convention.
  */
-function phoneticSimilarity(a, b) {
+export function phoneticSimilarity(a, b) {
   const ka = frPhoneticKey(a);
   const kb = frPhoneticKey(b);
   const max = Math.max(ka.length, kb.length);
@@ -213,20 +226,36 @@ function directiveKey(s) {
  */
 export function parseNoteDirectives(notes) {
   const out = [];
-  const push = (from, to) => {
+  for (const { from, to } of noteDirectivePairs(notes)) {
     const fromKey = directiveKey(from);
     const toKey = directiveKey(to);
     if (fromKey && toKey && fromKey !== toKey) out.push({ fromKey, toKey });
-  };
+  }
+  return out;
+}
+
+/**
+ * Les mêmes consignes, TELLES QU'ÉCRITES — les deux côtés bruts, sans tri. La
+ * relecture les réduit en clés (parseNoteDirectives) ; l'apprentissage des
+ * « Mots remplacés » en garde le texte, et n'en retient qu'une partie
+ * (utils/noteReplacements.js). Une seule lecture des notes pour les deux : ce
+ * qui vaut consigne dans une réunion est ce qui peut être retenu pour les
+ * suivantes.
+ *
+ * @param {string} notes
+ * @returns {Array<{from: string, to: string}>}
+ */
+export function noteDirectivePairs(notes) {
+  const out = [];
   for (const raw of String(notes || '').split(/[\n;,.]+/)) {
     const seg = raw.trim();
     if (!seg) continue;
     const arrow = seg.match(/^(.{1,60}?)\s*(?:→|->|=>)\s*(.{1,60})$/);
-    if (arrow) push(arrow[1], arrow[2]);
+    if (arrow) out.push({ from: arrow[1], to: arrow[2] });
     const verb = seg.match(
       /(?:remplac|replac|corrig|correct|chang)\S*\s+(.{1,60}?)\s+(?:par|en|with|by|to)\s+(.{1,60})$/i,
     );
-    if (verb) push(verb[1], verb[2]);
+    if (verb) out.push({ from: verb[1], to: verb[2] });
   }
   return out;
 }
@@ -307,6 +336,90 @@ export function diffWordFlags(original, corrected) {
   return b.map((word, k) => ({ word, changed: flags[k] }));
 }
 
+/**
+ * Les NOMS que cite un contexte de tag — noms propres (mots à majuscule qui
+ * ne commencent pas une phrase, réunis quand ils se suivent) et sigles (deux
+ * majuscules au moins, sans minuscule). MIROIR de `tagContextTerms`
+ * (services/api/lib/tagContext.js), même règle : une élision ne cache pas le
+ * nom (« d’Atlas » donne « Atlas »).
+ *
+ * @param {unknown} context
+ * @param {number} [max]
+ * @returns {string[]}
+ */
+export function contextTerms(context, max = 40) {
+  const text = String(context || '');
+  const terms = [];
+  const seen = new Set();
+  const add = (term) => {
+    const key = term.toLowerCase();
+    if (!seen.has(key) && terms.length < max) {
+      seen.add(key);
+      terms.push(term);
+    }
+  };
+  let run = [];
+  const flush = () => {
+    if (run.length) add(run.join(' '));
+    run = [];
+  };
+  let end = -1;
+  for (const m of text.matchAll(/[\p{L}\p{N}][\p{L}\p{N}-]*/gu)) {
+    const word = m[0].replace(/-+$/, '');
+    const gap = text.slice(Math.max(end, 0), m.index);
+    const sentenceStart = end === -1 || /[.!?…\n]/.test(gap);
+    const capitals = (word.match(/\p{Lu}/gu) || []).length;
+    if (capitals >= 2 && !/\p{Ll}/u.test(word)) {
+      flush();
+      add(word);
+    } else if (/^\p{Lu}/u.test(word) && word.length >= 2 && !sentenceStart) {
+      if (gap !== ' ') flush();
+      run.push(word);
+    } else {
+      flush();
+    }
+    end = m.index + m[0].length;
+  }
+  flush();
+  return terms;
+}
+
+/** Clé d'un mot sans casse ni accent. */
+const plainKey = (word) =>
+  String(word)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u{0300}-\u{036f}]/gu, '');
+
+/**
+ * Le filtre local de la relecture par le tag : une phrase contient-elle un
+ * mot qui POURRAIT être un nom ou un sigle du contexte mal transcrit —
+ * le même à la casse et aux accents près (« pac » pour « PAC », « Ines »
+ * pour « Inès »), ou proche à l'oreille (« Bernar » pour « Bernard », au
+ * seuil de la garde, REFINE_SIMILARITY_MIN) ? Un mot déjà écrit exactement ne
+ * compte pas : rien à corriger. Faux positifs possibles et sans danger — le
+ * modèle et la garde décident ; le filtre ne sert qu'à ne pas payer d'appel
+ * pour une phrase qui ne cite personne.
+ *
+ * @param {string} sentence
+ * @param {string[]} terms
+ * @returns {boolean}
+ */
+export function mentionsTerm(sentence, terms) {
+  const targets = terms.flatMap((term) => term.split(/[\s-]+/)).filter((w) => w.length >= 2);
+  if (!targets.length) return false;
+  const words = String(sentence || '')
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((w) => w.length >= 2);
+  return words.some((word) =>
+    targets.some((target) => {
+      if (word === target) return false;
+      if (plainKey(word) === plainKey(target)) return true;
+      return word.length >= 3 && phoneticSimilarity(word, target) >= REFINE_SIMILARITY_MIN;
+    }),
+  );
+}
+
 /** Durée du surlignage furtif — l'animation CSS (.word-refined) dure 2,2 s. */
 export const REFINE_FLASH_MS = 2600;
 
@@ -358,8 +471,11 @@ export function flashRefinedWords(index, original, corrected, update, ms = REFIN
  * @param {(history: Array) => void} opts.setHistory
  * @param {() => string} opts.getNotes
  * @param {() => boolean} opts.isActive
- * @param {(sentences: string[], notes: string) => Promise<string[]|null>} opts.post
+ * @param {(sentences: string[], notes: string, tagId?: string|null) => Promise<string[]|null>} opts.post
  * @param {(index: number, text: string) => void} opts.editTranscription
+ * @param {() => {tagId: string, context: string}|null} [opts.getTag] le tag de
+ *   la réunion en direct — par défaut lu dans les stores, sans passer par
+ *   App.svelte (plafonné).
  * @returns {{notify: () => void, reset: () => void, isInFlight: () => boolean}}
  */
 export function createNotesRefiner({
@@ -369,10 +485,12 @@ export function createNotesRefiner({
   isActive,
   post,
   editTranscription,
+  getTag = liveTagContext,
 }) {
   return createTranscriptRefiner({
     getTargets: () => pickRefineTargets(getHistory()),
     getNotes,
+    getTag,
     isActive,
     post,
     apply: (item, original, corrected) => {
@@ -391,8 +509,9 @@ export function createNotesRefiner({
  * @param {() => Array<{item: object, text: string}>} opts.getTargets Évalué au
  *   DÉPART de l'appel (texte le plus frais), jamais à la notification.
  * @param {() => string} opts.getNotes
+ * @param {() => {tagId: string, context: string}|null} [opts.getTag]
  * @param {() => boolean} opts.isActive Enregistrement en cours, hors preview.
- * @param {(sentences: string[], notes: string) => Promise<string[]|null>} opts.post
+ * @param {(sentences: string[], notes: string, tagId?: string|null) => Promise<string[]|null>} opts.post
  * @param {(item: object, original: string, corrected: string) => void} opts.apply
  * @param {number} [opts.debounceMs]
  * @returns {{notify: () => void, reset: () => void, isInFlight: () => boolean}}
@@ -400,6 +519,7 @@ export function createNotesRefiner({
 export function createTranscriptRefiner({
   getTargets,
   getNotes,
+  getTag = () => null,
   isActive,
   post,
   apply,
@@ -411,6 +531,16 @@ export function createTranscriptRefiner({
   // Dernier couple (notes, phrases) traité : un blur de notes sans changement
   // ne doit pas re-dépenser un appel sur les mêmes phrases.
   let lastKey = '';
+  // Les noms du contexte, recalculés seulement quand le contexte change.
+  let termsOf = '';
+  let terms = [];
+  const termsFor = (context) => {
+    if (context !== termsOf) {
+      termsOf = context;
+      terms = contextTerms(context);
+    }
+    return terms;
+  };
 
   function arm() {
     if (timer !== null || inFlight) return;
@@ -426,16 +556,28 @@ export function createTranscriptRefiner({
     if (!isActive()) return;
     const notes = String(getNotes() || '').trim();
     const targets = getTargets();
-    if (!notes || !targets.length) return;
-    const key = JSON.stringify([notes, targets.map((t) => t.text)]);
+    if (!targets.length) return;
+    // Le tag ne paie un appel que si une phrase cite, peut-être de travers, un
+    // de ses noms — sauf quand les notes le paient déjà.
+    const tag = getTag() || null;
+    const withTag =
+      !!tag?.context &&
+      (!!notes || targets.some((t) => mentionsTerm(t.text, termsFor(tag.context))));
+    if (!notes && !withTag) return;
+    const tagId = withTag ? tag.tagId : null;
+    const key = JSON.stringify([
+      notes,
+      tagId,
+      withTag ? tag.context : '',
+      targets.map((t) => t.text),
+    ]);
     if (key === lastKey) return;
 
     inFlight = true;
     try {
-      const refined = await post(
-        targets.map((t) => t.text),
-        notes,
-      );
+      const texts = targets.map((t) => t.text);
+      // Sans tag, l'appel garde sa forme d'avant : (phrases, notes).
+      const refined = await (tagId ? post(texts, notes, tagId) : post(texts, notes));
       lastKey = key;
       if (Array.isArray(refined) && refined.length === targets.length) {
         targets.forEach((t, i) => {

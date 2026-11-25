@@ -84,14 +84,24 @@ export class UpstreamError extends Error {
 }
 
 /**
- * Message d'erreur d'OpenAI, extrait du corps d'une UpstreamError. Sans lui,
+ * Message d'erreur de l'amont, extrait du corps d'une UpstreamError. Sans lui,
  * l'écran n'afficherait qu'un « échec » muet là où l'amont dit précisément ce
  * qui ne va pas (clé révoquée, quota épuisé, organisation suspendue…).
+ *
+ * La forme d'OpenAI (`{error: {message}}`) d'abord ; puis celles des
+ * fournisseurs de transcription tiers : `{error: "…"}` (Speechmatics,
+ * AssemblyAI), `{message}` ou `{detail}` (Mistral).
  * @returns {string} '' quand le corps n'en porte pas
  */
 export function upstreamMessage(err) {
   try {
-    return JSON.parse(err.body)?.error?.message || '';
+    const body = JSON.parse(err.body);
+    const message =
+      body?.error?.message ||
+      (typeof body?.error === 'string' ? body.error : '') ||
+      body?.message ||
+      (typeof body?.detail === 'string' ? body.detail : '');
+    return typeof message === 'string' ? message : '';
   } catch (_) {
     return '';
   }
@@ -212,7 +222,7 @@ export function createOpenAiClient({
 }) {
   const resolveKey = typeof apiKey === 'function' ? apiKey : () => apiKey;
 
-  async function request(path, init, { timeoutMs: perCallTimeoutMs } = {}) {
+  async function request(path, init, { timeoutMs: perCallTimeoutMs, as = 'json' } = {}) {
     const key = await resolveKey();
     // Installation neuve sans clé : on ne part PAS appeler OpenAI avec un
     // `Bearer ` vide, dont la réponse 401 serait indiscernable d'une clé
@@ -235,7 +245,7 @@ export function createOpenAiClient({
             res.headers.get('content-type') || 'application/json',
           );
         }
-        return res.json();
+        return as === 'arrayBuffer' ? res.arrayBuffer() : res.json();
       },
       { retryOn: retryOnUpstream },
     );
@@ -338,6 +348,34 @@ export function createOpenAiClient({
      * @param {{model: string, prompt: string, size?: string}} params
      * @returns {Promise<{b64: string}>} base64 de l'image PNG, '' si absent
      */
+    /**
+     * Synthèse vocale (`/audio/speech`) — la voix de l'Aide IA. Rend l'audio
+     * brut (mp3) dans un Buffer. `instructions` n'est envoyé qu'au modèle qui
+     * le comprend (gpt-4o-mini-tts) : les `tts-1` ne le documentent pas, et un
+     * champ en trop peut valoir un 400.
+     *
+     * @param {{model: string, voice: string, input: string, instructions?: string}} params
+     * @returns {Promise<Buffer>}
+     */
+    async speech({ model, voice, input, instructions }) {
+      const data = await request(
+        '/audio/speech',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model,
+            voice,
+            input,
+            response_format: 'mp3',
+            ...(instructions && /^gpt-/.test(String(model)) ? { instructions } : {}),
+          }),
+        },
+        { as: 'arrayBuffer', timeoutMs: 60_000 },
+      );
+      return Buffer.from(data);
+    },
+
     async generateImage({ model, prompt, size = '1024x1536' }) {
       const data = await request(
         '/images/generations',

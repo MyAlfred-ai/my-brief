@@ -4,7 +4,7 @@
  * génération. Un template sans lui génère exactement comme avant (pages: null)
  * et le dit en une ligne. Les cartes sont des boutons à bascule (un seul
  * pressé), leur pastille suit le réglage, les instructions se déplient à la
- * demande.
+ * demande. Deux tuiles ajoutent (ou non) les actions et l’infographie.
  */
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
@@ -137,8 +137,54 @@ describe('TemplatePickerPanel — lisibilité du choix', () => {
       expect.objectContaining({ customPrompt: 'Insister sur le budget' }),
     );
   });
+});
 
-  it('infographie : la case garde son nom complet, même en libellé court', async () => {
+const ACTIONS = [
+  { id: 1, title: 'Relancer le fournisseur' },
+  { id: 2, title: 'Envoyer le devis', owner: 'Alex' },
+  { id: 3, title: 'Commander les badges', show: false },
+  { id: 4, title: '', owner: '', dueDate: '', description: '' },
+];
+
+describe('TemplatePickerPanel — « Ajouter au compte rendu »', () => {
+  const actionsSwitch = () =>
+    screen.getByRole('checkbox', { name: new RegExp(CARD.actionsOption) });
+
+  it('actions : allumées par défaut, avec le nombre que le compte rendu listera', async () => {
+    const { onGenerate } = setup({ actions: ACTIONS });
+    // Ni la masquée ni la carte vierge : 2, pas 4.
+    expect(
+      actionsSwitch().closest('.tpp-option').querySelector('.tpp-option-count').textContent,
+    ).toBe('2');
+    expect(actionsSwitch().checked).toBe(true);
+    await userEvent.setup().click(screen.getByRole('button', { name: GENERATE }));
+    expect(onGenerate).toHaveBeenCalledWith(expect.objectContaining({ withActions: true }));
+  });
+
+  it('un clic sur la tuile (pas seulement l’interrupteur) les retire', async () => {
+    const { onGenerate } = setup({ actions: ACTIONS });
+    const user = userEvent.setup();
+    await user.click(screen.getByText(CARD.actionsOptionHint));
+    expect(actionsSwitch().checked).toBe(false);
+    await user.click(screen.getByRole('button', { name: GENERATE }));
+    expect(onGenerate).toHaveBeenCalledWith(expect.objectContaining({ withActions: false }));
+  });
+
+  it('aucune action : la tuile le dit, éteinte et figée, et la section ne part pas', async () => {
+    const { onGenerate } = setup({ actions: [] });
+    expect(screen.getByText(CARD.actionsOptionNone)).toBeTruthy();
+    expect(actionsSwitch().checked).toBe(false);
+    expect(actionsSwitch().disabled).toBe(true);
+    await userEvent.setup().click(screen.getByRole('button', { name: GENERATE }));
+    expect(onGenerate).toHaveBeenCalledWith(expect.objectContaining({ withActions: false }));
+  });
+
+  it('infographie non proposée : seule la tuile des actions', () => {
+    setup({ actions: ACTIONS });
+    expect(screen.queryByText(CARD.infographicOption)).toBeNull();
+  });
+
+  it('infographie proposée : éteinte par défaut, elle part une fois allumée', async () => {
     const saved = get(auth);
     auth.update((s) => ({
       ...s,
@@ -146,12 +192,15 @@ describe('TemplatePickerPanel — lisibilité du choix', () => {
       capabilities: { ...s.capabilities, infographic: { enabled: true } },
     }));
     try {
-      const { onGenerate } = setup();
-      const box = screen.getByRole('checkbox', { name: CARD.infographicLabel });
+      const { onGenerate } = setup({ actions: ACTIONS });
+      const box = screen.getByRole('checkbox', { name: new RegExp(CARD.infographicOption) });
+      expect(box.checked).toBe(false);
       const user = userEvent.setup();
       await user.click(box);
       await user.click(screen.getByRole('button', { name: GENERATE }));
-      expect(onGenerate).toHaveBeenCalledWith(expect.objectContaining({ infographic: true }));
+      expect(onGenerate).toHaveBeenCalledWith(
+        expect.objectContaining({ infographic: true, withActions: true }),
+      );
     } finally {
       auth.set(saved);
     }

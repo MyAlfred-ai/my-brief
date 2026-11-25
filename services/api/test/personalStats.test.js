@@ -1,5 +1,5 @@
 /**
- * « Mes statistiques » : l'usage d'un compte et son crédit de temps du mois
+ * « Usage & crédits » : l'usage d'un compte et son crédit de temps du mois
  * (lib/personalStats.js, routes/stats.js), le crédit de chaque compte pour
  * l'administration (lib/teamCredits.js, routes/admin/stats.js), et le crédit
  * jour par jour qu'ils partagent (lib/quota.js).

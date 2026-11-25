@@ -39,9 +39,9 @@
   export let mailNote = '';
   export let onToggleSubfolders = () => {};
   export let onBack = () => {};
-  /** Ouvre la page « Entreposer » de Ma configuration. */
+  /** Ouvre la page « Entreposer » de Réglages. */
   export let onOpenStorage = () => {};
-  /** Ouvre la page « Envoi d'email » de Ma configuration. */
+  /** Ouvre la page « Envoi d'email » de Réglages. */
   export let onOpenMail = () => {};
 
   $: rootKind = libraryKind(providerId, rootDriveName);

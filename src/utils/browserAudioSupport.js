@@ -15,7 +15,7 @@
  * fenêtre de partage qui ne peut rien donner.
  *
  * Là où le partage est muet, le son de l'ordinateur passe par un périphérique
- * virtuel choisi dans Ma configuration → Réglages audio
+ * virtuel choisi dans Réglages → Pendant la réunion → Micro et son
  * (cf. lib/audio/systemAudio.js).
  */
 import { isNative } from '../platform/index.js';

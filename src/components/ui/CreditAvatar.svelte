@@ -7,8 +7,8 @@
    *
    * L'anneau se remplit de ce qui RESTE (plein au début du mois, vide à la
    * fin), dans les tons de `creditTone` : la même couleur que la jauge de
-   * « Mes statistiques » et que les anneaux d'Administration → Crédit de temps.
-   * La couleur n'est jamais seule à le dire : la capsule et le menu de compte
+   * « Usage & crédits » et que les anneaux d'Administration → Crédit de temps.
+   * La couleur n'est jamais seule à le dire : la carte du compte et « Usage & crédits »
    * écrivent le reste en toutes lettres.
    *
    * Sans quota (ou avant la réponse du serveur), pas d'anneau — mais la boîte

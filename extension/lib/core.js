@@ -54,6 +54,38 @@ export function isMyBriefConfig(data) {
 }
 
 /**
+ * La sonde, jouée DANS l'onglet (scripting.executeScript) : la requête part
+ * de la page vers sa propre origine, donc sans CORS. Lancée depuis le popup,
+ * elle viendrait de chrome-extension://…, une autre origine — et l'API
+ * n'envoie aucun en-tête CORS : avant la liaison, l'extension n'a pas encore
+ * la permission d'hôte qui l'en dispenserait.
+ *
+ * AUTONOME : Chrome la sérialise (toString) pour l'exécuter dans la page —
+ * aucune référence à ce module, aucun import. Renvoie le JSON (clonable), ou
+ * null : pas de réponse, réponse non JSON, délai dépassé.
+ *
+ * @param {number} timeoutMs
+ * @returns {Promise<unknown>}
+ */
+export async function fetchConfigFromPage(timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${location.origin}/api/auth/config`, {
+      signal: controller.signal,
+      credentials: 'omit',
+      cache: 'no-store',
+    });
+    if (!res.ok) return null;
+    return await res.json().catch(() => null);
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
  * Le logo servi par la sonde : data-URL, URL absolue ou chemin relatif au
  * site. Chaîne vide = pas de logo (l'icône de l'extension prend le relais).
  *

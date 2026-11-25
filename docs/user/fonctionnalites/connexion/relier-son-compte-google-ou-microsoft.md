@@ -18,16 +18,16 @@ tous vos appareils.
 
 ## Étapes
 
-1. Ouvrez **Ma configuration → Connexion**. Le même bouton existe en haut des pages **Envoi d'email** et
-   **Entreposer** : **Relier mon compte**.
+1. Ouvrez **Réglages → Comptes connectés**. Le même bouton existe dans **Réglages → Après la réunion**, en haut
+   des onglets **Envoi d'email** et **Entreposer** : **Relier mon compte**.
 2. Cliquez **Connecter mon compte Google** — ou **Microsoft**.
 3. Choisissez votre compte sur l'écran du fournisseur et **acceptez toutes les autorisations**
    demandées : chacune refusée retire une capacité.
-4. Vous revenez dans **Ma configuration**, sur la première section : rouvrez **Connexion** pour vérifier.
+4. Vous revenez dans **Réglages**, sur **Mon profil** : rouvrez **Comptes connectés** pour vérifier.
 
 ## Résultat
 
-La carte affiche **Connecté** et le **Compte autorisé**. Les pages **Envoi d'email** et **Entreposer**
+La carte affiche **Connecté** et le **Compte autorisé**. Les onglets **Envoi d'email** et **Entreposer**
 indiquent : « Vos envois partent de …, et vos dépôts y atterrissent. »
 
 ## Ce que myBrief peut faire, et ne fait pas
@@ -42,7 +42,7 @@ remplace le précédent.
 
 ## Se déconnecter
 
-Dans **Ma configuration → Connexion**, cliquez **Déconnecter**.
+Dans **Réglages → Comptes connectés**, cliquez **Déconnecter**.
 
 - **Google** : l'autorisation est retirée chez Google.
 - **Microsoft** : myBrief oublie le compte, mais Microsoft ne permet pas de retirer l'autorisation à sa
@@ -53,7 +53,7 @@ Ensuite, les mails partent du relais du serveur s'il existe — en général à 
 
 ## Reconnecter
 
-La page **Entreposer** affiche **Reconnecter mon compte** quand votre compte est relié sans l'accès aux
+L'onglet **Entreposer** affiche **Reconnecter mon compte** quand votre compte est relié sans l'accès aux
 fichiers — relié il y a longtemps, ou une autorisation décochée. Ailleurs, pour tout réaccorder :
 **Déconnecter**, puis **Connecter mon compte** à nouveau.
 

@@ -5,7 +5,8 @@ sidebar:
   order: 2
 ---
 
-**Administration → Authentification**, carte **Connexion avec Google**.
+**Administration → Organisation → Authentification**, carte **Page de connexion** : cliquez la pastille
+**Google**. Son détail, **Connexion avec Google**, se déplie.
 
 ## Avant de commencer
 
@@ -32,9 +33,9 @@ peuvent bloquer les comptes reliés :
 
 1. Collez l'**ID client** et le **Secret client**. Le secret n'est jamais réaffiché ; laissé vide ensuite,
    il est conservé.
-2. Cochez **Activer** pour afficher **Continuer avec Google** sur la page de connexion.
-3. Cliquez **Enregistrer**, en bas de l'onglet.
-4. **Tester**, dans la carte **Page de connexion**.
+2. Basculez **Proposer sur la page de connexion** pour afficher **Continuer avec Google**.
+3. Cliquez **Enregistrer**, en bas de la page.
+4. Cliquez **Tester**, en bas du détail de Google.
 
 ## Ce qu'il faut savoir
 
@@ -50,7 +51,7 @@ peuvent bloquer les comptes reliés :
 
 | Ce qui arrive | Quoi faire |
 |---|---|
-| « Renseignez l'ID client et le secret avant d'activer la connexion Google. » | Complétez les deux champs. |
+| « Renseignez l'ID client et le secret avant d'activer la connexion Google. », sous les pastilles | Complétez les deux champs. |
 | Google répond « redirect_uri_mismatch » | Une URI de redirection manque dans la console, ou diffère d'un caractère : recopiez-la depuis myBrief. |
 | Relier un compte échoue alors que la connexion marche | La seconde URI ou Gmail API manquent, ou la console d'administration bloque myBrief : voir [Autoriser myBrief dans Google Workspace](autoriser-mybrief-dans-google-workspace.md). |
 | L'envoi marche, le dépôt dans le Drive échoue | Google Drive API n'est pas activée dans le projet. |

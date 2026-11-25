@@ -1,10 +1,10 @@
 <script>
   import { tick, onMount } from 'svelte';
-  import { currentLanguageStore, audioLevelStore, uiText } from './store.js';
+  import { currentLanguageStore, uiText } from './store.js';
   import './styles/tokens.css';
   import '../style.css';
   import WhatsNewBadge from './components/WhatsNewBadge.svelte';
-  import logoUrl from './logo.png';
+  import logoUrl from './logo.webp';
   import IconMicBold from '~icons/solar/microphone-2-bold';
   import IconDownload from '~icons/solar/download-minimalistic-linear';
   import IconPlayCircle from '~icons/solar/play-circle-linear';
@@ -16,6 +16,7 @@
     formatDurationConditional,
     formatDurationHHMMSS,
     transcriptStamp,
+    meetingElapsed,
   } from './utils/formatUtils.js';
   import { createPlatformWakeLock } from './platform/keepAwake.js';
   import { isNative, nativePlugin } from './platform/index.js';
@@ -27,6 +28,7 @@
   } from './platform/backgroundRecording.js';
   import {
     isOfflineCaptureSupported,
+    isGapCaptureSupported,
     startOfflineCapture,
     notifyOfflineLiveState,
     endOfflineCapture,
@@ -41,10 +43,12 @@
     normalizeSummaryHtml,
     pendingVersionFrom,
     afterFailedGeneration,
+    meetingStartIso,
   } from './utils/summary.js';
   import { buildAttributedTranscript, selfSpeakerLabel } from './utils/transcriptAttribution.js';
   import { assignSpeaker } from './utils/transcriptSpeakers.js';
   import { injectKeepAliveSignal as injectKeepAlive } from './utils/audioKeepAlive.js';
+  import { createSilenceDetector } from './lib/audio/silenceDetector.js';
   import { unpackHistoryItem } from './utils/historySelection.js';
   import {
     persistVersionHtml,
@@ -55,10 +59,10 @@
   } from './services/meetingsApi.js';
   import { recordDeepLink, consumeRecordDeepLink } from './stores/recordDeepLink.js';
   import { resolveLogoutTarget, PLUGIN_LOGOUT_PATH } from './utils/logoutTarget.js';
-  import { formatHistoryItemTitle, formatHistoryItemMeta } from './utils/historyTitle.js';
   import { processAudio as processAudioUtil, readAudioDurationS } from './utils/audioProcessing.js';
   import {
     saveSessionData as saveSessionDataUtil,
+    coalesceSaves,
     saveMeetingNotesDraft,
     restoreSessionData,
     clearSessionData,
@@ -78,10 +82,12 @@
   import { createNotesActionsSaver } from './stores/notesActionsSave.js';
   import { buildActionWindow, createActionScheduler } from './utils/actionDetectionScheduler.js';
   import { createNotesRefiner } from './utils/transcriptRefine.js';
+  import { learnFromNotes } from './utils/noteLearning.js';
+  import { refineSentences } from './services/transcriptApi.js';
   import { buildTemplateTexts } from './utils/templateTexts.js';
   import { actionDetection } from './stores/actionDetection.js';
   import { orgContext, setOrgContext } from './stores/orgContext.js';
-  import { correctTranscript, setTranscriptCorrections } from './stores/transcriptCorrections.js';
+  import { correctTranscript, adoptCorrections } from './stores/transcriptCorrections.js';
   import { flashCorrections } from './utils/transcriptCorrections.js';
   import { templateListFrom } from './config/templates.js';
   import { createTranscriptDeltaTracker } from './utils/transcriptDeltas.js';
@@ -105,10 +111,23 @@
     getDeletedHistoryIds,
     deleteMeeting,
     pollHistoryUntilMeetingReady,
+    loadHistoryList,
+    historyItemWithContent,
   } from './stores/history.js';
-  import { loadTags, tagMeeting } from './stores/tags.js';
-  import { showToast as showGlobalToast } from './stores/toasts.js';
+  import { loadTags, tagMeeting, summaryTag } from './stores/tags.js';
+  import { showToast as showGlobalToast, removeToast } from './stores/toasts.js';
   import { createRealtimeStack } from './lib/realtime/stack.js';
+  import { createCaptureGuard } from './lib/recording/captureGuard.js';
+  import { setAudioEnabled } from './lib/recording/tracks.js';
+  import {
+    createLiveSessionKeeper,
+    readLiveSession,
+    clearLiveSession,
+    settleRestoredHistory,
+    readRecordingClock,
+    seedRecordingClock,
+  } from './utils/liveSession.js';
+  import { planMeetingResume, resumeMarkerParts } from './utils/meetingResume.js';
   import {
     connectionState,
     isRecordingStore,
@@ -121,7 +140,13 @@
   import { periodMonths } from './utils/quotaFormat.js';
   import { formatText } from './utils/i18nFormat.js';
   import { meetingTypeAsked, askMeetingType, answerMeetingType } from './stores/meetingType.js';
-  import { startLiveMeeting, stopLiveMeeting, disposeLiveMeeting } from './stores/liveMeeting.js';
+  import {
+    startLiveMeeting,
+    stopLiveMeeting,
+    disposeLiveMeeting,
+    flushLiveTranscription,
+    closeInterruptedMeeting,
+  } from './stores/liveMeeting.js';
   import {
     beginSummaryGeneration,
     endSummaryGeneration,
@@ -159,15 +184,15 @@
     CONTINUE_PROMPT_AFTER_MS,
     CONTINUE_PROMPT_INTERVAL_MS,
     CONTINUE_PROMPT_TIMEOUT_MS,
-    SILENCE_THRESHOLD_MS,
-    KEEP_ALIVE_INTERVAL_MS,
-    AUDIO_ACTIVITY_THRESHOLD,
+    RECORDING_AUDIO_BITS_PER_SECOND,
+    CAPTURE_MARKER_MIN_MS,
   } from './config/constants.js';
   import { uiTextData, defaultSummaryTexts } from './config/uiText.js';
   import { buildTemplateOptions, resolveSummaryPlan } from './config/templates.js';
 
   // Imports des composants
   import EditableTranscript from './components/EditableTranscript.svelte';
+  import ResumeMeetingCta from './components/ResumeMeetingCta.svelte';
   import LiveTranscript from './components/LiveTranscript.svelte';
   import MobileMeetingOverlays from './components/MobileMeetingOverlays.svelte';
   import WelcomeModal from './components/WelcomeModal.svelte';
@@ -176,26 +201,26 @@
   import Dock from './components/Dock.svelte';
   import TemplatePickerPanel from './components/TemplatePickerPanel.svelte';
   import DocumentBar from './components/DocumentBar.svelte';
-  import AdminPanel from './components/AdminPanel.svelte';
-  import StatsPanel from './components/StatsPanel.svelte';
+  import AdminPanel from './components/lazy/AdminPanel.svelte'; // chargés à la demande
   import TagSelect from './components/TagSelect.svelte';
   import ActionsPanel from './components/ActionsPanel.svelte';
   import MeetingNotesPanel from './components/MeetingNotesPanel.svelte';
   import ConfirmDeleteModal from './components/ConfirmDeleteModal.svelte';
-  import SettingsPanel from './components/SettingsPanel.svelte';
+  import SettingsPanel from './components/lazy/SettingsPanel.svelte';
   import BrowserAudioNotice from './components/BrowserAudioNotice.svelte';
   import { buildAudioConstraints } from './utils/audioConstraints.js';
   import { currentAudioCaptureSupport } from './utils/browserAudioSupport.js';
   import { audioDevices } from './stores/audioDevices.js';
   import { acquireSystemAudio, systemAudioPath } from './lib/audio/systemAudio.js';
   import { recordingStartErrorKey, startCancelledError } from './utils/recordingErrors.js';
-  import MarkdownEditor from './components/MarkdownEditor.svelte';
+  import MarkdownEditor from './components/lazy/MarkdownEditor.svelte';
   import SummarySaveStatus from './components/SummarySaveStatus.svelte';
   import AiErrorNotice from './components/AiErrorNotice.svelte';
   import ResumeOverlays from './components/ResumeOverlays.svelte';
   import SignInScreen from './components/auth/SignInScreen.svelte';
   import ChangePasswordModal from './components/auth/ChangePasswordModal.svelte';
   import ToastHost from './components/ToastHost.svelte';
+  import QuotaLiveAlert from './components/QuotaLiveAlert.svelte';
   import StoreApprovalDialog from './components/settings/StoreApprovalDialog.svelte';
   import AfterSummaryDialog from './components/AfterSummaryDialog.svelte';
   import { offerAfterSummary } from './stores/afterSummary.js';
@@ -212,8 +237,6 @@
   let audioChunks = [];
   let isRecording = false;
   let isPaused = false;
-  // Le niveau audio micro est publié dans audioLevelStore (store.js) par la
-  // boucle updateAudioLevel de setupSilenceDetection (~60fps), lu par l'onde du Dock.
   let shouldGenerateOnStop = false;
   let pendingGenerateOpts = null;
   let shouldOpenPickerOnStop = false;
@@ -265,18 +288,16 @@
     setHistory: (h) => (transcriptionHistory = h),
     getNotes: () => meetingNotes,
     isActive: () => isRecording && savedLiveState === null,
-    post: async (sentences, notes) => {
-      const r = await apiRaw('/refine-transcript', { method: 'POST', body: { sentences, notes } });
-      return r?.ok ? (await r.json())?.sentences : null;
-    },
+    post: refineSentences,
     editTranscription: (i, t) => editTranscription(i, t),
   });
-  // Sauvegarde des notes : le brouillon part comme avant, et pendant un
-  // enregistrement la relecture repasse sur les dernières phrases — c'est le
-  // geste « je tape le nom correct » qui doit corriger ce qui vient d'être dit.
+  // Sauvegarde des notes : le brouillon part comme avant, la relecture repasse
+  // sur les dernières phrases (« je tape le nom correct » corrige ce qui vient
+  // d'être dit), et un remplacement écrit là est retenu pour les réunions suivantes.
   function handleNotesSave() {
     saveNotesActions();
     transcriptRefiner.notify();
+    learnFromNotes(meetingNotes, showToast);
   }
   // Notes et actions en base au fil des modifications (stores/notesActionsSave.js).
   const notesActionsSaver = createNotesActionsSaver({
@@ -388,7 +409,6 @@
   // Échec auth détecté pendant un enregistrement : on ne montre RIEN et on ne
   // recharge JAMAIS (reload = réunion perdue) ; re-vérifié une fois au stop.
   let deferredDisconnected = false;
-  let showHistoryModal = false;
   // Réunion AFFICHÉE ; celle qui ENREGISTRE vit dans liveMeetingIdStore
   // (stores/liveMeeting.js) — ouvrir une archive change l'une, pas l'autre.
   let currentMeetingId = null;
@@ -512,13 +532,14 @@
   // Auto-persist summary versions to localStorage whenever they change
   $: {
     const toSave = summaryVersions.filter((v) => !v.pending);
-    if (toSave.length > 0) {
+    // Jamais en consultation d'archive : la session locale est celle du direct.
+    if (toSave.length > 0 && savedLiveState === null) {
       try {
         localStorage.setItem('mybrief_summary_versions', JSON.stringify(toSave));
       } catch (e) {}
     }
   }
-  $: if (activeVersionId) {
+  $: if (activeVersionId && savedLiveState === null) {
     try {
       localStorage.setItem('mybrief_active_version_id', activeVersionId);
     } catch (e) {}
@@ -528,16 +549,9 @@
   // Toast « Connexion perdue » affiché UNE fois par coupure (pas à chaque retry
   // de 5 s) ; « rétablie » n'est montré que si « perdue » l'a été.
 
-  // Gestionnaire pour fermer la modal avec Escape
+  // Échap. NB : les modales mobiles (actions/notes) gèrent leur propre Escape
+  // dans MobileMeetingOverlays.
   function handleEscapeKey(e) {
-    // Ne fermer que si la modal est ouverte et qu'on appuie sur Escape
-    // NB : les modales mobiles (actions/notes) gèrent leur propre Escape
-    // dans MobileMeetingOverlays.
-    if (e.key === 'Escape' && showHistoryModal) {
-      e.preventDefault();
-      e.stopPropagation();
-      showHistoryModal = false;
-    }
     if (e.key === 'Escape' && editDockOpen) {
       editDockOpen = false;
     }
@@ -547,11 +561,6 @@
       e.preventDefault();
       e.stopPropagation();
       handleContinueChoice(false);
-    }
-    if (e.key === 'Escape' && $activePanel === 'config') {
-      e.preventDefault();
-      e.stopPropagation();
-      closeConfig();
     }
   }
 
@@ -575,12 +584,11 @@
   // se produisait donc derrière le panneau, sans rien à l'écran pour le dire.
   // Toute action dont le résultat doit SE VOIR passe par ici.
   function showMainScreen() {
-    // « Ma configuration » est montée dans le layout au même titre que
+    // « Réglages » est montée dans le layout au même titre que
     // l'administration : elle masque `main-area` et doit donc se refermer sur
     // les mêmes actions. (« Mes templates » garde son bouton fermer dédié,
     // comportement historique conservé.)
     if ($activePanel === 'config') closeConfig();
-    if ($activePanel === 'stats') closePanel();
     if ($activePanel !== 'admin') return;
     closePanel();
     // Les modèles ont pu être modifiés depuis l'administration.
@@ -603,7 +611,7 @@
   // Menu profil (sidebar) : mappe les actions vers les fonctions existantes.
   // Remplace l'ancien menu hamburger — les deep-links #config/#my-templates/#admin
   // restent gérés par le listener hashchange plus bas.
-  // « Ma configuration », « Mes templates » et l'administration sont trois
+  // « Réglages », « Mes templates » et l'administration sont trois
   // panneaux `flex: 1` du même layout : ouverts ensemble, ils se
   // partageraient la largeur.
   function handleSidebarMenuAction(id) {
@@ -611,7 +619,7 @@
     // modale…) — laissé ouvert, il masquerait ce qu'il vient d'ouvrir.
     closeSidebarDrawer();
     switch (id) {
-      // Templates, tags et import sont des SECTIONS de « Ma configuration » :
+      // Templates, tags et import sont des SECTIONS de « Réglages » :
       // le raccourci ouvre le panneau sur la bonne.
       case 'config':
       case 'templates':
@@ -619,8 +627,10 @@
       case 'import':
         openPanel('config', id === 'config' ? '' : id);
         break;
-      case 'admin':
       case 'stats':
+        openPanel('config', 'usage');
+        break;
+      case 'admin':
         openPanel(id);
         break;
       // « Retour à l'accueil » du mode réglages : l'écran principal, tel quel.
@@ -660,7 +670,7 @@
       if (primary) clientSecret = secret;
       transcriptionModel = model || transcriptionModel;
     },
-    fetchTempKey: (lang) => apiGet(`/tempkey?${new URLSearchParams({ lang })}`),
+    fetchTempKey: (query) => apiGet(`/tempkey?${query}`),
     isRecording: () => isRecording,
     isPaused: () => isPaused,
     onMessage: handleMessage,
@@ -682,9 +692,13 @@
     silenceCheckMs: REALTIME_SILENCE_CHECK_MS,
   });
 
-  // Surveillance des tracks audio
-  let wasRecordingBeforeBackground = false;
-  let audioHealthCheckInterval = null;
+  // Réunion non arrêtée retrouvée au lancement (utils/liveSession.js), et son
+  // identifiant le temps que la reprise rouvre SON document.
+  let interruptedSession = null;
+  let resumeMeetingId = null;
+  // Reprise d'une réunion TERMINÉE : part du chronomètre déjà comptée au quota
+  // par le serveur, que le crédit en direct ne doit pas déduire deux fois.
+  let resumedCountedS = 0;
 
   // PWA et Service Worker
   let serviceWorkerRegistration = null;
@@ -692,11 +706,10 @@
   let silentAudioElement = null;
   let silentAudioContext = null;
 
-  // Variables pour le système keep-alive audio
-  let audioKeepAliveInterval = null;
+  // Keep-alive audio : détecteur de silence (lib/audio/silenceDetector.js) et
+  // nœud de gain des bouffées, débranché à l'arrêt.
   let audioKeepAliveGainNode = null;
   let silenceDetector = null;
-  let lastAudioActivity = null;
   let outputDestination = null;
   let connectivityCheckInterval = null;
 
@@ -765,7 +778,7 @@
   // les routes /api/admin. Pour désigner un administrateur sur une installation
   // existante : ADMIN_EMAILS dans le .env du déploiement (cf. install/readme.md).
 
-  // ─── Configuration utilisateur (menu « Ma configuration ») ───────────────────
+  // ─── Configuration utilisateur (menu « Réglages ») ───────────────────
   // Micro et son de l'ordinateur choisis : stores/audioDevices.js (par appareil).
   // userContext : « MA configuration », texte synchronisé via le backend et injecté
   // avant chaque génération de CR.
@@ -833,7 +846,7 @@
       if (res.ok) {
         customTemplates = templateListFrom(res.data);
         setOrgContext(res.data?.orgContext);
-        setTranscriptCorrections(res.data?.transcriptCorrections);
+        adoptCorrections(res.data);
       }
     } catch (e) {
       console.error('[templates] fetch error:', e);
@@ -1096,10 +1109,6 @@
   // Historique
   // ========================================
 
-  function closeHistoryModal() {
-    showHistoryModal = false;
-  }
-
   async function fetchHistoryItems() {
     // Rien à charger tant que la session n'est pas établie, ou tant que le
     // changement de mot de passe obligatoire n'est pas fait : le serveur
@@ -1114,43 +1123,26 @@
     $historyError = '';
 
     try {
-      // `_t` + Cache-Control : l'historique doit refléter l'écriture qui vient
-      // d'avoir lieu, jamais une copie servie par un cache intermédiaire.
       const startedAt = Date.now(); // notes et actions encore en vol : cf. reconcile
-      const res = await apiGet(`/history?_t=${startedAt}`, {
-        headers: { 'Cache-Control': 'no-cache' },
-      });
-      if (res.data?.error === 'auth_redirect') {
-        forceReauth();
-        return;
-      }
-      if (!res.ok) {
+      // Liste allégée + contenu de la réunion ouverte depuis l'historique
+      // (stores/history.js) ; le direct, lui, a déjà le sien à l'écran.
+      const res = await loadHistoryList([$selectedMeetingId]);
+      if (res.authRedirect) return forceReauth();
+      if (!res.items) {
         // Le serveur ne renvoie que des slugs : le texte affiché vient d'ici.
-        $historyError =
-          res.status === 401 || res.status === 403
-            ? t('history.sessionExpired')
-            : t('history.genericError');
+        const expired = res.status === 401 || res.status === 403;
+        $historyError = t(
+          res.invalid
+            ? 'history.invalidFormat'
+            : expired
+              ? 'history.sessionExpired'
+              : 'history.genericError',
+        );
         $historyItems = [];
         showToast('alerts.historyLoadError', 'error', 5000, { error: $historyError });
         return;
       }
-
-      const data = res.data;
-      let items = null;
-      if (Array.isArray(data)) {
-        items = data;
-      } else if (Array.isArray(data?.items)) {
-        items = data.items;
-      } else if (data) {
-        items = [data];
-      }
-
-      if (!items) {
-        $historyError = t('history.invalidFormat');
-        $historyItems = [];
-        showToast('alerts.historyLoadError', 'error', 5000, { error: $historyError });
-        return;
-      }
+      const items = res.items;
 
       const deletedIds = getDeletedHistoryIds();
       const filtered =
@@ -1272,13 +1264,18 @@
     saveSessionData();
   }
 
-  function selectHistoryItem(meetingId, { reveal = true } = {}) {
+  async function selectHistoryItem(meetingId, { reveal = true } = {}) {
     notesActionsSaver.flushAll(); // la copie d'historique relue ci-dessous doit être à jour
     // Résolution AVANT tout effet de bord : sans réunion à ouvrir, on ne quitte
-    // pas l'écran courant et on ne met pas le direct de côté pour rien.
-    const id = meetingId == null ? null : String(meetingId);
-    const histoItem = id ? $historyItems.find((it) => meetingIdOf(it) === id) : null;
-    if (!histoItem) return console.warn('[selectHistoryItem] réunion introuvable', meetingId);
+    // pas l'écran courant et on ne met pas le direct de côté pour rien. Le
+    // contenu (transcription, comptes rendus) arrive ici, pas avec la liste.
+    const histoItem = meetingId == null ? null : await historyItemWithContent(meetingId);
+    if (histoItem === false) return; // une autre réunion a été ouverte entre-temps
+    if (!histoItem)
+      return showToast('alerts.historyLoadError', 'error', 5000, {
+        error: t('history.genericError'),
+      });
+    const id = String(meetingId);
     // Ouvrir une conversation, c'est demander à la lire : pendant un
     // enregistrement comme depuis l'administration, l'écran principal revient.
     // Le direct n'est pas interrompu — il est mis de côté juste en dessous et
@@ -1287,6 +1284,7 @@
     if (reveal) showMainScreen();
     // Si une réunion est en cours, sauvegarder l'état live avant d'afficher l'historique
     if ((isRecording || isPaused) && savedLiveState === null) {
+      sessionSaver.flush(); // les dernières phrases, avant la mise de côté
       savedLiveState = {
         transcriptionHistory: [...transcriptionHistory],
         transcriptionFullText,
@@ -1338,224 +1336,81 @@
       summaryVersions = [...summaryVersions, pending];
       activeTab = 'resume';
     }
-
-    closeHistoryModal();
   }
 
   // ========================================
-  // Gestion de la stabilité et visibilité
+  // Tenue de la capture : appel, arrière-plan, micro perdu
   // ========================================
+  // Constat et rétablissement vivent dans lib/recording/captureGuard.js ; ici,
+  // ce qui touche le graphe audio et l'écran.
 
-  /**
-   * Gère les changements de visibilité de l'application
-   * Réactive les ressources audio quand l'app revient au premier plan
-   */
-  async function handleVisibilityChange() {
-    if (document.visibilityState === 'hidden') {
-      // L'app passe en arrière-plan
-      if (isRecording) {
-        wasRecordingBeforeBackground = true;
-        console.log("⚠️ App passée en arrière-plan pendant l'enregistrement");
-        showToast('statuses.appBackgrounded', 'warning', 5000);
-      }
-    } else if (document.visibilityState === 'visible') {
-      // L'app revient au premier plan
-      console.log('✅ App revenue au premier plan');
+  let micSourceNode = null; // source du micro dans le graphe, remplacée avec lui
+  let captureBlockedToast = null;
 
-      if (wasRecordingBeforeBackground || isRecording) {
-        showToast('statuses.appResumed', 'info', 3000);
+  /** Micro redemandé : rebranché PARTOUT où l'ancien l'était — transcription comprise. */
+  function adoptMicrophone(stream) {
+    microphoneStream?.getTracks().forEach((track) => track.stop());
+    microphoneStream = stream;
+    // En pause, les pistes sont coupées (pauseRecording) : la nouvelle aussi.
+    setAudioEnabled([stream], !isPaused);
+    try {
+      micSourceNode?.disconnect();
+    } catch (e) {}
+    micSourceNode = audioContext.createMediaStreamSource(stream);
+    micSourceNode.connect(outputDestination);
+    if (wsAudioProcessor) micSourceNode.connect(wsAudioProcessor);
+    silenceDetector?.addSource(micSourceNode);
+  }
 
-        // Réactiver l'AudioContext si nécessaire
-        await reactivateAudioContext();
+  /** Le trou est écrit dans la transcription : le compte rendu sait qu'il manque un passage. */
+  function markInterruption(durationMs) {
+    const duration = formatDurationConditional(Math.round(durationMs / 1000));
+    const text = formatMessage('offlineCapture.interruptionMarker', { duration });
+    insertOfflineGapMarker(`cut-${Date.now()}`, text);
+    return duration;
+  }
 
-        // Vérifier l'état du microphone
-        await checkAndReactivateMicrophone();
+  /** Arrière-plan ou fermeture : un téléphone peut tuer la page juste après, sans préavis. */
+  function persistBeforeLeaving() {
+    sessionKeeper.beat();
+    notesActionsSaver.flushAll({ keepalive: true });
+    flushLiveTranscription({ leaving: true }).catch(() => {});
+  }
 
-        // Réactiver le Wake Lock
-        if (wakeLockMgr && !wakeLockMgr.isActive() && isRecording) {
-          try {
-            await activateWakeLock();
-          } catch (e) {
-            console.warn('Impossible de réactiver Wake Lock:', e);
+  const captureGuard = createCaptureGuard({
+    isRecording: () => isRecording,
+    isPaused: () => isPaused,
+    getAudioContext: () => audioContext,
+    getMicStream: () => microphoneStream,
+    acquireMic: () => acquireMicrophoneStream(),
+    adoptMic: adoptMicrophone,
+    onRecovered: ({ durationMs }) => {
+      const duration = markInterruption(durationMs);
+      showToast('statuses.captureResumed', 'success', 6000, { duration });
+    },
+    refreshLive: () => realtime.refresh(),
+    onBlocked: (blocked) => {
+      if (captureBlockedToast) removeToast(captureBlockedToast);
+      captureBlockedToast = blocked
+        ? showToast('statuses.recordingInterrupted', 'warning', 0)
+        : null;
+    },
+    persist: persistBeforeLeaving,
+    onNetwork: (online) => realtime.noteNetwork(online),
+  });
+
+  // Témoin « une réunion enregistre », réécrit toutes les 5 s : c'est lui qui
+  // propose la reprise après une fermeture sans préavis (utils/liveSession.js).
+  const sessionKeeper = createLiveSessionKeeper({
+    read: () =>
+      isRecording
+        ? {
+            state: isPaused ? 'paused' : 'recording',
+            elapsedS: getTotalMeetingDuration(),
+            meetingId: $liveMeetingIdStore || resumeMeetingId,
           }
-        }
-
-        // Retour au premier plan pendant un enregistrement : si le socket
-        // est tombé en arrière-plan, le health check du superviseur (10 s) le
-        // détecte et relance — plus de chemin de reconnexion dédié ici.
-        wasRecordingBeforeBackground = false;
-      }
-    }
-  }
-
-  /**
-   * Réactive l'AudioContext s'il est suspendu
-   */
-  async function reactivateAudioContext() {
-    if (audioContext && audioContext.state === 'suspended') {
-      console.log("🔄 Réactivation de l'AudioContext...");
-      showToast('statuses.audioContextSuspended', 'warning', 2000);
-
-      try {
-        await audioContext.resume();
-        console.log('✅ AudioContext réactivé, état:', audioContext.state);
-        showToast('statuses.audioContextResumed', 'success', 2000);
-      } catch (error) {
-        console.error("❌ Erreur lors de la réactivation de l'AudioContext:", error);
-        showToast('statuses.recordingInterrupted', 'error', 5000);
-      }
-    }
-  }
-
-  /**
-   * Vérifie et réactive le microphone si nécessaire
-   */
-  async function checkAndReactivateMicrophone() {
-    if (!microphoneStream || !isRecording) return;
-
-    const tracks = microphoneStream.getAudioTracks();
-    let needsReactivation = false;
-
-    for (const track of tracks) {
-      if (track.readyState === 'ended') {
-        console.log('⚠️ Track microphone terminé, besoin de réactivation');
-        needsReactivation = true;
-        break;
-      }
-
-      if (!track.enabled) {
-        console.log('🔄 Réactivation du track microphone désactivé');
-        track.enabled = true;
-      }
-    }
-
-    if (needsReactivation) {
-      try {
-        // Tenter d'obtenir un nouveau flux microphone (respecte le micro choisi)
-        const newMicStream = await acquireMicrophoneStream();
-
-        // Arrêter l'ancien flux
-        microphoneStream.getTracks().forEach((track) => track.stop());
-
-        // Utiliser le nouveau flux
-        microphoneStream = newMicStream;
-
-        // Reconnecter à l'AudioContext si disponible
-        if (audioContext && outputDestination) {
-          const newMicSource = audioContext.createMediaStreamSource(microphoneStream);
-          newMicSource.connect(outputDestination);
-        }
-
-        // Réattacher les listeners
-        setupMicrophoneTrackListeners();
-
-        console.log('✅ Microphone réactivé avec succès');
-        showToast('statuses.microphoneReactivated', 'success', 3000);
-      } catch (error) {
-        console.error('❌ Impossible de réactiver le microphone:', error);
-        showToast('statuses.microphoneReactivationFailed', 'error', 5000);
-        showToast('statuses.recordingInterrupted', 'warning', 0); // Permanent jusqu'à action
-      }
-    }
-  }
-
-  /**
-   * Configure les listeners sur les tracks du microphone
-   */
-  function setupMicrophoneTrackListeners() {
-    if (!microphoneStream) return;
-
-    const tracks = microphoneStream.getAudioTracks();
-
-    tracks.forEach((track, index) => {
-      // Listener pour track terminé
-      track.addEventListener('ended', () => {
-        console.error(`❌ Track microphone ${index} terminé`);
-        if (isRecording) {
-          showToast('statuses.microphoneEnded', 'error', 5000);
-          setStatus('statuses.recordingInterrupted', 'warning');
-          // Ne pas arrêter automatiquement - permettre à l'utilisateur de reprendre
-        }
-      });
-
-      // Listener pour track muet
-      track.addEventListener('mute', () => {
-        console.warn(`⚠️ Track microphone ${index} muet`);
-        if (isRecording) {
-          showToast('statuses.microphoneMuted', 'warning', 4000);
-        }
-      });
-
-      // Listener pour track non muet
-      track.addEventListener('unmute', () => {
-        console.log(`✅ Track microphone ${index} n'est plus muet`);
-      });
-    });
-  }
-
-  /**
-   * Démarre la surveillance périodique de la santé audio
-   * Vérifie toutes les 10 secondes l'état de l'AudioContext et du microphone
-   */
-  function startAudioHealthCheck() {
-    // Arrêter l'ancien intervalle s'il existe
-    if (audioHealthCheckInterval) {
-      clearInterval(audioHealthCheckInterval);
-    }
-
-    audioHealthCheckInterval = setInterval(async () => {
-      if (!isRecording) {
-        stopAudioHealthCheck();
-        return;
-      }
-
-      // Vérifier l'état de l'AudioContext
-      if (audioContext && audioContext.state === 'suspended') {
-        console.log('🔄 AudioContext suspendu détecté, tentative de réactivation...');
-        try {
-          await audioContext.resume();
-          console.log('✅ AudioContext réactivé automatiquement');
-        } catch (e) {
-          console.error("❌ Impossible de réactiver l'AudioContext:", e);
-          showToast('statuses.audioContextSuspended', 'warning', 3000);
-        }
-      }
-
-      // Vérifier l'état des tracks du microphone
-      if (microphoneStream) {
-        const tracks = microphoneStream.getAudioTracks();
-        let hasLiveTrack = false;
-
-        for (const track of tracks) {
-          if (track.readyState === 'live' && track.enabled) {
-            hasLiveTrack = true;
-          }
-        }
-
-        if (!hasLiveTrack && isRecording) {
-          console.warn('⚠️ Aucun track audio actif détecté');
-          // Tenter de réactiver
-          await checkAndReactivateMicrophone();
-        }
-      }
-
-      // L'état du WebSocket est surveillé par le superviseur realtime
-      // (health check 10 s) — ce timer ne garde que les checks AUDIO.
-    }, 10000); // Toutes les 10 secondes
-
-    console.log('✅ Surveillance de santé audio démarrée');
-  }
-
-  /**
-   * Arrête la surveillance périodique
-   */
-  function stopAudioHealthCheck() {
-    if (audioHealthCheckInterval) {
-      clearInterval(audioHealthCheckInterval);
-      audioHealthCheckInterval = null;
-      console.log('🛑 Surveillance de santé audio arrêtée');
-    }
-  }
+        : null,
+  });
 
   // ========================================
   // PWA et Media Session
@@ -1657,15 +1512,16 @@
 
       // Définir les actions pour les contrôles système
       navigator.mediaSession.setActionHandler('play', () => {
-        if (!isRecording && transcriptionHistory.length > 0) {
-          toggleRecording(); // Reprendre
-        }
+        if (isRecording && isPaused) resumeRecording();
+        else if (!isRecording && transcriptionHistory.length > 0) toggleRecording(); // Reprendre
       });
 
+      // « Pause » du système — écran verrouillé, bouton d'un casque, téléphone
+      // qui reprend la main sur l'audio pour un appel : la réunion est mise en
+      // PAUSE, pas terminée. Elle l'arrêtait, et un appui involontaire sur un
+      // casque Bluetooth la clôturait en base.
       navigator.mediaSession.setActionHandler('pause', () => {
-        if (isRecording) {
-          stopRecording();
-        }
+        if (isRecording && !isPaused) pauseRecording();
       });
 
       navigator.mediaSession.setActionHandler('stop', () => {
@@ -1834,27 +1690,22 @@
       activeVersionId = restored.activeVersionId;
     } else if (!restored.summaryText) activeTab = 'transcription'; // rien sur l'onglet Résumé
 
-    // Détecter une session interrompue (refresh pendant enregistrement/pause)
-    const wasActive = localStorage.getItem('mybrief_session_active');
-    if (wasActive && transcriptionHistory.length > 0) {
-      canResumeSession = true;
+    // Réunion interrompue — page fermée ou rechargée, application tuée en
+    // arrière-plan (utils/liveSession.js) : ses lignes en cours sont bouclées,
+    // son chronomètre repart d'où il s'est arrêté.
+    interruptedSession = readLiveSession();
+    if (interruptedSession) {
+      const settled = settleRestoredHistory(transcriptionHistory, t('offlineCapture.lostMarker'));
+      transcriptionHistory = settled.history;
+      for (const line of settled.added) transcriptionFullText += `\n${line}`;
+      cumulativeRecordingTime = interruptedSession.elapsedS;
+      canResumeSession = transcriptionHistory.length > 0;
+      if (!canResumeSession) clearLiveSession();
     }
 
-    // Page fermée pendant le délai d'écriture des notes : elles partent quand même.
+    // Page fermée pendant le délai d'écriture des notes : elles partent quand
+    // même. (Pendant l'enregistrement, le garde de capture écrit aussi le reste.)
     window.addEventListener('pagehide', () => notesActionsSaver.flushAll({ keepalive: true }));
-    // Sauvegarder l'état actif avant fermeture/refresh
-    window.addEventListener('beforeunload', () => {
-      if (isRecording || isPaused) {
-        if (recordingStartTime) {
-          const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
-          localStorage.setItem(
-            'mybrief_cumulative_recording_time',
-            (cumulativeRecordingTime + elapsed).toString(),
-          );
-        }
-        localStorage.setItem('mybrief_session_active', isPaused ? 'paused' : 'recording');
-      }
-    });
 
     // Wake Lock manager (single source of truth for anti-veille during recording)
     wakeLockMgr = createPlatformWakeLock(() => isRecording);
@@ -1866,11 +1717,6 @@
     releaseOrientationLock = lockPortraitOrientation();
 
     await tick();
-
-    // Visibilité : couvre aussi l'arrière-plan/premier plan mobile — WebView
-    // Capacitor et PWA émettent visibilitychange. (Les événements Cordova
-    // 'pause'/'resume' écoutés ici par le passé ne partaient jamais.)
-    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     // Pendant un enregistrement (ou une pause), l'intercepteur auth ne doit
     // JAMAIS déclencher forceReauth (reload = réunion perdue) : il diffère,
@@ -1930,8 +1776,7 @@
         window.removeEventListener('mybrief:native-auth-required', onNativeAuthRequired);
         window.removeEventListener('online', flushOfflineQueue);
       }
-      // Nettoyer le listener de visibilité
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      captureGuard.stop();
       stopApiPingMonitor();
       disposeLiveMeeting();
       if (wakeLockMgr) wakeLockMgr.destroy();
@@ -1949,6 +1794,7 @@
    */
   async function openLiveMeeting() {
     const meetingId = await startLiveMeeting({
+      resumeId: resumeMeetingId, // reprise : la réunion continue dans SON document
       readTranscription: () =>
         savedLiveState !== null ? savedLiveState.transcriptionFullText : transcriptionFullText,
     });
@@ -1956,13 +1802,8 @@
     // Archive ouverte pendant l'attente : le direct vit dans le snapshot, l'écran reste à elle.
     if (savedLiveState !== null) savedLiveState.currentMeetingId = meetingId;
     else currentMeetingId = meetingId;
-    // Tag choisi avant le démarrage : la réunion existe enfin, on le pose sans
-    // attendre le premier compte-rendu.
-    if (pendingTagId) {
-      const tagRes = await tagMeeting(meetingId, pendingTagId);
-      if (!tagRes.ok) showTagError(tagRes.error);
-      pendingTagId = null;
-    }
+    // Tag choisi avant le démarrage : posé sans attendre le premier compte rendu.
+    await postPendingTag(meetingId);
     // La ligne doit apparaître MAINTENANT dans la sidebar, pas au prochain
     // rechargement de l'app.
     fetchHistoryItems();
@@ -2004,7 +1845,9 @@
       // « Démarrer » occupé dès ici : pendant la relecture du quota, pas de second départ.
       isRequestingMic = true;
       // Plus de minutes ce mois-ci, confirmé par le serveur : le dire avant le micro.
-      if (quotaBlocked && (await confirmQuotaExhausted())) return refuseQuotaStart();
+      // (Une reprise n'est pas un nouveau départ : le serveur ne la refuse pas non plus.)
+      if (!resumeMeetingId && quotaBlocked && (await confirmQuotaExhausted()))
+        return refuseQuotaStart();
       // Démarrer un enregistrement quitte forcément la consultation d'un
       // historique — sinon $selectedMeetingId reste renseigné après l'arrêt et
       // masque le dock (condition ligne ~5023) alors qu'une session live
@@ -2023,7 +1866,11 @@
         // transcription se fait en différé. clientSecret vide = pas de WS.
         clientSecret = '';
         // Verdict de /tempkey (utils/tempKeyStart.js, corps brut inspecté) ; ici, la plateforme décide.
-        const key = await acquireStartTempKey({ lang: $currentLanguageStore, fetchRaw: apiRaw });
+        const key = await acquireStartTempKey({
+          lang: $currentLanguageStore,
+          meetingId: resumeMeetingId,
+          fetchRaw: apiRaw,
+        });
         if (key.kind === 'auth') {
           // Session morte alors que le serveur répond : le réseau est là,
           // c'est une vraie ré-auth qu'il faut (natif comme web).
@@ -2144,134 +1991,16 @@
     );
   }
 
-  // Fonction pour détecter l'activité audio et gérer les signaux keep-alive
+  // Silence → bouffées keep-alive (lib/audio/silenceDetector.js). Échantillonné
+  // par le processor du micro (setupAudioProcessor), au rythme de l'audio —
+  // onglet caché compris. Son analyser nourrit aussi l'onde sonore.
   function setupSilenceDetection(microphoneSource, systemSource) {
-    if (!audioContext || !outputDestination) {
-      console.error('setupSilenceDetection: audioContext ou outputDestination manquant');
-      return;
-    }
-
-    // Créer un analyser pour analyser le flux audio mixé
-    const analyser = audioContext.createAnalyser();
-    analyser.fftSize = 256;
-    analyser.smoothingTimeConstant = 0.3;
-
-    // Créer un gain node pour mixer les sources vers l'analyser
-    const analyserGain = audioContext.createGain();
-    analyserGain.gain.value = 1.0;
-
-    // Connecter les sources audio à l'analyser en parallèle avec outputDestination
-    // Note: En Web Audio API, on peut connecter une source à plusieurs destinations
-    if (microphoneSource) {
-      console.log("Connexion du microphoneSource à l'analyser");
-      microphoneSource.connect(analyserGain);
-    } else {
-      console.warn('setupSilenceDetection: microphoneSource est null');
-    }
-    if (systemSource) {
-      console.log("Connexion du systemSource à l'analyser");
-      systemSource.connect(analyserGain);
-    }
-    analyserGain.connect(analyser);
-
-    const bufferLength = analyser.frequencyBinCount;
-    const dataArray = new Uint8Array(bufferLength);
-    const timeDataArray = new Uint8Array(bufferLength);
-
-    // Initialiser le timestamp de dernière activité
-    lastAudioActivity = Date.now();
-    let consecutiveSilenceCount = 0;
-    let lastLogTime = 0;
-
-    function checkAudioActivity() {
-      if (!isRecording) {
-        try {
-          analyserGain.disconnect();
-        } catch (e) {}
-        silenceDetector = null;
-        return;
-      }
-
-      // Analyser à la fois les fréquences et le domaine temporel pour une meilleure détection
-      analyser.getByteFrequencyData(dataArray);
-      analyser.getByteTimeDomainData(timeDataArray);
-
-      // Calculer le niveau moyen des fréquences
-      const frequencyAverage = dataArray.reduce((a, b) => a + b) / bufferLength;
-      const frequencyLevel = frequencyAverage / 255;
-
-      // Calculer le niveau RMS du domaine temporel (plus sensible à la voix)
-      let sumSquares = 0;
-      for (let i = 0; i < timeDataArray.length; i++) {
-        const normalized = (timeDataArray[i] - 128) / 128;
-        sumSquares += normalized * normalized;
-      }
-      const rms = Math.sqrt(sumSquares / timeDataArray.length);
-
-      // Utiliser le maximum entre les deux méthodes pour une meilleure détection
-      const normalizedLevel = Math.max(frequencyLevel, rms);
-
-      // Log périodique pour le débogage (toutes les 5 secondes)
-      const now = Date.now();
-      if (now - lastLogTime > 5000) {
-        console.log('Détection audio:', {
-          frequencyLevel: frequencyLevel.toFixed(4),
-          rms: rms.toFixed(4),
-          normalizedLevel: normalizedLevel.toFixed(4),
-          threshold: AUDIO_ACTIVITY_THRESHOLD,
-          isActive: normalizedLevel > AUDIO_ACTIVITY_THRESHOLD,
-        });
-        lastLogTime = now;
-      }
-
-      if (normalizedLevel > AUDIO_ACTIVITY_THRESHOLD) {
-        // Il y a de l'activité audio
-        if (consecutiveSilenceCount > 0) {
-          console.log(
-            'Activité audio détectée après',
-            consecutiveSilenceCount,
-            'vérifications de silence',
-          );
-        }
-        consecutiveSilenceCount = 0;
-        lastAudioActivity = Date.now();
-        // Arrêter les signaux keep-alive si actifs
-        if (audioKeepAliveInterval) {
-          clearInterval(audioKeepAliveInterval);
-          audioKeepAliveInterval = null;
-        }
-      } else {
-        consecutiveSilenceCount++;
-        // Vérifier si on est en silence depuis assez longtemps
-        const silenceDuration = Date.now() - lastAudioActivity;
-
-        if (silenceDuration > SILENCE_THRESHOLD_MS) {
-          // Démarrer les signaux keep-alive si pas déjà actif
-          if (!audioKeepAliveInterval) {
-            console.log('Silence détecté, activation des signaux keep-alive');
-            audioKeepAliveInterval = setInterval(() => {
-              if (isRecording) {
-                injectKeepAliveSignal();
-              }
-            }, KEEP_ALIVE_INTERVAL_MS);
-          }
-        }
-      }
-
-      // Continuer la surveillance
-      if (isRecording) {
-        requestAnimationFrame(checkAudioActivity);
-      } else {
-        try {
-          analyserGain.disconnect();
-        } catch (e) {}
-        silenceDetector = null;
-      }
-    }
-
-    console.log('Détection de silence initialisée');
-    checkAudioActivity();
-    silenceDetector = analyser;
+    if (!audioContext || !outputDestination) return;
+    silenceDetector = createSilenceDetector({
+      audioContext,
+      sources: [microphoneSource, systemSource],
+      onKeepAlive: () => isRecording && injectKeepAliveSignal(),
+    });
   }
 
   async function startRecording() {
@@ -2325,16 +2054,11 @@
         } else {
           console.warn(`⚠️ Piste microphone ${index} n'est pas en état "live":`, track.readyState);
         }
-
-        // Note: les listeners mute/unmute/ended sont gérés par setupMicrophoneTrackListeners
       });
 
       if (!hasActiveTrack) {
         throw new Error("Aucune piste audio du microphone n'est active");
       }
-
-      // Configurer les listeners pour la surveillance des tracks
-      setupMicrophoneTrackListeners();
 
       console.log('✅ Microphone configuré et actif');
 
@@ -2362,7 +2086,7 @@
       }
 
       const microphoneSource = audioContext.createMediaStreamSource(microphoneStream);
-      console.log('🎤 microphoneSource créé, channelCount:', microphoneSource.channelCount);
+      micSourceNode = microphoneSource; // gardée : un micro remplacé la remplace (adoptMicrophone)
       microphoneSource.connect(outputDestination);
       console.log('✅ microphoneSource connecté à outputDestination');
 
@@ -2439,10 +2163,11 @@
 
       setRecordingState(true);
 
-      // App native : capture segmentée persistée (filet « tout terrain »).
-      // Démarrée après setRecordingState pour que getTotalMeetingDuration
-      // compte depuis le vrai début de session.
-      if (isOfflineCaptureSupported()) {
+      // Capture segmentée (filet « tout terrain ») : ce que le direct manque
+      // pendant une coupure réseau est transcrit au retour — persistée dans
+      // l'app native, en mémoire sur le web. Démarrée après setRecordingState
+      // pour que getTotalMeetingDuration compte depuis le vrai début de session.
+      if (isGapCaptureSupported()) {
         const capture = startOfflineCapture(mixedAudioStream, {
           live: liveTranscriptionUp,
           getElapsedS: getTotalMeetingDuration,
@@ -2465,26 +2190,22 @@
         }
       }
 
-      // Étape 4 (après setRecordingState !) : détection de silence + keep-alive.
-      // checkAudioActivity s'auto-arrête et DÉCONNECTE l'analyser dès que
-      // !isRecording — l'appeler avant setRecordingState(true) le tuait au
-      // premier frame : analyser débranché → wave et détection muettes à vie.
-      console.log('🔇 Étape 4: Configuration de la détection de silence...');
+      // Étape 4 : détection de silence + keep-alive (arrêtée par stopRecording).
       setupSilenceDetection(microphoneSource, systemSource);
-      console.log('✅ Détection de silence configurée');
 
       console.log('✅ Enregistrement démarré avec succès');
 
       // Démarrer la reconnexion préventive
       startPreventiveReconnection();
 
-      // Démarrer la surveillance de santé audio
-      startAudioHealthCheck();
+      // Micro, contexte audio et page surveillés pendant toute la réunion.
+      captureGuard.start();
 
       // PWA: Fonctionnalités spécifiques pour maintenir l'app active
       updateMediaSessionPlaybackState('playing');
       notifyServiceWorker(true);
       startSilentAudio();
+      sessionKeeper.start(); // en dernier : le témoin n'est posé que si tout a démarré
     } catch (error) {
       // Ce qu'il faut FAIRE, en toast (cf. utils/recordingErrors.js) ; le détail
       // technique, dans la console. Aucune clé : « Annuler », rien à signaler.
@@ -2496,7 +2217,8 @@
       }
 
       // Nettoyer les ressources en cas d'erreur
-      endOfflineCapture(); // capture segmentée éventuellement démarrée (natif)
+      captureGuard.stop();
+      endOfflineCapture(); // capture segmentée éventuellement démarrée
       if (microphoneStream) {
         microphoneStream.getTracks().forEach((track) => track.stop());
         microphoneStream = null;
@@ -2509,6 +2231,8 @@
         audioContext.close().catch(() => {});
         audioContext = null;
       }
+      silenceDetector?.stop(); // son minuteur de keep-alive ne s'arrête pas seul
+      silenceDetector = null;
 
       // Libérer le Wake Lock en cas d'erreur
       releaseWakeLock();
@@ -2530,17 +2254,17 @@
 
     wsAudioProcessor.onaudioprocess = (e) => {
       const float32 = e.inputBuffer.getChannelData(0);
+      captureGuard.noteFrame(); // une trame : la capture vit (cf. captureGuard.js)
 
-      // Niveau micro pour l'onde du Dock. Source = le PCM réel envoyé à OpenAI :
-      // ce callback est garanti de tourner quand la transcription marche (le
-      // processor est relié à destination via silentGain). RMS 0..1 -> store,
-      // lu par le Dock. Calculé avant les early-returns pour rester à jour.
+      // Ce callback tourne tant que l'audio coule (relié à destination via
+      // silentGain), onglet caché compris : RMS du PCM réel pour le chien de
+      // garde, et cadence de la détection de silence — avant la pause.
       let sumSq = 0;
       for (let i = 0; i < float32.length; i++) sumSq += float32[i] * float32[i];
       const level = Math.sqrt(sumSq / float32.length);
-      audioLevelStore.set(level);
+      silenceDetector?.sample(); // pause comprise : le keep-alive veille aussi
 
-      if (isPaused) return;
+      if (isPaused || !audioContext) return; // dernier callback après l’arrêt
       // Conversion PCM16/24kHz + base64 + envoi : dans le canal. No-op si le
       // socket n'est pas ouvert. Le RMS est repassé au chien de garde : c'est
       // lui qui distingue « OpenAI ne répond plus » de « réunion silencieuse ».
@@ -2578,7 +2302,7 @@
     }
     wsAudioProcessorSys = audioContext.createScriptProcessor(4096, 1, 1);
     wsAudioProcessorSys.onaudioprocess = (e) => {
-      if (isPaused) return;
+      if (isPaused || !audioContext) return;
       realtime.sendSystemAudio(e.inputBuffer.getChannelData(0), audioContext.sampleRate);
     };
     const silentGain = audioContext.createGain();
@@ -2646,7 +2370,8 @@
     }
 
     try {
-      const options = selectedMimeType ? { mimeType: selectedMimeType } : {};
+      const options = { audioBitsPerSecond: RECORDING_AUDIO_BITS_PER_SECOND };
+      if (selectedMimeType) options.mimeType = selectedMimeType;
       mediaRecorder = new MediaRecorder(mixedAudioStream, options);
       console.log('MediaRecorder initialisé avec:', mediaRecorder.mimeType);
     } catch (error) {
@@ -2664,9 +2389,8 @@
   }
 
   function handleRecorderData(event) {
-    if (event.data && event.data.size > 0) {
-      audioChunks = [...audioChunks, event.data];
-    }
+    // push : une copie du tableau toutes les 2 s, c'était O(n²) sur 3 h.
+    if (event.data && event.data.size > 0) audioChunks.push(event.data);
   }
 
   function handleRecorderStop() {
@@ -2770,9 +2494,10 @@
     closeContinuePrompt();
     // Réinitialiser l'état de connexion
     $connectionState = 'disconnected';
-    wasRecordingBeforeBackground = false;
+    captureGuard.stop(); // avant la fermeture du contexte audio qu'il écoute
+    sessionKeeper.stop(); // arrêt voulu : plus rien à reprendre au prochain lancement
     canResumeSession = false;
-    localStorage.removeItem('mybrief_session_active');
+    resumedCountedS = 0;
 
     if (mediaRecorder && mediaRecorder.state !== 'inactive') {
       mediaRecorder.stop();
@@ -2820,11 +2545,7 @@
     }
 
     // Nettoyer les ressources keep-alive audio
-    if (audioKeepAliveInterval) {
-      clearInterval(audioKeepAliveInterval);
-      audioKeepAliveInterval = null;
-    }
-
+    silenceDetector?.stop();
     if (audioKeepAliveGainNode) {
       try {
         audioKeepAliveGainNode.disconnect();
@@ -2835,8 +2556,6 @@
     }
 
     silenceDetector = null;
-    audioLevelStore.set(0); // onde au repos à l'arrêt
-    lastAudioActivity = null;
     outputDestination = null;
 
     clearInterval(recordingInterval);
@@ -2846,9 +2565,6 @@
 
     // Arrêter la reconnexion préventive
     stopPreventiveReconnection();
-
-    // Arrêter la surveillance de santé audio
-    stopAudioHealthCheck();
 
     // PWA: Arrêter les fonctionnalités spécifiques
     updateMediaSessionPlaybackState('paused');
@@ -2906,7 +2622,7 @@
 
     const timerDisplay = document.getElementById('timerDisplay');
     if (timerDisplay) timerDisplay.textContent = formatDurationConditional(totalElapsed);
-    liveElapsedStore.set(totalElapsed); // déduit en direct du compteur de minutes
+    liveElapsedStore.set(totalElapsed - resumedCountedS); // déduit en direct du crédit
   }
 
   function openContinuePrompt(totalElapsedSeconds) {
@@ -3055,6 +2771,7 @@
             : line;
         }
       }
+      if (result.finalized.length || result.recompute || result.dropped) sessionSaver.schedule();
       return;
     }
 
@@ -3078,46 +2795,53 @@
 
     tick().then(() => liveTranscript?.scrollToLatest());
 
-    // Sauvegarde uniquement quand du définitif a changé — jamais par delta.
+    // Sauvegarde uniquement quand du définitif a changé — jamais par delta —
+    // et regroupée sur une rafale (utils/session.js, coalesceSaves).
     if (result.finalized.length || result.recompute || result.dropped) {
-      saveSessionData();
+      sessionSaver.schedule();
     }
   }
 
-  // Session locale — jamais en consultation d'archive : elle est celle du DIRECT, que
-  // « Reprendre » restaure après une coupure (l'archive, elle, est en base).
+  // Session locale : celle du DIRECT, que « Reprendre » restaure après une
+  // coupure. En consultation d'archive pendant l'enregistrement, c'est donc le
+  // direct mis de côté qui est écrit (l'archive, elle, est en base) — avant, rien
+  // ne l'était, et une application tuée à ce moment perdait ce qui s'était dit
+  // depuis l'ouverture de l'archive.
   function saveSessionData() {
-    if (savedLiveState !== null) return;
-    const persistableVersions = summaryVersions.filter((v) => !v.pending);
-    saveSessionDataUtil({
+    const live = savedLiveState ?? {
       transcriptionHistory,
       transcriptionFullText,
       detectedActions,
       meetingNotes,
       summaryText,
-      summaryVersions: persistableVersions,
+      summaryVersions,
       activeVersionId,
-      // Identité de la réunion affichée, sauvée AVEC son contenu : au reload,
-      // l'écran restauré doit écrire dans le même document qu'avant (tag,
-      // versions, autosaves) — pas dans une conversation neuve.
+      // Identité de la réunion, sauvée AVEC son contenu : au reload, l'écran
+      // restauré doit écrire dans le même document qu'avant (tag, versions,
+      // autosaves) — pas dans une conversation neuve.
       currentMeetingId,
+    };
+    saveSessionDataUtil({
+      ...live,
+      summaryVersions: live.summaryVersions.filter((v) => !v.pending),
       getDefaultSummaryTextFor,
       currentLanguage: $currentLanguageStore,
     });
   }
+  const sessionSaver = coalesceSaves(saveSessionData);
 
   // ── Capture hors ligne (app native) : marqueurs de gap ──────────────────
   // Insère le marqueur ⟨passage hors ligne⟩ à la position chronologique de la
   // coupure. Ligne finale (isDelta:false) : visible, sauvegardée, honnête dans
   // le texte complet tant que la transcription différée n'est pas revenue.
-  function insertOfflineGapMarker(gapId) {
+  function insertOfflineGapMarker(gapId, text = t('offlineCapture.gapMarker')) {
     const { timeStr, timestamp } = transcriptStamp(getTotalMeetingDuration());
     const marker = makeGapMarkerItem({
       gapId,
       time: timeStr,
       timestamp,
       author: t('offlineCapture.markerAuthor'),
-      text: t('offlineCapture.gapMarker'),
+      text,
     });
     // Preview d'un historique pendant l'enregistrement : la session live vit
     // dans le snapshot (même règle que addTranscription). Dans les deux cas le
@@ -3339,20 +3063,14 @@
     saveNotesActions();
   }
 
-  // Fonction utilitaire pour calculer la durée totale de la réunion (en secondes)
+  // Durée totale de la réunion, en secondes (calcul : utils/formatUtils.js).
   function getTotalMeetingDuration() {
-    let totalElapsed = cumulativeRecordingTime;
-    if (recordingStartTime) {
-      const currentElapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
-      totalElapsed += currentElapsed;
-    }
-    // Chronomètre à zéro (régénération, import) : la durée connue fait foi.
-    return totalElapsed > 0 ? totalElapsed : fallbackMeetingDuration;
+    return meetingElapsed(cumulativeRecordingTime, recordingStartTime, fallbackMeetingDuration);
   }
 
   function pauseRecording() {
-    if (microphoneStream) microphoneStream.getAudioTracks().forEach((t) => (t.enabled = false));
-    if (mixedAudioStream) mixedAudioStream.getAudioTracks().forEach((t) => (t.enabled = false));
+    setAudioEnabled([microphoneStream, mixedAudioStream], false);
+    realtime.notePaused(); // la reprise jugera si le socket a dormi trop longtemps
     // Freeze timer: accumulate elapsed and stop interval
     if (recordingStartTime) {
       cumulativeRecordingTime += Math.floor((Date.now() - recordingStartTime) / 1000);
@@ -3361,31 +3079,87 @@
     clearInterval(recordingInterval);
     recordingInterval = null;
     isPaused = true;
+    sessionKeeper.beat();
   }
 
   function resumeRecording() {
-    if (microphoneStream) microphoneStream.getAudioTracks().forEach((t) => (t.enabled = true));
-    if (mixedAudioStream) mixedAudioStream.getAudioTracks().forEach((t) => (t.enabled = true));
+    setAudioEnabled([microphoneStream, mixedAudioStream], true);
     // Restart timer from where it stopped
     recordingStartTime = Date.now();
     updateTimer();
     recordingInterval = setInterval(updateTimer, 1000);
     isPaused = false;
-    // Le silence de la pause ne compte pas : sans ce réarmement, le chien de
-    // garde verrait une transcription « muette » depuis le début de la pause.
-    realtime.noteResumed();
+    realtime.noteResumed(); // chien de garde réarmé ; pause longue : canal renouvelé
+    sessionKeeper.beat();
+    captureGuard.resumed(); // un geste : la chance de relancer un audio resté bloqué
   }
 
-  function resumeInterruptedSession() {
+  /** « Reprendre » : même réunion en base, chronomètre et transcription à la suite. */
+  async function resumeInterruptedSession() {
     canResumeSession = false;
-    localStorage.removeItem('mybrief_session_active');
-    toggleRecording();
+    resumeMeetingId = interruptedSession?.meetingId || currentMeetingId;
+    await toggleRecording();
+    resumeMeetingId = null;
+    // Micro refusé, réseau absent : la proposition revient, rien n'est perdu.
+    if (!isRecording) return (canResumeSession = true);
+    const awayMs = interruptedSession?.savedAt ? Date.now() - interruptedSession.savedAt : 0;
+    if (awayMs >= CAPTURE_MARKER_MIN_MS) markInterruption(awayMs);
+    interruptedSession = null;
   }
 
+  /** « Terminer la réunion » : close comme par un arrêt, elle reste à l'écran, prête à résumer. */
   function dismissResume() {
     canResumeSession = false;
-    localStorage.removeItem('mybrief_session_active');
-    startNewMeeting();
+    clearLiveSession();
+    const meetingId = interruptedSession?.meetingId || currentMeetingId;
+    interruptedSession = null;
+    if (meetingId) currentMeetingId = meetingId;
+    transcriptionFullText = buildAttributedTranscript(transcriptionHistory, userInfo?.name).text;
+    saveSessionData();
+    closeInterruptedMeeting({
+      meetingId,
+      transcription: transcriptionFullText,
+      duration: cumulativeRecordingTime,
+      notes: meetingNotes,
+      actions: toStoredActions(detectedActions),
+    })
+      .then(fetchHistoryItems)
+      .catch((err) => console.warn('[live] clôture de la réunion interrompue en échec', err));
+  }
+
+  // Réunion TERMINÉE à l'écran, rien n'enregistre : la reprise est offerte.
+  // Une archive héritée sans meetingId n'écrit rien en base : pas de reprise.
+  $: canResumeMeeting =
+    screen === 'active' &&
+    !isRecording &&
+    !generatingHere &&
+    !!(currentMeetingId || !$selectedMeetingId);
+
+  /**
+   * « Reprendre » une réunion TERMINÉE (dock après l'arrêt, ou fin de sa
+   * transcription) : même document, transcription et chronomètre à la suite,
+   * marqueur daté (utils/meetingResume.js). Le quota s'applique : nouveau départ.
+   */
+  async function resumeFinishedMeeting() {
+    if (quotaBlocked && (await confirmQuotaExhausted())) return refuseQuotaStart();
+    const plan = planMeetingResume({
+      history: transcriptionHistory,
+      fromArchive: !!$selectedMeetingId,
+      listedDuration: currentHistoryItem?.meetingDuration,
+      archiveDuration: fallbackMeetingDuration,
+      liveClockS: Math.max(cumulativeRecordingTime, readRecordingClock()),
+      inBase: !!currentMeetingId,
+    });
+    transcriptionHistory = plan.history;
+    seedRecordingClock((cumulativeRecordingTime = plan.clockS));
+    resumedCountedS = plan.countedS;
+    activeTab = 'transcription'; // à l'arrêt, la suite se lit là où elle s'est écrite
+    resumeMeetingId = currentMeetingId;
+    await toggleRecording();
+    resumeMeetingId = null;
+    if (!isRecording) return void (resumedCountedS = 0); // micro refusé : rien n'a repris
+    const when = resumeMarkerParts(new Date(), $currentLanguageStore);
+    insertOfflineGapMarker(`resume-${Date.now()}`, formatMessage('meetingResume.marker', when));
   }
 
   async function handleEditGenerate(opts) {
@@ -3522,20 +3296,12 @@
     activeTab = 'resume'; // le voile « Résumé en cours » vit dans l'onglet Résumé
     dismissAiErrorNotice();
     try {
-      // Calculer la durée de la réunion (réutilise la logique du timer)
       const meetingDuration = getTotalMeetingDuration();
       // Durée inconnue -> null : les templates écrivent « inconnue », pas 00:00:00.
       const meetingDurationFormatted =
         meetingDuration > 0 ? formatDurationHHMMSS(meetingDuration) : null;
-
-      // Calculer l'heure de début (si on a un recordingStartTime, l'utiliser, sinon estimer)
-      let meetingStartTime = null;
-      if (recordingStartTime) {
-        meetingStartTime = new Date(recordingStartTime).toISOString();
-      } else if (transcriptionHistory.length > 0 && meetingDuration > 0) {
-        // Estimer l'heure de début en soustrayant la durée du moment actuel
-        meetingStartTime = new Date(Date.now() - meetingDuration * 1000).toISOString();
-      }
+      const hasTranscript = transcriptionHistory.length > 0;
+      const meetingStartTime = meetingStartIso(recordingStartTime, hasTranscript, meetingDuration);
 
       // Template envoyé à /resume : opts.template (édition) ou currentTemplate (live)
       const templateForRequest = opts?.template ?? currentTemplate;
@@ -3546,6 +3312,7 @@
       notesActionsSaver.forget(resumedId); // /resume écrit l'état de SA requête
       // Forme écrite : échéances yyyy-MM-dd, ni animation ni texte de remplacement.
       const storedActions = toStoredActions(detectedActions);
+      const tagged = summaryTag(currentMeetingId ? currentMeetingTag : pendingTagId); // + son contexte
       const plan = resolveSummaryPlan(
         templateForRequest,
         {
@@ -3558,10 +3325,12 @@
           customPrompt: opts?.customPrompt ?? null,
           userContext: userContext && userContext.trim() ? userContext.trim() : null,
           orgContext: $orgContext || null,
+          ...tagged,
           meetingNotes,
           transcriptAttribution,
           pages: opts?.pages ?? null,
           transcript: fullTranscript,
+          includeActions: opts?.withActions !== false, // tuile « Actions détectées »
         },
         [...userTemplates, ...customTemplates],
       );
@@ -3590,6 +3359,7 @@
           longueur: opts?.longueur ?? null,
           customPrompt: opts?.customPrompt ?? null,
           userContext: userContext && userContext.trim() ? userContext.trim() : null,
+          tagId: tagged.tagId, // l'infographie relit son contexte en base
           notes: meetingNotes,
           // Infographie (case du panneau de génération) : générée en tâche de
           // fond côté serveur, suivie par stores/infographic.js via l'historique.
@@ -3617,13 +3387,7 @@
           resumedId = resumedId || receivedMeetingId;
           if (receivedMeetingId && !currentMeetingId && here()) {
             currentMeetingId = receivedMeetingId;
-            // Tag mis en attente pendant l'enregistrement : la réunion existe
-            // enfin en base — posé AVANT le rechargement de l'historique.
-            if (pendingTagId) {
-              const tagRes = await tagMeeting(currentMeetingId, pendingTagId);
-              if (!tagRes.ok) showTagError(tagRes.error);
-              pendingTagId = null;
-            }
+            await postPendingTag(currentMeetingId); // AVANT le rechargement de l'historique
           }
         } else {
           summaryFromResponse = await response.text();
@@ -3744,9 +3508,9 @@
       setSummaryText: (val) => {
         summaryText = val;
       },
-      setRecordedAudioUrl: (val) => {
-        recordedAudioUrl = val;
-      },
+      // Vidé par « Nouvelle réunion » : RÉVOQUER, sinon le Blob de toute la
+      // réunion (plusieurs dizaines de Mo) reste en mémoire jusqu'au reload.
+      setRecordedAudioUrl: (val) => (val ? (recordedAudioUrl = val) : resetRecordedAudio()),
       setRecordedFilename: (val) => {
         recordedFilename = val;
       },
@@ -3769,6 +3533,7 @@
     return {
       hasGeneratedSummary,
       summaryText,
+      tagId: currentMeetingTag, // son logo (client, projet) en tête du PDF
       userName:
         userInfo?.name && isValidUserName(userInfo.name)
           ? userInfo.name
@@ -3809,6 +3574,14 @@
   function showTagError(slug) {
     const errors = $uiText.tagsPanel.errors;
     showGlobalToast(errors[slug] || errors.network, 'error', 5000);
+  }
+
+  /** Tag mis en attente : posé dès que la réunion existe en base. */
+  async function postPendingTag(meetingId) {
+    if (!pendingTagId) return;
+    const res = await tagMeeting(meetingId, pendingTagId);
+    if (!res.ok) showTagError(res.error);
+    pendingTagId = null;
   }
 
   /**
@@ -3892,6 +3665,7 @@
 />
 
 <ToastHost />
+<QuotaLiveAlert />
 <StoreApprovalDialog />
 <AfterSummaryDialog
   meetingId={currentMeetingId}
@@ -4023,7 +3797,6 @@
     menuOpen={$sidebarOpen}
     onToggleMenu={toggleSidebar}
     onMenuAction={handleSidebarMenuAction}
-    onSetLanguage={setLanguage}
     canStart={!isRecording && !isPaused && !isRequestingMic}
     startBlocked={quotaBlocked}
     startLabel={$uiText.sidebar.newMeeting}
@@ -4040,7 +3813,6 @@
     onGoToLive={restoreLiveSession}
     onToggle={toggleSidebar}
     onMenuAction={handleSidebarMenuAction}
-    onSetLanguage={setLanguage}
   />
 
   <!-- Fond du tiroir (téléphone, tablette) : un clic referme la barre -->
@@ -4056,12 +3828,7 @@
     <AdminPanel {userInfo} onClose={showMainScreen} />
   {/if}
 
-  <!-- « Mes statistiques » : même montage, pour tous les comptes. -->
-  {#if $activePanel === 'stats'}
-    <StatsPanel onClose={showMainScreen} />
-  {/if}
-
-  <!-- « Ma configuration » : même montage que l'administration, et panneau
+  <!-- « Réglages » : même montage que l'administration, et panneau
        UNIQUE des réglages de l'utilisateur — « Mes templates », « Mes tags »
        et l'import audio y sont des sections (cf. SettingsPanel), plus des
        panneaux ni des modales à part. -->
@@ -4072,6 +3839,8 @@
       {userInfo}
       onSaveContext={saveUserConfig}
       onImportAudio={uploadAudio}
+      onSetLanguage={setLanguage}
+      onAccountAction={handleSidebarMenuAction}
       onClose={closeConfig}
     />
   {/if}
@@ -4203,6 +3972,7 @@
                 currentTemplate={activeVersion?.template ?? currentTemplate}
                 currentPages={activeVersion?.pages ?? null}
                 transcript={transcriptionHistory}
+                actions={detectedActions}
                 currentLanguage={$currentLanguageStore}
                 isGeneratingSummary={generatingHere}
                 onGenerate={handleEditGenerate}
@@ -4244,6 +4014,9 @@
                 />
                 {#if transcriptionHistory.length === 0}
                   <div class="transcript-empty">{$uiText.transcription.empty}</div>
+                {/if}
+                {#if canResumeMeeting && !dockOffered}
+                  <ResumeMeetingCta onResume={resumeFinishedMeeting} busy={isRequestingMic} />
                 {/if}
               </div>
               {#if transcriptionFullText && transcriptionFullText.trim() && recordedAudioUrl}
@@ -4311,7 +4084,7 @@
         <Dock
           {isRecording}
           {isPaused}
-          analyser={silenceDetector}
+          analyser={silenceDetector?.analyser}
           hasTranscription={transcriptionHistory.length > 0}
           isGeneratingSummary={generatingHere}
           {isRequestingMic}
@@ -4323,6 +4096,7 @@
           onRequestDelete={() => (showDeleteModal = true)}
           onSave={saveMeeting}
           {canSave}
+          onResumeMeeting={canResumeMeeting ? resumeFinishedMeeting : null}
         />
       </div>
     {/if}
@@ -4345,86 +4119,20 @@
         onNotesInput={handleNotesInput}
         live={isRecording || isPaused}
         {isPaused}
-        analyser={silenceDetector}
+        analyser={silenceDetector?.analyser}
         {canSave}
         onPause={pauseRecording}
         onResume={resumeRecording}
         onOpenPicker={openTemplatePicker}
         onSave={saveMeeting}
         onRequestDelete={() => (showDeleteModal = true)}
+        onSummarize={generateSummary}
+        {templateOptions}
+        bind:currentTemplate
       />
     {/if}
   </main>
 </div>
-
-<!-- History modal (kept as-is) -->
-{#if showHistoryModal}
-  <div
-    class="history-modal-overlay"
-    role="dialog"
-    aria-modal="true"
-    aria-labelledby="history-modal-title"
-  >
-    <div class="history-modal-backdrop" on:click={closeHistoryModal}></div>
-    <div class="history-modal">
-      <div class="history-modal-header">
-        <h2 id="history-modal-title">{$uiText.history.title}</h2>
-        <button
-          type="button"
-          class="history-modal-close"
-          aria-label={$uiText.history.close}
-          on:click={closeHistoryModal}>×</button
-        >
-      </div>
-      <div class="history-modal-content">
-        {#if $isLoadingHistory}
-          <div class="history-loading">{$uiText.history.loading}</div>
-        {:else if $historyError}
-          <div class="history-error">{$historyError}</div>
-          <button type="button" class="control-btn history-retry" on:click={fetchHistoryItems}
-            >{$uiText.history.retry}</button
-          >
-        {:else if $historyItems.length === 0}
-          <div class="history-empty">{$uiText.history.empty}</div>
-        {:else}
-          <ul class="history-list" role="listbox" aria-label={$uiText.history.title}>
-            {#each $historyItems as item, index (meetingIdOf(item) || index)}
-              {@const itemId = meetingIdOf(item)}
-              <li
-                class:selected={itemId != null && $selectedMeetingId === itemId}
-                role="option"
-                aria-selected={itemId != null && $selectedMeetingId === itemId}
-              >
-                <button type="button" on:click={() => selectHistoryItem(itemId)}>
-                  <div class="history-item-title">
-                    {formatHistoryItemTitle(item, index, t('history.itemLabel'))}
-                  </div>
-                  {#if formatHistoryItemMeta(item, $currentLanguageStore)}
-                    <div class="history-item-meta">
-                      {formatHistoryItemMeta(item, $currentLanguageStore)}
-                    </div>
-                  {/if}
-                </button>
-              </li>
-            {/each}
-          </ul>
-          {#if $selectedHistoryItem}
-            <div class="history-selection">
-              <span class="history-selection-label">{$uiText.history.selection}</span>
-              <span class="history-selection-value"
-                >{formatHistoryItemTitle(
-                  $selectedHistoryItem,
-                  $historyItems.indexOf($selectedHistoryItem),
-                  t('history.itemLabel'),
-                )}</span
-              >
-            </div>
-          {/if}
-        {/if}
-      </div>
-    </div>
-  </div>
-{/if}
 
 <!-- Confirmations de suppression — même coquille, textes différents. -->
 {#if pendingDeleteVersionId}
@@ -4448,14 +4156,14 @@
 {/if}
 
 {#if canResumeSession}
+  <!-- Le fond ne décide rien : un toucher à côté des boutons ne doit pas clore la réunion. -->
   <div
     class="delete-modal-backdrop"
-    on:click={dismissResume}
     role="dialog"
     aria-modal="true"
     aria-labelledby="resume-session-modal-title"
   >
-    <div class="delete-modal" on:click|stopPropagation>
+    <div class="delete-modal">
       <div class="delete-modal-icon">
         <IconPlayCircle width="28" height="28" style="color: var(--mb-orange)" />
       </div>
@@ -4465,7 +4173,7 @@
       <p class="delete-modal-body">{$uiText.modals.resumeInterruptedBody}</p>
       <div class="delete-modal-actions">
         <button class="delete-modal-cancel" on:click={dismissResume}
-          >{$uiText.modals.abandon}</button
+          >{$uiText.modals.endInterrupted}</button
         >
         <button
           class="delete-modal-confirm resume-modal-confirm"
@@ -4482,7 +4190,7 @@
     onClose={() => (showBrowserWarningModal = false)}
     onConfigure={() => {
       showBrowserWarningModal = false;
-      openPanel('config', 'audio');
+      openPanel('config', 'meeting', 'audio');
     }}
   />
 {/if}

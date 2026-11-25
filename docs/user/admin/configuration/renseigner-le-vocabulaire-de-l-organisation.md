@@ -5,7 +5,8 @@ sidebar:
   order: 1
 ---
 
-**Administration → Configuration**, carte **Vocabulaire et contexte de votre organisation**.
+**Administration → Organisation → Entreprise**, tuile **Vocabulaire** : un clic déplie
+**Vocabulaire et contexte de votre organisation**.
 
 ## Étapes
 
@@ -13,7 +14,8 @@ sidebar:
    2 000 caractères au plus ; le compteur l'indique.
 2. Cliquez **Enregistrer**, en bas de la page.
 
-Le badge passe à **Renseigné**, avec le nom de la personne qui l'a enregistré.
+La tuile passe à **Renseigné** et montre le début du texte ; le détail donne le nom de la personne qui
+l'a enregistré.
 
 ## Quoi écrire
 
@@ -26,8 +28,8 @@ Le badge passe à **Renseigné**, avec le nom de la personne qui l'a enregistré
 
 - Le texte est joint à **chaque compte rendu de tous les comptes**, et à **chaque analyse de la
   détection d'actions**. Il ne sert ni à l'infographie ni aux titres.
-- Il ne remplace pas le contexte personnel : chacun peut écrire le sien dans **Ma configuration → Mon
-  contexte**.
+- Il ne remplace pas le contexte personnel : chacun peut écrire le sien dans **Réglages → Préférences
+  IA → Mon contexte**.
 - Il part avec chaque demande à l'IA : n'y mettez que ce qui aide à comprendre et à écrire juste, et
   rien de confidentiel qui n'ait sa place dans tous les comptes rendus.
 - Mettez-le à jour quand un client ou un projet arrive : un nom absent reste à la merci de la

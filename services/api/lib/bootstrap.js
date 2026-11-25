@@ -6,9 +6,16 @@
  */
 import { hashPassword } from './auth/password.js';
 import { normalizeEmail, SERVED_ACCOUNT } from './repositories/users.js';
-import { createGroupsRepo, DEFAULT_GROUP_ID, GROUPS_COLLECTION } from './repositories/groups.js';
+import {
+  ADMIN_GROUP_ID,
+  createGroupsRepo,
+  DEFAULT_GROUP_ID,
+  GROUPS_COLLECTION,
+  pickGroupId,
+} from './repositories/groups.js';
 import { createSettingsRepo } from './repositories/settings.js';
 import { USER_ACTIONS_COLLECTION } from './repositories/userActions.js';
+import { DETECTION_SENSITIVITIES } from './actionDetectionSettings.js';
 import { MAIL_LOG_COLLECTION, MAIL_LOG_TTL_SECONDS } from './actions/mailLog.js';
 import { backfillOwnerEmails } from './ownerScope.js';
 import { DELETED_USAGE_COLLECTION } from './quota.js';
@@ -36,6 +43,22 @@ async function ensureIndexes(db, log) {
     await db.collection('userTemplates').createIndex({ emailLower: 1, value: 1 });
     await db.collection('userConfig').createIndex({ emailLower: 1 });
 
+    // Quota du mois (lib/quota.js) : réunions du compte DANS la période, sur
+    // `lastConnecion`. Servi par `{emailLower, now}`, il chargeait TOUTES les
+    // réunions du compte — transcriptions comprises, dans le cache de Mongo —
+    // pour n'en garder que celles du mois, à chaque démarrage d'enregistrement
+    // d'un compte limité. Un index par branche du `$or` d'`ownerFilter`.
+    await db.collection('resume').createIndex({ emailLower: 1, lastConnecion: 1 });
+    await db.collection('resume').createIndex({ email: 1, lastConnecion: 1 });
+
+    // Reprises du démarrage (backfillTranscriptionSize, backfillDurations…) :
+    // elles cherchent les réunions SANS ces champs. Sans index, chaque
+    // démarrage balayait toute la collection pour n'en trouver aucune — toute
+    // réunion écrite aujourd'hui les porte. Un index non partiel range les
+    // documents sans le champ sous `null` : `$exists: false` n'y lit qu'eux.
+    await db.collection('resume').createIndex({ transcriptionChars: 1 });
+    await db.collection('resume').createIndex({ meetingDurationSource: 1 });
+
     // Envois à myBrain : la boucle de relance cherche toutes les dix minutes
     // les échecs dont l'heure est venue. PARTIEL — seules les réunions qui ont
     // un état d'envoi y figurent : sans lui, chaque passage balaierait toute la
@@ -52,6 +75,7 @@ async function ensureIndexes(db, log) {
     // /tags/save et /tags/delete.
     await db.collection('userTags').createIndex({ emailLower: 1, labelLower: 1 });
     await db.collection('userTags').createIndex({ emailLower: 1, id: 1 });
+    await db.collection('userTagLogos').createIndex({ emailLower: 1, tagId: 1 });
 
     await db.collection('user').createIndex({ email: 1 });
     await db
@@ -228,7 +252,7 @@ export async function migrateMailAccountsToConnections(db, log) {
 
 /**
  * Reprend le « vocabulaire et contexte de l'organisation » là où il est
- * désormais réglé : l'onglet Configuration de l'administration.
+ * désormais réglé : la rubrique Organisation de l'administration.
  *
  * Il vivait dans les réglages de la détection d'actions, où il ne servait qu'au
  * prompt de détection. Il vaut pour toute génération de résumé, donc il change
@@ -261,10 +285,73 @@ export async function migrateBusinessContextToOrgContext(db, log) {
     return true;
   } catch (err) {
     // Non bloquant : sans reprise, un administrateur ressaisit le texte dans
-    // l'onglet Configuration. Faire tomber l'API pour un champ de confort priverait
+    // la rubrique Organisation. Faire tomber l'API pour un champ de confort priverait
     // tout le monde du service.
     log.warn(`[api] reprise du contexte d'organisation impossible : ${err.message}`);
     return false;
+  }
+}
+
+/** Témoin de `resetDetectionSensitivity`, dans `appSettings`. */
+export const DETECTION_SENSITIVITY_RESET_KEY = 'actionDetectionSensitivityReset';
+
+/**
+ * Remet TOUS les comptes d'une installation sur une sensibilité de détection,
+ * UNE fois : `ACTION_DETECTION_SENSITIVITY_RESET=explicit` dans
+ * l'environnement de l'API.
+ *
+ * Pourquoi : changer le défaut (lib/actionDetectionSettings.js) ne touche que
+ * les comptes qui n'ont rien enregistré. Or `updateDetection` écrit le bloc
+ * ENTIER à chaque sauvegarde : quiconque a réglé son rythme ou ses mots
+ * déclencheurs porte `sensitivity: 'balanced'` sans l'avoir choisi. Demandé
+ * par un client (2026-10-28) : tout le monde en « Stricte », chacun libre d'en
+ * changer ensuite.
+ *
+ * « Ensuite » est ce que garde le témoin : il retient la valeur appliquée, et
+ * la reprise ne rejoue que si la variable demande AUTRE chose. Sans lui, chaque
+ * redémarrage écraserait le choix que l'utilisateur vient de faire. Variable
+ * vide ou inconnue : rien ne se passe, c'est le cas de toute autre installation.
+ *
+ * Ne touche que les documents qui portent déjà une sensibilité : les autres
+ * lisent le défaut, et un `$set` sur `detection.sensitivity` créerait un bloc
+ * partiel là où il n'y en a pas — sans effet, mais sans raison.
+ *
+ * @returns {Promise<number>} nombre de comptes modifiés (0 si rien à faire)
+ */
+export async function resetDetectionSensitivity(db, log, value) {
+  const target = String(value || '').trim();
+  if (!target) return 0;
+  if (!DETECTION_SENSITIVITIES.includes(target)) {
+    log.warn(`[api] ACTION_DETECTION_SENSITIVITY_RESET inconnue (${target}) : ignorée`);
+    return 0;
+  }
+  try {
+    const settings = db.collection('appSettings');
+    const marker = await settings.findOne({ key: DETECTION_SENSITIVITY_RESET_KEY });
+    if (marker?.value === target) return 0;
+    const now = new Date().toISOString();
+    const res = await db
+      .collection(USER_ACTIONS_COLLECTION)
+      .updateMany(
+        { 'detection.sensitivity': { $exists: true, $ne: target } },
+        { $set: { 'detection.sensitivity': target, updatedAt: now } },
+      );
+    const modified = res?.modifiedCount ?? 0;
+    await settings.updateOne(
+      { key: DETECTION_SENSITIVITY_RESET_KEY },
+      {
+        $set: { value: target, appliedAt: now, modified },
+        $setOnInsert: { key: DETECTION_SENSITIVITY_RESET_KEY },
+      },
+      { upsert: true },
+    );
+    log.info(`[api] sensibilité de détection remise à « ${target} » : ${modified} compte(s)`);
+    return modified;
+  } catch (err) {
+    // Non bloquant : sans reprise, chacun garde son réglage — c'est l'état
+    // d'avant. Et le témoin n'étant pas écrit, le prochain démarrage réessaie.
+    log.warn(`[api] remise de la sensibilité de détection impossible : ${err.message}`);
+    return 0;
   }
 }
 
@@ -407,39 +494,79 @@ export async function warnDuplicateEmails(db, log) {
 }
 
 /**
- * Groupe par défaut et appartenance des comptes existants.
+ * Groupes fixes et appartenance des comptes existants.
  *
- * Deux gestes, dans cet ordre : créer le groupe « Défaut » s'il manque
- * (idempotent, un renommage survit au démarrage suivant), puis inscrire dedans
- * tout compte antérieur au champ `groupIds` — ou dont le tableau est vide.
- * Sans ce second geste, l'invariant « un compte est toujours dans au moins un
- * groupe » ne tiendrait qu'à la lecture (`normalizeGroupIds`) : la liste des
- * membres du groupe par défaut, qui interroge l'index, ne verrait pas les
- * comptes historiques, et l'écran annoncerait un effectif faux.
+ * Quatre gestes, dans cet ordre :
+ *   1. créer les groupes « Défaut » et « Admin » s'ils manquent (idempotent,
+ *      un renommage survit au démarrage suivant) ;
+ *   2. à la NAISSANCE du groupe « Admin » seulement, y placer les
+ *      administrateurs existants — une fois : rejoué à chaque démarrage, il
+ *      défairait les placements décidés ensuite par l'administration. Il ne
+ *      leur retire rien, le groupe naît illimité et avec tous les droits ;
+ *   3. ramener à UN groupe tout compte qui en a plusieurs, héritage des
+ *      groupes multiples : celui qui lui donnait déjà ses minutes
+ *      (`pickGroupId`). Rejoué sans risque, il ne trouve plus rien ensuite ;
+ *   4. inscrire dans le groupe par défaut tout compte antérieur au champ
+ *      `groupIds` — ou dont le tableau est vide. Sans lui, l'invariant « un
+ *      compte est toujours dans un groupe » ne tiendrait qu'à la lecture
+ *      (`groupIdOf`) : la liste des membres du groupe par défaut, qui
+ *      interroge l'index, ne verrait pas les comptes historiques, et l'écran
+ *      annoncerait un effectif faux.
  *
  * Non bloquant : sans lui, l'administration voit des effectifs incomplets,
  * personne ne perd l'accès au service.
  *
- * @returns {Promise<{created: boolean, backfilled: number}>}
+ * @returns {Promise<{created: boolean, adminCreated: boolean, admins: number,
+ *   reduced: number, backfilled: number}>}
  */
-export async function seedDefaultGroup(db, log) {
+export async function seedGroups(db, log) {
+  const result = { created: false, adminCreated: false, admins: 0, reduced: 0, backfilled: 0 };
   try {
-    const created = await createGroupsRepo(db).ensureDefault();
-    if (created) log.info('[api] groupe par défaut créé');
+    const repo = createGroupsRepo(db);
+    result.created = await repo.ensureDefault();
+    if (result.created) log.info('[api] groupe par défaut créé');
+    result.adminCreated = await repo.ensureAdmin();
+    if (result.adminCreated) {
+      const res = await db
+        .collection('user')
+        .updateMany({ role: 'admin' }, { $set: { groupIds: [ADMIN_GROUP_ID] } });
+      result.admins = res?.modifiedCount || 0;
+      log.info(
+        `[api] groupe des administrateurs créé, ${result.admins} administrateur(s) placé(s) dedans`,
+      );
+    }
+
+    const catalogue = await repo.list();
+    const several = await db
+      .collection('user')
+      .find({ 'groupIds.1': { $exists: true } })
+      .project({ _id: 1, groupIds: 1 })
+      .toArray();
+    for (const doc of several) {
+      await db
+        .collection('user')
+        .updateOne(
+          { _id: doc._id },
+          { $set: { groupIds: [pickGroupId(catalogue, doc.groupIds)] } },
+        );
+    }
+    result.reduced = several.length;
+    if (result.reduced > 0)
+      log.info(`[api] ${result.reduced} compte(s) ramené(s) à un seul groupe`);
+
     const res = await db.collection('user').updateMany(
       {
         $or: [{ groupIds: { $exists: false } }, { groupIds: null }, { groupIds: { $size: 0 } }],
       },
       { $set: { groupIds: [DEFAULT_GROUP_ID] } },
     );
-    const backfilled = res?.modifiedCount || 0;
-    if (backfilled > 0)
-      log.info(`[api] ${backfilled} compte(s) inscrit(s) dans le groupe par défaut`);
-    return { created, backfilled };
+    result.backfilled = res?.modifiedCount || 0;
+    if (result.backfilled > 0)
+      log.info(`[api] ${result.backfilled} compte(s) inscrit(s) dans le groupe par défaut`);
   } catch (err) {
-    log.warn(`[api] groupe par défaut impossible à préparer : ${err.message}`);
-    return { created: false, backfilled: 0 };
+    log.warn(`[api] groupes impossibles à préparer : ${err.message}`);
   }
+  return result;
 }
 
 /**
@@ -652,7 +779,7 @@ async function migrateRoles(db, log, legacyAdminDomain) {
       .collection('user')
       .updateMany(
         { role: { $exists: false }, emailLower: { $regex: `${suffix.replace(/[.]/g, '\\.')}$` } },
-        { $set: { role: 'admin' } },
+        { $set: { role: 'admin', groupIds: [ADMIN_GROUP_ID] } },
       );
     if (res?.modifiedCount)
       log.info(`[api] ${res.modifiedCount} compte(s) ${suffix} promu(s) admin (migration unique)`);
@@ -683,7 +810,7 @@ export async function seedAdmin(db, { email, password, enabled = true }, log = n
     // accès à sa propre administration.
     if ((await db.collection('user').countDocuments({})) === 0) {
       throw new Error(
-        "ADMIN_SEED_EMAIL est obligatoire pour créer le premier administrateur (ou ADMIN_SEED_ENABLED=false avec ADMIN_EMAILS).",
+        'ADMIN_SEED_EMAIL est obligatoire pour créer le premier administrateur (ou ADMIN_SEED_ENABLED=false avec ADMIN_EMAILS).',
       );
     }
     return { created: false, reason: 'no_email' };
@@ -736,6 +863,9 @@ export async function seedAdmin(db, { email, password, enabled = true }, log = n
           passwordUpdatedAt: now,
           mustChangePassword: true,
           role: 'admin',
+          // Promu ici : il entre dans le groupe des administrateurs (cf.
+          // lib/repositories/groups.js). Déjà administrateur, il garde le sien.
+          ...(existing.role === 'admin' ? {} : { groupIds: [ADMIN_GROUP_ID] }),
           disabled: false,
           authProviders: [...new Set([...(existing.authProviders || []), 'password'])],
           updatedAt: now,
@@ -759,7 +889,7 @@ export async function seedAdmin(db, { email, password, enabled = true }, log = n
     passwordUpdatedAt: now,
     mustChangePassword: true,
     disabled: false,
-    groupIds: [DEFAULT_GROUP_ID],
+    groupIds: [ADMIN_GROUP_ID],
     createdAt: now,
     updatedAt: now,
     lastConnecion: null,
@@ -795,7 +925,7 @@ async function promoteAdminDomains(db, log, domains) {
         .collection('user')
         .updateMany(
           { role: { $ne: 'admin' }, emailLower: { $regex: `${suffix}$` } },
-          { $set: { role: 'admin' } },
+          { $set: { role: 'admin', groupIds: [ADMIN_GROUP_ID] } },
         );
       if (res?.modifiedCount) {
         log.info(
@@ -854,14 +984,15 @@ async function promoteAdmins(db, log, adminEmails) {
       await db.collection('user').updateOne(
         { emailLower },
         {
-          $set: { role: 'admin', updatedAt: now },
+          // Promu, il entre dans le groupe des administrateurs — y compris un
+          // compte créé ici (cf. lib/repositories/groups.js).
+          $set: { role: 'admin', groupIds: [ADMIN_GROUP_ID], updatedAt: now },
           $setOnInsert: {
             email,
             name: email.split('@')[0],
             authProviders: [],
             disabled: false,
             mustChangePassword: false,
-            groupIds: [DEFAULT_GROUP_ID],
             createdAt: now,
             lastConnecion: null,
           },
@@ -908,18 +1039,19 @@ export async function bootstrap(db, config, log = noopLogger, env = {}) {
   await backfillLegacyVersions(db, log);
   await migrateRoles(db, log, config.legacyAdminDomain);
   // Réglage déplacé d'un écran à l'autre : la reprise doit précéder le premier
-  // appel de l'administration, sinon l'onglet Configuration affiche un champ vide
+  // appel de l'administration, sinon la rubrique Organisation affiche un champ vide
   // et le premier enregistrement fige cette perte.
   await migrateBusinessContextToOrgContext(db, log);
+  await resetDetectionSensitivity(db, log, env.ACTION_DETECTION_SENSITIVITY_RESET);
   await seedAdmin(db, config.adminSeed, log);
   // Après le seed : sur une installation existante, ce sont les seuls moyens de
   // désigner un administrateur.
   await promoteAdmins(db, log, config.adminEmails);
   await promoteAdminDomains(db, log, config.adminEmailDomains);
   await warnIfNoAdmin(db, log);
-  // Après les promotions : un compte qu'`ADMIN_EMAILS` vient de créer reçoit
-  // son groupe ici même, pas au démarrage suivant.
-  await seedDefaultGroup(db, log);
+  // Après les promotions : à la naissance du groupe « Admin », les comptes
+  // qu'elles viennent de promouvoir y sont placés avec les autres.
+  await seedGroups(db, log);
 
   // Réglages d'authentification : l'environnement ne sert que d'amorçage, la
   // suite se pilote depuis le panneau d'administration.

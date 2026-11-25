@@ -167,7 +167,7 @@ describe('POST /api/actions/store', () => {
 
     expect(res.statusCode).toBe(502);
     expect(res.json().error).toBe('storage_auth_revoked');
-    // Purgée pour que « Ma configuration » montre « non connecté » au lieu
+    // Purgée pour que « Réglages » montre « non connecté » au lieu
     // d'échouer à chaque dépôt.
     expect(db.data.get('userConnections')).toHaveLength(0);
   });

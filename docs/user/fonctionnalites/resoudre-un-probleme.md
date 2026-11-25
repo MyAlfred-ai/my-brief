@@ -9,17 +9,19 @@ sidebar:
 
 | Ce qui arrive | Cause probable, et quoi faire |
 |---|---|
-| Rien ne se transcrit | Le micro n'est pas autorisé, ou ce n'est pas le bon : autorisez-le dans le navigateur, puis vérifiez **Ma configuration → Réglages audio**. Voir [Enregistrer une réunion](enregistrement/enregistrer-une-reunion.md). |
+| Rien ne se transcrit | Le micro n'est pas autorisé, ou ce n'est pas le bon : autorisez-le dans le navigateur, puis vérifiez **Réglages → Pendant la réunion → Micro et son**. Voir [Enregistrer une réunion](enregistrement/enregistrer-une-reunion.md). |
 | « Micro refusé : autorisez-le pour MyBrief dans les réglages du navigateur ou du téléphone, puis relancez l'enregistrement. » | Autorisez le micro dans les réglages du navigateur — ou du téléphone, pour l'application —, puis **Démarrer**. |
 | « Le micro est déjà utilisé par une autre application. Fermez-la, puis réessayez. » | Une visio ou un dictaphone tient le micro : fermez-le, puis **Démarrer**. |
-| « Aucun micro détecté… » | Branchez un micro, ou choisissez-en un autre dans **Ma configuration → Réglages audio**. |
+| « Aucun micro détecté… » | Branchez un micro, ou choisissez-en un autre dans **Réglages → Pendant la réunion → Micro et son**. |
 | Vos interlocuteurs en visio n'apparaissent pas | Le partage d'écran n'a pas été fait avec son audio. Voir [Enregistrer une réunion en visio](enregistrement/enregistrer-une-reunion-en-visio.md) ; dans Firefox ou Safari, [Enregistrer une visio dans Firefox ou Safari](enregistrement/enregistrer-une-visio-dans-firefox-ou-safari.md). |
 | La transcription est dans la mauvaise langue | La langue de l'interface est celle de la transcription. Voir [Changer la langue](configuration/changer-la-langue.md). |
 | L'enregistrement s'est arrêté seul | La question « Toujours en réunion ? » est restée sans réponse, ou la limite de huit heures est atteinte. Voir [Reprendre une réunion interrompue](pause-et-fin/reprendre-une-reunion-interrompue.md). |
-| L'onglet s'est fermé en pleine réunion | Rouvrez myBrief dans le même navigateur : **Reprendre**. Voir [Reprendre une réunion interrompue](pause-et-fin/reprendre-une-reunion-interrompue.md). |
+| L'onglet s'est fermé, ou le téléphone a fermé myBrief, en pleine réunion | Rouvrez myBrief sur le même appareil : **Reprendre** continue la même réunion, chronomètre compris. Voir [Reprendre une réunion interrompue](pause-et-fin/reprendre-une-reunion-interrompue.md). |
+| Sur téléphone, un appel ou une autre application a coupé le micro | myBrief relance l'enregistrement à votre retour ; si le message « Enregistrement interrompu » reste affiché, touchez l'écran. Voir [Enregistrer sur son téléphone](enregistrement/enregistrer-sur-son-telephone.md). |
 | Sur téléphone, l'enregistrement s'est arrêté écran verrouillé | Dans le navigateur, gardez l'écran allumé. Voir [Enregistrer sur son téléphone](enregistrement/enregistrer-sur-son-telephone.md). |
 | « ❌ Crédit d'IA épuisé — transcription suspendue » | Le crédit du service d'IA de votre organisation est épuisé : prévenez votre administrateur. |
-| **Démarrer** affiche « Quota atteint » | Vos minutes de réunion du mois sont épuisées ; la ligne sous votre nom, en bas de la colonne de gauche — sur téléphone, le menu de votre avatar —, donne la date du renouvellement. Si votre administrateur a relevé votre quota, cliquez de nouveau sur **Démarrer**. Voir [L'enregistrement d'une réunion](enregistrement/index.md). |
+| **Démarrer** affiche « Quota atteint » | Vos minutes de réunion du mois sont épuisées ; la ligne sous votre nom, en bas de la colonne de gauche, le dit, et son infobulle donne la date du renouvellement — sur téléphone, c'est la carte du compte, ouverte par votre avatar, qui la donne. Si votre administrateur a relevé votre quota, cliquez de nouveau sur **Démarrer**. Voir [L'enregistrement d'une réunion](enregistrement/index.md). |
+| « Vos minutes de réunion du mois sont épuisées. L'enregistrement continue… » | Rien à faire : la réunion continue de s'enregistrer et de se transcrire jusqu'à ce que vous l'arrêtiez. Vous ne pourrez pas en démarrer d'autre avant le renouvellement, sauf si votre administrateur relève le quota de votre groupe. |
 
 ## Le compte rendu
 
@@ -41,7 +43,7 @@ sidebar:
 | « L'enregistrement des notes et des actions a échoué — vos dernières modifications ne sont pas sauvegardées. » | La connexion a lâché : vérifiez-la, puis retouchez vos notes ou une action pour relancer l'enregistrement. |
 | Le titre que vous aviez choisi a changé | Chaque génération de résumé redonne un titre : renommez après la dernière. Voir [Renommer ou supprimer une réunion](historique/renommer-ou-supprimer-une-reunion.md). |
 | Vous ne trouvez plus une réunion | La recherche porte sur le titre et tient compte des accents ; un filtre de tag est peut-être actif. Voir [Retrouver une réunion](historique/retrouver-une-reunion.md). |
-| La même réunion apparaît deux fois | Elle a été reprise après une coupure. Voir [Reprendre une réunion interrompue](pause-et-fin/reprendre-une-reunion-interrompue.md). |
+| La même réunion apparaît deux fois | Une reprise après coupure ouvrait autrefois une seconde ligne ; elle continue désormais la même réunion. Supprimez la ligne incomplète. Voir [Renommer ou supprimer une réunion](historique/renommer-ou-supprimer-une-reunion.md). |
 
 ## L'envoi et le dépôt
 
@@ -61,5 +63,5 @@ sidebar:
 | Mot de passe oublié | Voir [Gérer son mot de passe](connexion/gerer-son-mot-de-passe.md). |
 | « Votre domaine email n'est pas autorisé sur cette application. » | Votre administrateur doit autoriser votre domaine, ou créer votre compte. |
 
-Pour tout le reste : **Ma configuration → Déclarer un bug ou une idée**, ou l'administrateur de votre
+Pour tout le reste : **Réglages → Déclarer un bug ou une idée**, ou l'administrateur de votre
 organisation.

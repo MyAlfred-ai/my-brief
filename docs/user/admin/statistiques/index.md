@@ -2,12 +2,14 @@
 title: Les statistiques
 description: Suivre l'adoption de myBrief et son usage compte par compte — réunions, temps enregistré, régularité, comptes rendus —, le filtrer, en sortir un rapport PDF, et savoir ce qu'il coûte en IA, sans jamais voir le contenu des réunions.
 sidebar:
-  order: 8
+  order: 9
 ---
 
-L'onglet **Administration → Statistiques** montre l'usage de myBrief sur la période choisie : combien de
-réunions, combien de temps enregistré, qui s'en sert régulièrement et qui ne s'en sert pas, quels
-templates reviennent. Et ce que cet usage coûte en IA, en euros.
+La page **Administration → Coûts → Consommation** montre l'usage de myBrief sur la période choisie :
+combien de réunions, combien de temps enregistré, qui s'en sert régulièrement et qui ne s'en sert pas,
+quels templates reviennent. Et ce que cet usage coûte en IA, en euros.
+
+![Administration, page Consommation, sur 30 jours et toute l'organisation : en haut, les périodes, les filtres Groupe, Utilisateur et Template, Actualiser et Exporter en PDF ; puis Réunions, 24, en hausse de 85 %, Temps enregistré, Durée moyenne, Taux d'adoption, 71 %, et Comptes rendus, 92 % ; dessous, la Santé de l'adoption — 3 comptes réguliers, 2 occasionnels, 1 en sommeil, 1 jamais démarré — ; en bas, le début du tableau Utilisation par utilisateur.](../../images/admin-consommation.png)
 
 ## À quoi ça sert
 
@@ -36,23 +38,23 @@ démarré**. Les semaines se comptent depuis la création du compte quand elle e
 **Les durées n'existent que depuis août 2026.** Les réunions plus anciennes comptent dans le nombre de
 réunions, mais pas dans les durées ni les moyennes ; l'écran le signale — « Sur 12 réunions sur 40 ».
 
-**Le crédit de temps de chacun** se suit dans sa propre section : **Administration → Crédit de
-temps**. Un utilisateur, lui, ne voit que sa propre consommation, dans **Mes statistiques**.
+**Le crédit de temps de chacun** se suit sur sa propre page : **Administration → Coûts → Crédit de
+temps**. Un utilisateur, lui, ne voit que sa propre consommation, dans **Réglages → Usage & crédits**.
 
 **Les dépenses d'IA sont estimées**, sur la même période et le même périmètre : les volumes mesurés, les
 modèles en service et les derniers tarifs publics relevés. **Actualiser les tarifs** les relève en ligne.
 
 ## Configurer
 
-Rien à configurer : l'onglet se consulte.
+Rien à configurer : la page se consulte.
 
 | Réglage | Où | Effet | Page |
 |---|---|---|---|
-| **Période** | Statistiques, en haut | La période de toute la page : glissante, ou **Dates…** au jour près | [Lire les statistiques](lire-les-statistiques.md) |
-| **Groupe**, **Utilisateur**, **Template** | Statistiques, sous la période | Le périmètre de toute la page ; un utilisateur choisi centre la page sur lui | [Lire les statistiques](lire-les-statistiques.md) |
-| **Exporter en PDF** | Statistiques, en haut à droite | Un rapport des sections cochées, sur la période et le périmètre affichés | [Exporter les statistiques](exporter-les-statistiques.md) |
-| **Exporter en CSV** | Statistiques → Utilisation par utilisateur | Le tableau par utilisateur, pour un tableur | [Exporter les statistiques](exporter-les-statistiques.md) |
-| **Actualiser les tarifs** | Statistiques → Dépenses d'IA estimées | Les prix des modèles et le taux de change de l'estimation | [Estimer les dépenses d'IA](estimer-les-depenses-ia.md) |
+| **Période** | Consommation, en haut | La période de toute la page : glissante, ou **Dates…** au jour près | [Lire les statistiques](lire-les-statistiques.md) |
+| **Groupe**, **Utilisateur**, **Template** | Consommation, sous la période | Le périmètre de toute la page ; un utilisateur choisi centre la page sur lui | [Lire les statistiques](lire-les-statistiques.md) |
+| **Exporter en PDF** | Consommation, en haut à droite | Un rapport des sections cochées, sur la période et le périmètre affichés | [Exporter les statistiques](exporter-les-statistiques.md) |
+| **Exporter en CSV** | Consommation → Utilisation par utilisateur | Le tableau par utilisateur, pour un tableur | [Exporter les statistiques](exporter-les-statistiques.md) |
+| **Actualiser les tarifs** | Consommation → Dépenses d'IA estimées | Les prix des modèles et le taux de change de l'estimation | [Estimer les dépenses d'IA](estimer-les-depenses-ia.md) |
 | **Filtrer par groupe** | Crédit de temps | Les comptes et les compteurs d'un seul groupe | [Suivre le crédit de l'équipe](suivre-le-credit-de-l-equipe.md) |
 
 ## Exemples de configuration

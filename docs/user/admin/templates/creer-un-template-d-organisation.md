@@ -5,7 +5,7 @@ sidebar:
   order: 1
 ---
 
-**Administration → Templates.**
+**Administration → Capacités → Templates.**
 
 ## Étapes
 

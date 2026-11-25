@@ -5,8 +5,8 @@ sidebar:
   order: 4
 ---
 
-**Administration → Statistiques.** Réglez d'abord la période et les filtres : les exports reprennent ce
-que l'écran affiche.
+**Administration → Coûts → Consommation.** Réglez d'abord la période et les filtres : les exports
+reprennent ce que l'écran affiche.
 
 ## Le rapport PDF
 

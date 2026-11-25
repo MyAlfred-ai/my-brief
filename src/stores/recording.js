@@ -4,8 +4,8 @@
  *
  * App.svelte reste le propriétaire de la logique (MediaRecorder,
  * AudioContext, silence, pauses…) et REFLÈTE son état ici via des réactifs :
- * une seule direction, pas de double source de vérité. Le niveau micro
- * (audioLevelStore) vit encore dans src/store.js — consommateurs existants.
+ * une seule direction, pas de double source de vérité. L'onde sonore lit
+ * l'analyser du détecteur de silence (lib/audio/silenceDetector.js).
  */
 import { writable } from 'svelte/store';
 

@@ -9,6 +9,8 @@ La **transcription** est le texte de ce qui s'est dit, écrit par myBrief au fil
 par prise de parole. Elle s'affiche pendant l'enregistrement, puis dans l'onglet **Transcription** de la
 réunion. C'est la matière première du compte rendu.
 
+![L'onglet Transcription de la réunion Comité de pilotage : une ligne par prise de parole, chacune précédée du nom du participant — Camille Martin, Julien Moreau, Sophie Bernard —, les noms renommables portant un crayon. Au pied, le bouton Reprendre l'enregistrement. À droite, les actions détectées et les notes de réunion.](../../images/transcription.png)
+
 ## À quoi ça sert
 
 À suivre la réunion en direct, à retrouver le mot exact de quelqu'un, et à donner au résumé un texte
@@ -33,11 +35,24 @@ reconnaît pas les voix.
 même phrase arrive deux fois : myBrief n'en garde qu'une, côté **Visio**. Les tout petits mots — « oui »,
 « ok » — peuvent rester en double.
 
+**Les phrases inventées.** Sur un silence ou un bruit de fond, la transcription « entend » parfois une
+phrase que personne n'a dite : une mention de sous-titrage (« Sous-titrage FR », « Sous-titres réalisés
+par… ») ou une formule de fin de vidéo. myBrief les écarte : elles ne s'affichent pas, et ni le compte
+rendu ni les actions n'en tiennent compte. Revers connu : quelques phrases réellement prononcées sont
+écartées de la même façon — une phrase réduite à « Au revoir. », « Hmm » ou « J'avoue. », une phrase
+qui commence par « Au revoir, à bientôt » ou « Allez, allez, allez », ou par « Sous-titrage » suivi
+d'un nom propre.
+
 **La langue** est celle de l'interface : réglez-la avant de démarrer.
 
 **Vos notes corrigent le direct.** Pendant l'enregistrement, les deux dernières phrases sont relues à
 la lumière de vos [notes](../notes/index.md) : un nom que vous y avez corrigé est remplacé, et le mot
 corrigé s'éclaire un instant.
+
+**Vos mots remplacés.** Les mots que la transcription écrit mal dans vos réunions peuvent être remplacés
+d'office : « Durend » devient « Durand » dès que la phrase se termine, et le mot corrigé s'éclaire un
+instant. La liste est la vôtre — elle ne touche pas les réunions des autres — et se remplit aussi toute
+seule, depuis les remplacements que vous écrivez dans vos notes.
 
 **Les corrections de votre organisation.** Votre administrateur peut déclarer, pour tout le monde, les
 noms et les sigles que la transcription écrit mal à chaque fois : « Klobex » devient « Globex » dès
@@ -53,6 +68,7 @@ corrections.
 | Vous voulez… | Page |
 |---|---|
 | Corriger un mot, un nom, une phrase mal transcrits | [Relire et corriger la transcription](relire-et-corriger-la-transcription.md) |
+| Ne plus corriger le même mot à chaque réunion | [Faire remplacer d'office un mot mal transcrit](faire-remplacer-d-office-un-mot-mal-transcrit.md) |
 | Remplacer « Visio » par le nom de vos interlocuteurs | [Nommer les participants](nommer-les-participants.md) |
 | Envoyer, déposer ou télécharger le texte | [Exporter la transcription](exporter-la-transcription.md) |
 
@@ -61,6 +77,8 @@ corrections.
 - La **langue** de l'interface, qui est celle de la transcription — voir
   [Changer la langue](../configuration/changer-la-langue.md).
 - Le **micro** utilisé — voir [Choisir son micro](../configuration/choisir-son-micro.md).
+- Vos **Mots remplacés**, dans **Réglages → Pendant la réunion** — voir
+  [Faire remplacer d'office un mot mal transcrit](faire-remplacer-d-office-un-mot-mal-transcrit.md).
 
 Votre administrateur choisit le modèle de transcription : il décide de la finesse du texte et de sa
 vitesse d'arrivée.
@@ -68,7 +86,9 @@ vitesse d'arrivée.
 ## Exemples
 
 **Un sigle maison.** La transcription écrit « c'est l'ADV qui valide » : juste. Elle écrit « la dévé » :
-vous corrigez la ligne d'un double-clic, puis vous générez le compte rendu.
+vous corrigez la ligne d'un double-clic, puis vous générez le compte rendu. Pour ne plus y revenir, vous
+écrivez « Remplace la dévé par l'ADV » dans vos notes : le remplacement est retenu pour vos réunions
+suivantes.
 
 **Un rendez-vous client en visio.** Le client parle sous l'étiquette **Visio** : vous le nommez « Claire
 Martin » dès sa première réplique, en cochant **Partout où « Visio » parle**. Le compte rendu lui

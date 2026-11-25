@@ -23,6 +23,11 @@ export default {
     await page.locator('.sb-user-name', { hasText: 'Camille Martin' }).waitFor();
     await page.locator('aside.sb .sb-item', { hasText: 'Comité de pilotage' }).click();
     await page.locator('.resume-text-area', { hasText: 'Informations' }).waitFor();
+    // La rangée d'onglets défile jusqu'à l'onglet actif, « Résumé 1 » : on la ramène au début
+    // pour que « Transcription », que désigne le repère 3, se lise en entier.
+    await page.getByRole('tab', { name: 'Transcription', exact: true }).evaluate((el) => {
+      for (let p = el.parentElement; p; p = p.parentElement) if (p.scrollWidth > p.clientWidth) { p.scrollLeft = 0; return; }
+    });
   },
 
   // Le numéro de version change à chaque commit : la capture vieillirait avec lui.
@@ -47,7 +52,7 @@ export default {
     { n: 8, ou: 'coin', cible: (p) => p.locator('.actions-panel-new') },
     // 9. Les notes de réunion
     { n: 9, ou: 'coin', cible: (p) => p.locator('.notes-panel') },
-    // 10. Votre compte et Ma configuration
-    { n: 10, ou: 'haut', cible: (p) => p.getByRole('button', { name: 'Configuration', exact: true }) },
+    // 10. La carte du compte : avatar, nom, bouton « Réglages » (et « Admin » pour un administrateur)
+    { n: 10, ou: 'droite', cible: (p) => p.getByRole('button', { name: 'Réglages', exact: true }) },
   ],
 };

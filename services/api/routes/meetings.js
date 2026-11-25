@@ -14,8 +14,14 @@ import { fail } from '../lib/errors.js';
 import { TITLE_RULES, titleUserMessage, sanitizeTitle, UNTITLED_MEETING } from '../lib/prompts.js';
 import { sanitizeDuration, durationFromSummary } from '../lib/meetingDuration.js';
 import { legacyVersionOf } from '../lib/legacyVersion.js';
-import { generateAndSaveInfographic, INFOGRAPHICS_COLLECTION } from '../lib/infographic.js';
+import {
+  composeInfographicLayout,
+  generateAndSaveInfographic,
+  INFOGRAPHICS_COLLECTION,
+  saveInfographic,
+} from '../lib/infographic.js';
 import { feedMeetingToMyBrain } from '../lib/myBrain/feed.js';
+import { summaryClient } from '../lib/summaryModels.js';
 import {
   parsePagePlan,
   mainVerbosity,
@@ -40,6 +46,46 @@ import {
  * @returns {string}
  */
 const idOf = (value) => (typeof value === 'string' ? value : '');
+
+/**
+ * GET /history?view=list : ce que la liste n'affiche pas reste en base. La
+ * transcription et le HTML des comptes rendus font l'essentiel du poids d'une
+ * réunion (de l'ordre de 100 Ko l'heure) ; `resume` double le HTML de la
+ * dernière version. Les versions gardent leurs métadonnées : le nombre de
+ * comptes rendus se lit encore dans la liste.
+ */
+const LIST_PROJECTION = { _id: 0, transcription: 0, resume: 0, 'versions.html': 0 };
+
+/** Date affichée d'une réunion, en ms ; -Infinity si illisible (fin de liste). */
+function historyTime(d) {
+  const time = new Date(d.lastConnecion || d.lastConnection || d.now).getTime();
+  return Number.isNaN(time) ? -Infinity : time;
+}
+
+/**
+ * Document `resume` → élément d'historique (titre, date dd/MM, weekLabel).
+ * Partagé par la liste et par l'ouverture d'une réunion : les deux doivent
+ * rendre le même objet, la seconde complétant la première.
+ */
+function toHistoryItem(d, nowDate) {
+  const date = new Date(d.lastConnecion || d.lastConnection || d.now);
+  const diffDays = Math.floor((nowDate - date) / 86400000);
+  let weekLabel;
+  if (diffDays < 7) weekLabel = 'Cette semaine';
+  else if (diffDays < 14) weekLabel = 'Semaine dernière';
+  else weekLabel = date.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+  return {
+    ...d,
+    // Aucun titre FABRIQUÉ ici. Le repli daté est un choix d'AFFICHAGE — il
+    // dépend du fuseau et de la langue du lecteur — et vit côté client
+    // (src/utils/historyTitle.js). Un repli composé ici passerait pour un vrai
+    // titre et court-circuiterait le sien : les réunions non résumées
+    // s'afficheraient dans le fuseau du serveur.
+    title: d.title || '',
+    date: date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }),
+    weekLabel,
+  };
+}
 
 /** Texte facultatif d'un corps sans schéma : absent, ou une chaîne. */
 const isOptionalText = (value) => value == null || typeof value === 'string';
@@ -241,8 +287,8 @@ async function generateAndSaveTitle({
 
 /**
  * Qui peut générer une infographie : l'installation la propose (interrupteur
- * « Proposer l'infographie », onglet IA) ET un des groupes du compte en donne le
- * droit, les droits étant cumulatifs (cf. `rightsOf`, lib/repositories/groups.js).
+ * « Proposer l'infographie », rubrique Modèles IA) ET le groupe du compte en donne le
+ * droit (cf. `rightsOf`, lib/repositories/groups.js).
  * Relu à chaque demande, sans cache : un droit retiré vaut pour la suivante.
  * @returns {Promise<'allowed'|'infographic_disabled'|'infographic_not_allowed'>}
  */
@@ -259,7 +305,8 @@ export default function meetingsRoutes(app) {
    * Le prompt système est construit côté CLIENT (src/config/templates.js) et
    * passé tel quel : ce service est un passe-plat vers OpenAI, comme n8n.
    * Modèle : choisi dans Administration → IA, sinon `OPENAI_MODEL_SUMMARY`,
-   * sinon gpt-5.4 (cf. lib/summaryModels.js pour le pourquoi de chaque choix).
+   * sinon gpt-5.4 (cf. lib/summaryModels.js pour le pourquoi de chaque choix) ;
+   * il rédige chez OpenAI ou chez Mistral, selon son fournisseur.
    * Relu à CHAQUE génération, sans cache : même parti pris que la clé OpenAI
    * et le modèle de transcription — un modèle changé s'applique au compte rendu
    * suivant, sans redémarrage.
@@ -275,6 +322,20 @@ export default function meetingsRoutes(app) {
     if (!email) return;
     const { name } = identityFromHeaders(req.headers);
     const body = req.body || {};
+
+    // Infographie demandée ET permise (proposée par l'administration, accordée
+    // par un groupe du compte) : son contenu s'écrit EN MÊME TEMPS que le
+    // compte rendu — il ne dépend que des matériaux de la réunion. Le drapeau
+    // `pending` et l'enregistrement attendent, eux, que la réunion soit écrite
+    // (plus bas). Avant le 2026-11-17, l'écriture partait APRÈS la rédaction :
+    // son temps s'ajoutait à celui du compte rendu. Si la rédaction échoue,
+    // la réponse part en erreur et cette écriture s'achève sans rien
+    // enregistrer — suivie par app.background, jamais orpheline.
+    const infographicCompose =
+      body.infographic === true && (await infographicVerdict(app, req, email)) === 'allowed'
+        ? composeInfographicLayout({ app, email, meetingId: idOf(body.meetingId), body })
+        : null;
+    if (infographicCompose) app.background.track(infographicCompose.catch(() => {}));
 
     // Blocs IA à consigne fixe (résumé 20/100 mots, points clés) : un appel
     // LLM ISOLÉ par bloc, en parallèle du principal. Dans un appel unique, la
@@ -300,13 +361,16 @@ export default function meetingsRoutes(app) {
     let pageReport = null;
     try {
       const summaryModel = await app.settings.resolveSummaryModel(app.config.openai.models.summary);
+      // OpenAI ou Mistral, selon le modèle (lib/summaryModels.js) : même
+      // `chat()`, et ses réglages ignorés par qui ne les connaît pas.
+      const writer = summaryClient(app, summaryModel);
       // La transcription est ÉTIQUETÉE dans le message user au lieu d'y être
       // versée nue : le modèle n'avait aucun signal sur ce qu'il reçoit ni sur
       // le fait que c'est l'intégralité de la réunion. Même parti pris que le
       // prompt d'infographie (lib/prompts.js), où l'étiquetage des matériaux
       // avait été mesuré déterminant.
       const chatFor = (systemPrompt, tuning) =>
-        app.openai.chat({
+        writer.chat({
           model: summaryModel,
           messages: [
             { role: 'system', content: systemPrompt ?? '' },
@@ -341,7 +405,7 @@ export default function meetingsRoutes(app) {
           plan: pagePlan,
           transcription: body.transcription ?? '',
           chat: ({ system, user, verbosity }) =>
-            app.openai.chat({
+            writer.chat({
               model: summaryModel,
               messages: [
                 { role: 'system', content: system },
@@ -378,7 +442,7 @@ export default function meetingsRoutes(app) {
         }
       });
     } catch (err) {
-      req.log.warn({ err: err.message }, '/resume : échec amont OpenAI');
+      req.log.warn({ err: err.message }, '/resume : échec amont du modèle de rédaction');
       return replyUpstreamError(reply, err);
     }
 
@@ -402,22 +466,28 @@ export default function meetingsRoutes(app) {
         .then(() => feedMeetingToMyBrain({ app, log: req.log, email, meetingId })),
     );
 
-    // Infographie : demandée par la case cochée ET permise (proposée par
-    // l'administration, et accordée par un groupe du compte). Sans le droit, le
-    // compte rendu part sans image, sans erreur : l'écran ne montre pas la case
-    // à qui ne l'a pas, une demande qui arrive quand même est un reliquat. Le
-    // drapeau `pending` est posé AVANT la réponse — le premier rechargement
-    // d'historique du client le voit — puis l'image part en tâche de fond, comme
-    // le titre. Case décochée : l'infographie existante de la réunion reste
-    // telle quelle.
+    // Infographie : son contenu s'écrit depuis le début de la requête (cf. plus
+    // haut). Sans le droit, le compte rendu part sans infographie, sans erreur :
+    // l'écran ne montre pas la case à qui ne l'a pas, une demande qui arrive
+    // quand même est un reliquat. Le drapeau `pending` est posé AVANT la
+    // réponse — le premier rechargement d'historique du client le voit — puis
+    // l'enregistrement attend la fin de l'écriture, en tâche de fond, comme le
+    // titre. Case décochée : l'infographie existante de la réunion reste telle
+    // quelle.
     let infographicPending = false;
-    if (body.infographic === true && (await infographicVerdict(app, req, email)) === 'allowed') {
+    if (infographicCompose) {
       infographicPending = true;
       await app.db.collection('resume').updateOne(ownerFilter(email, { meetingId }), {
         $set: { infographic: { status: 'pending', updatedAt: new Date().toISOString() } },
       });
       app.background.track(
-        generateAndSaveInfographic({ app, log: req.log, email, meetingId, body }).catch((err) =>
+        saveInfographic({
+          app,
+          log: req.log,
+          email,
+          meetingId,
+          compose: infographicCompose,
+        }).catch((err) =>
           req.log.error({ err: err.message, meetingId }, '/resume : infographie non sauvegardée'),
         ),
       );
@@ -433,11 +503,12 @@ export default function meetingsRoutes(app) {
   });
 
   /**
-   * Image d'infographie d'une réunion — servie À PART de /history, qui renvoie
-   * les documents `resume` entiers : plusieurs Mo de base64 n'ont rien à faire
-   * dans un listing. Le document `resume` porte l'état (`infographic.status`),
-   * cette route sert l'état frais ET l'image quand elle est prête — c'est elle
-   * que le frontend interroge pendant la génération.
+   * Infographie d'une réunion — servie À PART de /history, qui renvoie les
+   * documents `resume` entiers. Le document `resume` porte l'état
+   * (`infographic.status`), cette route sert l'état frais ET le contenu quand
+   * il est prêt — c'est elle que le frontend interroge pendant la génération.
+   * Contenu : `layout` (gabarit, cf. lib/infographicLayout.js) ou, pour une
+   * infographie d'avant les gabarits, `dataUrl` (l'image d'origine).
    */
   app.get('/infographic', async (req, reply) => {
     const email = requireEmail(req, reply);
@@ -454,7 +525,10 @@ export default function meetingsRoutes(app) {
     const img = await app.db
       .collection(INFOGRAPHICS_COLLECTION)
       .findOne(ownerFilter(email, { meetingId }));
-    // `ready` sans image = état incohérent (purge partielle, base restaurée) :
+    // Gabarit (depuis le 2026-11-17) : le contenu, mis en page par le
+    // frontend. Ancienne infographie : l'image, servie telle quelle.
+    if (img?.layout) return { status: 'ready', updatedAt, layout: img.layout };
+    // `ready` sans contenu = état incohérent (purge partielle, base restaurée) :
     // on répond `none` plutôt que de faire boucler le client sur un fantôme.
     if (!img?.image) return { status: 'none', updatedAt };
     return {
@@ -486,7 +560,15 @@ export default function meetingsRoutes(app) {
     const verdict = await infographicVerdict(app, req, email);
     if (verdict !== 'allowed') return fail(reply, 409, verdict);
     const doc = await app.db.collection('resume').findOne(ownerFilter(email, { meetingId }), {
-      projection: { transcription: 1, actions: 1, notes: 1, infographic: 1, language: 1 },
+      projection: {
+        transcription: 1,
+        actions: 1,
+        notes: 1,
+        infographic: 1,
+        language: 1,
+        template: 1,
+        tagId: 1,
+      },
     });
     if (!doc) return fail(reply, 404, 'meeting_not_found');
     if (!String(doc.transcription || '').trim()) return fail(reply, 400, 'no_transcription');
@@ -514,6 +596,9 @@ export default function meetingsRoutes(app) {
           // sous l'interface anglaise rend une image anglaise. Celle de la
           // réunion pour un client qui ne l'envoie pas (normalisée en aval).
           language: req.body?.language || doc.language,
+          template: doc.template,
+          // Le tag d'AUJOURD'HUI : son contexte est relu en base (lib/tagContext.js).
+          tagId: doc.tagId,
         },
       }).catch((err) =>
         req.log.error({ err: err.message, meetingId }, '/infographic/regenerate : non sauvegardée'),
@@ -563,42 +648,23 @@ export default function meetingsRoutes(app) {
   app.get('/history', async (req, reply) => {
     const email = requireEmail(req, reply);
     if (!email) return;
+    // `?view=list` (client à jour) : la liste SANS le contenu lourd de chaque
+    // réunion — transcription, compte rendu HTML de chaque version — que seule
+    // l'ouverture d'UNE réunion lit (GET /history/item). Sans paramètre, la
+    // réponse complète d'avant : un onglet resté ouvert sur l'ancienne version
+    // pendant un déploiement continue d'ouvrir ses réunions.
+    const projection = req.query?.view === 'list' ? LIST_PROJECTION : { _id: 0 };
     const docs = await app.db
       .collection('resume')
       .find(ownerFilter(email))
       .sort({ now: -1 })
-      .project({ _id: 0 })
+      .project(projection)
       .toArray();
 
     const nowDate = new Date();
     return (
       docs
-        .map((d) => {
-          const date = new Date(d.lastConnecion || d.lastConnection || d.now);
-          const time = date.getTime();
-          const diffDays = Math.floor((nowDate - date) / 86400000);
-          let weekLabel;
-          if (diffDays < 7) weekLabel = 'Cette semaine';
-          else if (diffDays < 14) weekLabel = 'Semaine dernière';
-          else weekLabel = date.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
-          return {
-            item: {
-              ...d,
-              // Aucun titre FABRIQUÉ ici. Le repli daté est un choix d'AFFICHAGE
-              // — il dépend du fuseau et de la langue du lecteur — et vit côté
-              // client (src/utils/historyTitle.js). Un repli composé ici
-              // passerait pour un vrai titre et court-circuiterait le sien : les
-              // réunions non résumées s'afficheraient dans le fuseau du serveur.
-              title: d.title || '',
-              date: date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }),
-              weekLabel,
-            },
-            // NaN si le document ne porte aucune date lisible (entrées n8n
-            // anciennes) : ces réunions passent en fin de liste plutôt que de
-            // désordonner les autres — jamais elles n'en sortent.
-            time: Number.isNaN(time) ? -Infinity : time,
-          };
-        })
+        .map((d) => ({ item: toHistoryItem(d, nowDate), time: historyTime(d) }))
         // Comparaison sans soustraction : deux documents sans date lisible
         // donneraient `-Infinity - -Infinity` = NaN, comparateur que la
         // spécification laisse indéfini. Tri stable (ES2019) : à date égale,
@@ -606,6 +672,41 @@ export default function meetingsRoutes(app) {
         .sort((a, b) => (a.time === b.time ? 0 : b.time > a.time ? 1 : -1))
         .map(({ item }) => item)
     );
+  });
+
+  /**
+   * UNE réunion, complète — ce qu'ouvrir une réunion de la liste affiche
+   * (transcription, versions et leur HTML). Même forme qu'un élément de
+   * GET /history sans `?view=list`. 404 si elle n'est pas au demandeur.
+   */
+  app.get('/history/item', async (req, reply) => {
+    const email = requireEmail(req, reply);
+    if (!email) return;
+    const meetingId = idOf(req.query?.meetingId);
+    if (!meetingId) return fail(reply, 400, 'meeting_id_required');
+    const doc = await app.db
+      .collection('resume')
+      .findOne(ownerFilter(email, { meetingId }), { projection: { _id: 0 } });
+    if (!doc) return fail(reply, 404, 'meeting_not_found');
+    return toHistoryItem(doc, new Date());
+  });
+
+  /**
+   * Le titre d'une réunion est-il prêt ? Interrogé en boucle pendant que le
+   * modèle le rédige (stores/history.js → pollHistoryUntilMeetingReady), à la
+   * place de la liste entière : quelques octets au lieu de toutes les
+   * réunions, douze fois de suite.
+   */
+  app.get('/history/status', async (req, reply) => {
+    const email = requireEmail(req, reply);
+    if (!email) return;
+    const meetingId = idOf(req.query?.meetingId);
+    if (!meetingId) return fail(reply, 400, 'meeting_id_required');
+    const doc = await app.db.collection('resume').findOne(ownerFilter(email, { meetingId }), {
+      projection: { _id: 0, title: 1, titlePending: 1 },
+    });
+    if (!doc) return fail(reply, 404, 'meeting_not_found');
+    return { meetingId, title: doc.title || '', titlePending: !!doc.titlePending };
   });
 
   /**
@@ -625,6 +726,14 @@ export default function meetingsRoutes(app) {
    * `$setOnInsert` + upsert : rejouer l'appel (retry réseau, reprise de
    * session, double clic) ne réécrit RIEN d'un document déjà là — surtout pas
    * sa transcription ni son titre.
+   *
+   * Document déjà là = REPRISE : réunion interrompue (page fermée), ou réunion
+   * TERMINÉE qu'on recommence à enregistrer (« Reprendre » après l'arrêt, ou
+   * depuis l'historique). Elle repasse `recording` — l'Aide IA et l'envoi à
+   * myBrain lisent cet état — et `resumedAt` date la reprise : c'est lui qui
+   * fait reconnaître ses rotations de jeton par /tempkey (routes/ai.js), son
+   * `meetingStartTime` pouvant avoir des jours. Le reste ne bouge pas : date
+   * affichée, titre, transcription, durée déjà comptée au quota.
    */
   app.post(
     '/history/start',
@@ -652,7 +761,7 @@ export default function meetingsRoutes(app) {
       const startedAt =
         parsed && !Number.isNaN(parsed.getTime()) ? parsed.toISOString() : new Date().toISOString();
 
-      await app.db.collection('resume').updateOne(
+      const res = await app.db.collection('resume').updateOne(
         ownerFilter(email, { meetingId }),
         {
           $setOnInsert: {
@@ -681,6 +790,12 @@ export default function meetingsRoutes(app) {
         },
         { upsert: true },
       );
+      // Reprise : le document existait. Sans upsert (règle dure n°2).
+      if (!res.upsertedCount) {
+        await app.db.collection('resume').updateOne(ownerFilter(email, { meetingId }), {
+          $set: { status: 'recording', resumedAt: new Date().toISOString() },
+        });
+      }
       return { ok: true, meetingId };
     },
   );

@@ -26,7 +26,6 @@
  */
 import { TRANSCRIPTION_MODELS, resolveTranscriptionModel } from '../transcriptionModels.js';
 import { SUMMARY_MODELS, resolveSummaryModel } from '../summaryModels.js';
-import { INFOGRAPHIC_IMAGE_MODELS, resolveInfographicImageModel } from '../infographicModels.js';
 import { ASSUMPTIONS } from './assumptions.js';
 import { PRICE_CATALOG } from './catalog.js';
 import { publicTariff } from './pricing.js';
@@ -47,18 +46,6 @@ export const METERS = {
 };
 
 const tokens = (chars, a) => chars / a.charsPerToken;
-
-/**
- * Une image se paie à l'image quand le fournisseur publie ce prix-là (le
- * prompt est alors compris), sinon au jeton dessiné + au jeton de prompt lu.
- */
-function imageUnits(price, count, a) {
-  if (Number.isFinite(price?.image)) return { images: count };
-  return {
-    imageTokens: count * (price?.imageTokens || a.imageTokensFallback),
-    inputTokens: tokens(count * a.infographicPromptChars, a),
-  };
-}
 
 /**
  * Les postes, dans l'ordre d'affichage.
@@ -101,13 +88,15 @@ export const COST_LINES = [
     ],
   },
   {
+    // Depuis les gabarits (2026-11-17), l'infographie est UN appel texte : le
+    // modèle écrit son contenu, le navigateur la met en page. Plus de modèle
+    // d'image à comparer — le modèle texte est fixé par la configuration.
     id: 'infographic',
-    choice: 'infographicImage',
-    options: INFOGRAPHIC_IMAGE_MODELS,
+    choice: null,
+    options: [],
     unit: 'infographic',
     count: (usage) => usage.infographics,
-    draws: (usage, models, { assumptions: a, priceOf }) => [
-      // Un modèle de texte conçoit la maquette…
+    draws: (usage, models, { assumptions: a }) => [
       {
         model: models.infographicWriter,
         units: {
@@ -117,11 +106,6 @@ export const COST_LINES = [
           ),
           outputTokens: usage.infographics * a.infographicWriterOutputTokens,
         },
-      },
-      // … le modèle d'image la dessine.
-      {
-        model: models.infographicImage,
-        units: imageUnits(priceOf(models.infographicImage), usage.infographics, a),
       },
     ],
   },
@@ -169,10 +153,6 @@ export function activeModels(aiDoc = {}, envModels = {}) {
   return {
     transcription: resolveTranscriptionModel(aiDoc.transcriptionModel, envModels.transcription),
     summary: resolveSummaryModel(aiDoc.summaryModel, envModels.summary),
-    infographicImage: resolveInfographicImageModel(
-      aiDoc.infographicImageModel,
-      envModels.infographicImage,
-    ),
     infographicWriter: envModels.infographic,
     title: envModels.title,
     actions: envModels.actions,
@@ -302,7 +282,7 @@ export function estimateCosts({ usage, models, pricing, spanDays, assumptions = 
   const periodEur = lines.reduce((sum, line) => sum + line.periodEur, 0);
   const hours = usage.audioSeconds / 3600;
   // Réunion type SANS infographie : elle est facultative, et la compter
-  // gonflerait « une heure de myBrief » d'une image que la plupart ne demandent pas.
+  // gonflerait « une heure de myBrief » d'une infographie que la plupart ne demandent pas.
   const referenceHourEur = COST_LINES.filter((line) => line.id !== 'infographic').reduce(
     (sum, line) => sum + costOf(line, reference, models).eur,
     0,
@@ -337,7 +317,7 @@ export function estimateCosts({ usage, models, pricing, spanDays, assumptions = 
       measuredSpeechRate: usage.measuredSpeechRate,
       summaryOutputTokens: assumptions.summaryOutputTokens,
       detectionCallsPerHour: assumptions.detectionCallsPerHour,
-      imageTokens: priceOf(models.infographicImage)?.imageTokens || assumptions.imageTokensFallback,
+      infographicOutputTokens: assumptions.infographicWriterOutputTokens,
     },
   };
 }
@@ -378,7 +358,7 @@ function alternativesOf(line, models, evaluate, tariffOf) {
 /**
  * Prix d'UNE unité du poste — une heure de transcription, un compte rendu, une
  * infographie — avec chacun des modèles proposés, sur la réunion type : ce que
- * l'onglet IA affiche à côté de chaque choix, sans lire une seule réunion.
+ * la rubrique Modèles IA affiche à côté de chaque choix, sans lire une seule réunion.
  *
  * Pour la transcription, facturée à la minute d'audio, c'est le prix exact ;
  * pour les postes facturés au jeton, une estimation sur les hypothèses de

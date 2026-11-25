@@ -25,8 +25,12 @@ Un second appui pendant la préparation est sans effet : un seul PDF sort.
 
 | Document | Format | Contenu |
 |---|---|---|
-| **Le résumé** | PDF, nommé `mybrief_resume_2026-09-10.pdf` | Le titre « 📝 Résumé » et le template, la date, votre nom, puis le compte rendu affiché, retouches comprises. En pied de page, la mention de myBrief et le numéro de page |
+| **Le résumé** | PDF, nommé `mybrief_resume_2026-09-10.pdf` | En tête, le logo de votre entreprise s'il est renseigné — suivi de celui du tag de la réunion s'il en a un —, la date et votre nom, le titre « 📝 Résumé » et le template ; puis le compte rendu affiché, retouches comprises. En pied de page, le logo et la mention de myBrief, et le numéro de page |
 | **La transcription** | Texte, nommé d'après la date et le titre de la réunion | Une ligne par phrase ; en visio, le nom du participant à chaque changement |
+
+Le PDF est **aux couleurs de votre organisation** : un dégradé discret de ses deux couleurs en haut de
+chaque page, sous le titre, devant les intertitres et en pied de page. Le texte, lui, reste noir sur
+blanc : il s'imprime et se lit partout. Le même PDF part en pièce jointe d'un mail ou sur un Drive.
 
 Le PDF contient du **vrai texte** : il se sélectionne, se copie et se recherche, les liens sont
 cliquables, et les outils d'IA le lisent comme un document ordinaire. Il reste léger — une centaine de Ko

@@ -35,7 +35,7 @@ import { isRecordingStore } from './recording.js';
 /** Valeurs intégrées — mêmes que le serveur (lib/actionDetectionSettings.js). */
 export const DEFAULT_DETECTION = {
   enabled: true,
-  sensitivity: 'balanced',
+  sensitivity: 'explicit',
   triggerWords: ['action'],
   allowUpdates: true,
   windowSize: 8,

@@ -5,6 +5,7 @@
  * à process.env, et il n'y a qu'un seul endroit à relire pour savoir ce qui est
  * configurable en production.
  */
+import { screenModelVariables } from './retiredModels.js';
 
 /** Booléen d'environnement : vide → `fallback` ; `0`/`false`/`no`/`off` → faux. */
 export function bool(value, fallback) {
@@ -19,6 +20,10 @@ function int(value, fallback) {
 
 /** @param {Record<string, string|undefined>} [env] */
 export function loadConfig(env = process.env) {
+  // OPENAI_MODEL_* qui viserait un modèle retiré par OpenAI : vidée, l'usage
+  // retombe sur son défaut (cf. lib/retiredModels.js).
+  const modelEnv = screenModelVariables(env);
+  const modelVar = (name) => modelEnv.values[name];
   return {
     /** Connexion Mongo — requis en prod, vérifié par server.js. */
     mongoUrl: env.MONGO_URL || '',
@@ -107,6 +112,30 @@ export function loadConfig(env = process.env) {
        * réunions après une panne.
        */
       myBrainSendByAccount: { windowMs: 60 * 60 * 1000, max: 30 },
+      /**
+       * Aide IA d'une réunion (routes/aiHelp.js). Chaque appel est un appel au
+       * modèle, payé par la clé de l'installation : plafonné par COMPTE.
+       * `watch` suit la cadence de la réunion — une lecture toutes les
+       * quelques phrases, soit bien moins de 240 par heure pour un débit de
+       * parole réel ; au-delà, ce n'est plus une réunion. `ask` est un geste
+       * humain : 60 questions par heure est déjà une réunion passée à
+       * interroger l'IA. `projects` suit la frappe dans le champ de recherche.
+       */
+      aiHelpWatchByAccount: { windowMs: 60 * 60 * 1000, max: 240 },
+      aiHelpAskByAccount: { windowMs: 60 * 60 * 1000, max: 60 },
+      aiHelpProjectsByAccount: { windowMs: 60 * 60 * 1000, max: 120 },
+      // « Tester la lecture » (Administration → Aide IA) : un diagnostic.
+      aiHelpTestByAccount: { windowMs: 60 * 60 * 1000, max: 30 },
+      /**
+       * La voix de l'Aide IA (/ai-help/speech), payée par la clé de
+       * l'installation quand le moteur est OpenAI ou Mistral : une
+       * intervention lue = un appel. 240 par heure, c'est une intervention
+       * lue toutes les quinze secondes pendant une heure — et les « Écouter »
+       * des Réglages. `voices` relance les essais des moteurs (gardés six
+       * heures) : il suit l'ouverture de la page.
+       */
+      aiHelpSpeechByAccount: { windowMs: 60 * 60 * 1000, max: 240 },
+      aiHelpVoicesByAccount: { windowMs: 60 * 60 * 1000, max: 60 },
     },
     /**
      * Transcriptions de fichier (/record) traitées en même temps par le
@@ -234,7 +263,9 @@ export function loadConfig(env = process.env) {
        * retire le 2027-01-14 avec gpt-4o, gpt-4.1 et gpt-4.1-mini — gpt-6-luna
        * est le remplaçant qu'OpenAI désigne pour les quatre, et coûte moins
        * cher. ⚠️ `none` est refusé par la génération 5.0 (gpt-5-mini) : un
-       * `OPENAI_MODEL_TITLE` pointé dessus ferait échouer le titre, en silence.
+       * `OPENAI_MODEL_TITLE` pointé dessus ferait échouer le titre, en silence
+       * — il est ignoré depuis le 2026-11-12, comme tout modèle dont OpenAI a
+       * annoncé le retrait (`ignoredModelVariables` ci-dessous).
        *
        * La détection d'actions tourne aussi sur `gpt-6-luna`, mais AVEC
        * raisonnement « medium » (lib/actionDetection.js). Elle était sur
@@ -268,32 +299,44 @@ export function loadConfig(env = process.env) {
        * récente, un déploiement Azure) — cf. `resolveSummaryModel`.
        */
       models: {
-        summary: (env.OPENAI_MODEL_SUMMARY || '').trim(),
-        title: (env.OPENAI_MODEL_TITLE || '').trim() || 'gpt-6-luna',
-        actions: (env.OPENAI_MODEL_ACTIONS || '').trim() || 'gpt-6-luna',
+        summary: modelVar('OPENAI_MODEL_SUMMARY'),
+        title: modelVar('OPENAI_MODEL_TITLE') || 'gpt-6-luna',
+        actions: modelVar('OPENAI_MODEL_ACTIONS') || 'gpt-6-luna',
+        /**
+         * Aide IA d'une réunion (lib/aiHelp/) : lire le passage qui vient
+         * d'être dit contre la fiche d'un projet, répondre à une question.
+         * Même modèle que la détection d'actions, pour la même raison — un
+         * appel court, répété pendant toute la réunion, qui doit revenir en
+         * quelques secondes. NON MESURÉ sur de vraies réunions : la justesse
+         * d'un garde-fou (repérer une contradiction, se taire le reste du
+         * temps) est à éprouver en recette, et cette variable est la porte de
+         * sortie si un palier supérieur s'avère nécessaire.
+         */
+        aiHelp: modelVar('OPENAI_MODEL_AI_HELP') || 'gpt-6-luna',
         /**
          * Relecture des dernières phrases transcrites à la lumière des notes
          * de réunion (POST /api/refine-transcript). Tâche courte et fréquente :
          * un petit modèle suffit, sans raisonnement — même choix et même
          * réserve sur `none` que le titre ci-dessus.
          */
-        refine: (env.OPENAI_MODEL_REFINE || '').trim() || 'gpt-6-luna',
+        refine: modelVar('OPENAI_MODEL_REFINE') || 'gpt-6-luna',
         /**
-         * Réécrivain du prompt d'infographie (cf. lib/infographic.js) : il
-         * conçoit la maquette ET condense la réunion. gpt-4o-mini rendait des
-         * maquettes pauvres, gpt-5-mini a pris le relais ; `gpt-5.4` depuis le
-         * 2026-09-15, le défaut du résumé. Depuis la direction artistique
-         * (INFOGRAPHIC_WRITER_RULES, lib/prompts.js), c'est lui qui décide de
-         * la FORME — traduire chaque donnée en graphique, tenir un budget de
-         * mots, nommer une palette — soit une consigne structurée à suivre à
-         * la lettre. Mesuré sur le résumé, pas ici : gpt-5-mini y ignorait
-         * 2 fois sur 3 la structure demandée, et répondait plus lentement que
-         * gpt-5.4 (cf. lib/summaryModels.js).
+         * Modèle qui écrit le CONTENU de l'infographie (cf. lib/infographic.js) :
+         * un JSON court (~400 jetons) dans un format fixe, que six gabarits
+         * mettent en page. `gpt-6-luna` depuis le 2026-11-17 — le palier
+         * rapide, déjà celui du titre, des actions et de l'Aide IA —, à la
+         * place de `gpt-5.4`, le modèle de l'ère « image » où il fallait
+         * concevoir une maquette entière en prose : l'infographie était jugée
+         * trop lente en recette, et trier une réunion dans des rubriques
+         * bornées ne demande pas le modèle du compte rendu.
+         * ⚠️ Non mesuré sur génération réelle depuis ce dépôt : si le choix du
+         * gabarit ou la fidélité des chiffres déçoivent,
+         * `OPENAI_MODEL_INFOGRAPHIC=gpt-5.4` rend l'ancien modèle sans
+         * redéployer de code.
          * Il ne suit PAS le modèle choisi dans Administration → IA : celui-là
-         * règle le compte rendu. Appelé une fois par infographie demandée : le
-         * surcoût est marginal devant celui de l'image elle-même.
+         * règle le compte rendu.
          */
-        infographic: (env.OPENAI_MODEL_INFOGRAPHIC || '').trim() || 'gpt-5.4',
+        infographic: modelVar('OPENAI_MODEL_INFOGRAPHIC') || 'gpt-6-luna',
         /**
          * Modèle qui DESSINE l'infographie — à ne pas confondre avec le
          * précédent, qui écrit son prompt. SANS DÉFAUT ICI, comme `summary` et
@@ -304,7 +347,7 @@ export function loadConfig(env = process.env) {
          * (`gpt-image-2.5-sunburst`) ou une génération plus récente que cette
          * version, cf. `resolveInfographicImageModel`.
          */
-        infographicImage: (env.OPENAI_MODEL_INFOGRAPHIC_IMAGE || '').trim(),
+        infographicImage: modelVar('OPENAI_MODEL_INFOGRAPHIC_IMAGE'),
         /**
          * Transcription live (session Realtime). Contrairement aux trois
          * autres, ce n'est qu'un AMORÇAGE : le choix se fait dans
@@ -324,6 +367,12 @@ export function loadConfig(env = process.env) {
        * masquerait qu'une panne.
        */
       summaryTimeoutMs: Number(env.OPENAI_SUMMARY_TIMEOUT_MS || '') || 300_000,
+      /**
+       * Variables OPENAI_MODEL_* ignorées parce qu'elles visent un modèle
+       * qu'OpenAI retire (lib/retiredModels.js) : server.js les nomme au
+       * démarrage, seule trace de ce que le `.env` demandait.
+       */
+      ignoredModelVariables: modelEnv.ignored,
     },
   };
 }

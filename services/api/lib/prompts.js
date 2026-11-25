@@ -15,6 +15,7 @@
  */
 
 import { normalizeLang } from './text.js';
+import { INFOGRAPHIC_ICONS } from './infographicLayout.js';
 
 /** Date du jour au format yyyy-MM-dd en Europe/Paris (parité GENERIC_TIMEZONE n8n). */
 export function todayParis(now = new Date()) {
@@ -56,14 +57,15 @@ const DEFAULT_BUSINESS_CONTEXT =
  * longues ; c'est elle qui est passée au niveau du dessus.
  */
 const SENSITIVITY_RULES = {
-  // Réunions où tout est cadencé : on ne veut QUE ce qui est posé comme une tâche.
+  // Défaut (depuis le 2026-10-28). Réunions où tout est cadencé : on ne veut
+  // QUE ce qui est posé comme une tâche.
   explicit: `   Ne retiens QUE les actions ANNONCÉES COMME TELLES : la phrase contient un mot déclencheur, ou énonce la tâche en la posant explicitement comme une tâche à faire ("Action : Marie envoie le compte rendu vendredi", "à faire : commander les badges", "on note que Paul rappelle le fournisseur lundi").
    Ce niveau est volontairement SÉVÈRE. Ne sont PAS des actions ici, même si la tâche paraît utile ou évidente :
    - un engagement pris au fil de la parole, sans annonce : "je m'en occupe", "je te fais ça ce soir", "oui je le fais cet après-midi" ;
    - une demande, une question ou une consigne lancée dans la discussion : "tu peux relancer le client ?", "il faut envoyer le devis avant vendredi", "il faudrait préparer la démo" ;
    - un besoin, un constat, une idée ou une intention : "on devrait revoir nos tarifs", "penser à réserver la salle".
    Dans le doute, ne ressors RIEN : ici une action manquée est préférable à une action de trop.`,
-  // Défaut. Le critère est le PORTEUR : quelqu'un s'engage, ou la tâche est
+  // Le critère est le PORTEUR : quelqu'un s'engage, ou la tâche est
   // confiée à quelqu'un. Un besoin énoncé sans porteur relève de « Large ».
   balanced: `   Pose-toi DEUX questions dans cet ordre, et ne retiens la tâche que si l'une répond oui :
    1. La phrase POSE-T-ELLE la tâche comme une tâche ? (mot déclencheur, "à faire :", "on note que…") — elle compte alors même si personne n'est désigné.
@@ -82,8 +84,8 @@ const SENSITIVITY_RULES = {
  * AFFINER une action déjà détectée en la renvoyant avec son id.
  *
  * Le comportement est réglable par chaque utilisateur (`settings` ci-dessous,
- * bloc `detection` de son document de réglages). Sans réglages, le prompt rendu
- * est celui d'avant cet écran : un compte qui ne touche à rien ne change pas.
+ * bloc `detection` de son document de réglages). Sans réglages, le niveau est
+ * « Stricte », comme le défaut de lib/actionDetectionSettings.js.
  *
  * La LANGUE des actions est celle de l'interface — celle du compte rendu, où
  * elles entrent par {{actions}} —, pas celle de la transcription. Sans consigne,
@@ -107,7 +109,8 @@ export function actionsPrompt({
   settings = {},
 }) {
   const outputLang = normalizeLang(language);
-  const sensitivity = SENSITIVITY_RULES[settings.sensitivity] ? settings.sensitivity : 'balanced';
+  // Repli = défaut des réglages (DEFAULT_ACTION_DETECTION), « Stricte ».
+  const sensitivity = SENSITIVITY_RULES[settings.sensitivity] ? settings.sensitivity : 'explicit';
   const words = (Array.isArray(settings.triggerWords) ? settings.triggerWords : ['action'])
     .map((w) => String(w ?? '').trim())
     .filter(Boolean);
@@ -425,176 +428,152 @@ export function parseRefineOutput(raw, count) {
 // ── Infographie de compte rendu ──────────────────────────────────────────────
 
 /**
- * Marge sous la limite de prompt de gpt-image-1 (32 000 caractères) : le seul
- * garde-fou conservé. Le style, lui, reste laissé au modèle PAR DÉFAUT —
- * demande explicite du 2026-08-31, après une première version qui imposait
- * NOTRE habillage (flat design, accent orange) jugé pauvre. Ce qui a changé le
- * 2026-09-09 : une installation peut désormais imposer LE SIEN
- * (`infographicStyle`, Administration → IA). Facultatif, et vide par défaut :
- * l'arbitrage rejeté était un habillage subi, pas la possibilité d'en choisir un.
+ * Plafond des matériaux envoyés au modèle (transcription tronquée comprise).
+ * Hérité de la limite de prompt de gpt-image-1 (32 000 caractères) ; gardé
+ * tel quel avec les gabarits : il borne le coût et la durée de l'appel, et la
+ * troncature début + fin garde l'ouverture et les conclusions de la réunion.
  */
 export const INFOGRAPHIC_PROMPT_MAX = 30000;
 
 /**
- * Plafond du style graphique imposé par l'administration (réglage
- * Administration → IA). Court volontairement : c'est une charte — couleurs,
- * ton, mentions à faire figurer —, pas un prompt, et il passe devant des
- * matériaux déjà bornés par INFOGRAPHIC_PROMPT_MAX.
+ * Plafond du « style graphique » d'Administration → IA. Ce réglage ne
+ * s'applique plus depuis les gabarits (2026-11-17) — les couleurs et le logo
+ * viennent de l'Apparence — mais la valeur enregistrée reste lue et bornée par
+ * l'API des réglages, qui l'accepte toujours.
  */
 export const INFOGRAPHIC_STYLE_MAX = 1000;
 
 /**
- * Réécriture du prompt d'image par un modèle TEXTE — c'est ce que fait
- * l'application ChatGPT quand on lui demande une image, et c'est ce qui
- * manquait à l'appel API direct (mesuré 2026-08-31 : sans elle, gpt-image-1
- * reçoit les matériaux bruts et rend une image plate, « pas du tout étayée » ;
- * la référence de l'utilisateur, obtenue dans ChatGPT, passait par cette
- * réécriture implicite).
+ * Règles du modèle qui écrit le CONTENU de l'infographie (lib/infographic.js),
+ * dans le contrat de lib/infographicLayout.js. Il ne dessine plus rien : six
+ * gabarits mettent ce contenu en page avec le logo et les couleurs de
+ * l'organisation.
  *
- * Le réécrivain décrit AUSSI la maquette — zones délimitées, pictogrammes,
- * tableau des actions, frise — et choisit sa palette : mesuré le 2026-09-01,
- * lui interdire le graphisme produisait une PAGE DE TEXTE, pas une
- * infographie, là où la référence ChatGPT en décrit un complet. La seule
- * interdiction qui reste est d'imposer NOTRE habillage : aucune marque,
- * aucune couleur myBrief — c'était le reproche fait à la toute première
- * version, pas le design en soi.
+ * Ce qui reste des règles de l'ère « image » (2026-08-31 → 2026-11-17) :
+ *   - le contenu principal vient de la TRANSCRIPTION (mesuré : un modèle qui
+ *     reçoit actions et notes en tête en fait toute sa matière) ;
+ *   - chaque donnée prend une FORME — un chiffre avec cible devient une barre,
+ *     une part un anneau, des dates une frise — d'où les champs `forme`,
+ *     `jalons`, `repartition` : c'est le gabarit qui dessine, mais c'est le
+ *     modèle qui sait ce que le chiffre veut dire ;
+ *   - un budget de mots, parce qu'une infographie se lit en quelques secondes ;
+ *   - la langue de l'interface, pas celle de la transcription (2026-10-21).
  *
- * DIRECTION ARTISTIQUE (2026-09-15). Constat sur les images produites :
- * contenu juste, forme pauvre. Les règles demandaient bien une maquette, mais
- * en termes génériques (« palette professionnelle harmonieuse », « hiérarchie
- * forte ») : le réécrivain rendait une liste de zones remplies de phrases, et
- * le modèle d'image en faisait un document à cases. Les règles disent
- * désormais ce qu'un directeur artistique exigerait, en termes que le modèle
- * d'image sait suivre : l'architecture de la page (bandeau, UN élément héros,
- * grille de cartes, tableau des actions, pied qui ferme), la traduction de
- * chaque donnée en forme graphique (grand nombre, barres, frise, coche,
- * badge), une palette NOMMÉE EN HEXADÉCIMAL (« bleu nuit » se rend au hasard,
- * un code se rend tel quel), trois tailles de texte, un budget de mots, et
- * les textes de l'image ENTRE GUILLEMETS pour que le modèle distingue la
- * consigne du lettrage. Le format reste la page portrait 2:3 (1024 × 1536,
- * cf. lib/infographic.js), « A4 portrait » côté produit.
+ * Les ACTIONS ne sont pas recopiées par le modèle : l'application les pose
+ * elle-même, telles que l'écran les montre (cf. layoutActions). Il les reçoit
+ * pour comprendre la réunion, et pour remplir `prochaineEtape`.
  *
- * Le budget de texte n'est PAS la règle de densité retirée le 2026-09-02
- * (4 à 6 zones, contre les pieds coupés de gpt-image-1) : c'est une règle de
- * LISIBILITÉ — 400 mots sur une page en font un document, quel que soit le
- * cadrage. Non re-mesuré sur génération réelle depuis ce dépôt (clé et
- * facturation de l'organisation) : à juger en recette, en régénérant une
- * réunion connue.
+ * Le JSON est demandé COMPACT (une ligne, sans indentation) : la réponse
+ * s'écrit jeton par jeton, et l'indentation d'un JSON lisible pèse environ un
+ * quart de ses caractères (mesuré au banc sur six contenus types, 2026-11-17).
  *
- * LANGUE (2026-10-21) : les textes de l'image suivaient « la langue des
- * matériaux », donc celle de la transcription — une réunion en anglais
- * donnait une infographie anglaise sous une interface française, et
- * inversement. La langue est désormais celle de l'interface, comme le compte
- * rendu ; elle voyage dans la DEMANDE, pour la même raison que la charte
- * ci-dessous : le repli doit la respecter aussi.
- *
- * La charte de l'installation (facultative) n'est PAS écrite ici : elle vient
- * de l'administration, elle change d'un client à l'autre, et elle voyage donc
- * avec la DEMANDE (cf. infographicPrompt). Ces règles ne font qu'établir sa
- * PRÉSÉANCE — sans cette ligne, le réécrivain arbitre entre elle et le libre
- * choix de palette que la règle précédente lui accorde, et une infographie
- * sur deux sort hors charte.
+ * Le CHOIX du gabarit est le sien, sur ce qui DÉCOULE de la réunion, avec le
+ * modèle de compte rendu choisi par l'utilisateur pour indice. Le code ne
+ * retient ce choix que si la matière suit (cf. hasContentFor) : le modèle ne
+ * peut pas produire une page vide.
  */
-export const INFOGRAPHIC_WRITER_RULES = [
-  // Le modèle d'image n'est PLUS nommé ici (il l'était : « gpt-image-2 ») :
-  // c'est devenu un réglage d'installation (lib/infographicModels.js), et une
-  // règle qui nommerait un modèle mentirait dès qu'un administrateur en change.
-  "Tu es directeur artistique et designer d'information. Tu prépares le prompt d'un modèle de génération d'images qui dessinera l'infographie d'une réunion.",
-  "Le message de l'utilisateur — sa demande d'infographie suivie des matériaux de la réunion — t'est fourni tel quel.",
-  "Écris le prompt complet d'une VÉRITABLE infographie professionnelle : une composition graphique où chaque information a une forme visuelle — pas un document à cases, pas une page de texte.",
+export const INFOGRAPHIC_LAYOUT_RULES = [
+  "Tu es designer d'information. Tu prépares le CONTENU de l'infographie d'une réunion : UNE page A4 portrait qu'un gabarit graphique mettra en page, avec le logo et les couleurs de l'organisation, des pictogrammes et des graphiques. Tu ne dessines rien et tu n'écris aucun code : tu remplis un objet JSON.",
+  "La page est un A4 : chaque mot compte. Préfère peu d'éléments bien remplis à beaucoup d'éléments creux, et tiens-toi aux nombres maximums ci-dessous.",
+  "Le message de l'utilisateur — sa demande suivie des matériaux de la réunion — t'est fourni tel quel.",
   '',
-  'FORMAT : une seule page portrait (proportions 2:3, proches d’un A4), lue de haut en bas, marges égales sur les quatre bords, tout le contenu à l’intérieur du cadre.',
+  'CHOIX DU GABARIT (clé "gabarit") — prends celui qui montre le mieux ce qui DÉCOULE de la réunion :',
+  '- "decision" : la réunion a tranché une ou plusieurs questions, en pesant des options ou des scénarios ;',
+  '- "feuille_de_route" : la réunion a fixé un calendrier — au moins trois étapes ou échéances datées ;',
+  '- "tableau_de_bord" : la réunion a passé des chiffres en revue — budget, ventes, production, indicateurs — dont au moins deux mesurables ;',
+  '- "atelier" : la réunion a produit des idées — brainstorming, atelier, recherche de solutions ;',
+  '- "bilan" : la réunion revient sur une période ou un projet écoulé — rétrospective, retour d\'expérience ;',
+  '- "synthese" : tous les autres cas — point d\'équipe, réunion d\'information, réunion mixte. En cas de doute, "synthese".',
+  "Le modèle de compte rendu choisi par l'utilisateur, s'il figure dans la demande, est un indice, pas une obligation.",
   '',
-  'ARCHITECTURE DE LA PAGE — décris chaque zone de haut en bas, avec sa position et la part de hauteur qu’elle occupe :',
-  '- un bandeau de titre (environ 12 % de la hauteur) : le titre de la réunion en 3 à 6 mots, un sous-titre avec la date et le contexte s’ils figurent dans les matériaux ;',
-  '- UN élément héros sous le bandeau, plus grand que tout le reste : le chiffre, la décision ou l’objectif majeur de la réunion, en très grand, avec son libellé ;',
-  '- une grille de 3 à 6 cartes, sur deux colonnes en général, une par sujet : titre court, pictogramme, 2 à 4 lignes ;',
-  '- un tableau des actions (action, responsable, échéance) ; sans action, une carte « prochaines étapes » ;',
-  '- un pied de page fin qui ferme la composition : participants, prochaine échéance ou synthèse en une ligne.',
-  'Adapte le nombre de cartes à la matière — peu de cartes pleines plutôt que beaucoup de cartes creuses ; aucune zone vide ni purement décorative.',
+  'RUBRIQUES À REMPLIR SELON LE GABARIT — les autres restent vides ([] ou null) :',
+  '- toujours : titre, sousTitre, heros, participants, prochaineEtape ;',
+  '- "synthese" : sujets (2 à 4), chiffres (jusqu’à 3 chiffres clés), decisions ;',
+  '- "decision" : heros = LA décision prise, options (2 ou 3, une seule "retenue": true), decisions (les autres décisions), vigilances ;',
+  '- "feuille_de_route" : heros = l’objectif ou l’échéance finale, jalons (3 à 6, dans l’ordre chronologique), decisions, vigilances ;',
+  '- "tableau_de_bord" : chiffres (2 à 4), repartition si un total se décompose, vigilances ;',
+  '- "atelier" : heros = la question travaillée, idees (2 à 4 thèmes, les idées marquantes "retenue": true), decisions (les suites décidées) ;',
+  '- "bilan" : heros = le verdict de la période, bilan (les trois colonnes), chiffres (jusqu’à 2).',
   '',
-  'TRADUCTION VISUELLE — ce qui distingue une infographie d’un document : chaque donnée prend une forme graphique, pas seulement une phrase.',
-  '- un chiffre → un grand nombre avec son unité et son libellé ; plusieurs chiffres comparables → des barres horizontales ; une part d’un tout → un anneau ou une jauge ; une progression → une barre de progression ;',
-  '- des dates ou des étapes → une frise horizontale à jalons ;',
-  '- une décision → une carte mise en valeur, marquée d’une coche ;',
-  '- un risque ou un point ouvert → une carte signalée par un pictogramme d’alerte ;',
-  '- une action → une ligne du tableau, le responsable en pastille (prénom ou initiales), l’échéance en badge ;',
-  '- des personnes ou des contacts → des pastilles nominatives.',
-  'Un pictogramme simple par carte et par action, tous du même style : trait fin, même épaisseur, même couleur.',
+  'FORMAT DE SORTIE : un seul objet JSON, sans texte autour ni balises de code, avec exactement ces clés :',
+  '{',
+  '  "gabarit": "synthese" | "decision" | "feuille_de_route" | "tableau_de_bord" | "atelier" | "bilan",',
+  '  "titre": ce qui ressort de la réunion, 4 à 9 mots (jamais « Réunion du … »),',
+  '  "sousTitre": le contexte en une phrase de 20 mots au plus,',
+  '  "heros": { "valeur": très court, affiché en très grand — un chiffre avec son unité, une date, un mot (« 2 févr. », « 72 % », « Go ») —, "libelle": ce qu’il signifie, 15 mots au plus, "icone": un pictogramme },',
+  '  "chiffres": [ { "libelle": 5 mots au plus, "valeur": nombre, "unite": texte court (« % », « k€ », « jours ») ou "", "cible": nombre ou null, "precedent": nombre ou null, "forme": "valeur" | "part" | "progression" | "objectif" | "evolution", "note": 8 mots au plus ou "" } ] — 4 au plus,',
+  '  "repartition": null ou { "titre": 6 mots au plus, "unite": texte court, "elements": [ { "libelle": 4 mots au plus, "valeur": nombre } ] — 2 à 5 },',
+  '  "sujets": [ { "titre": 4 mots au plus, "icone": un pictogramme, "points": [ 1 à 3 lignes de 12 mots au plus ] } ] — 4 au plus,',
+  '  "decisions": [ 15 mots au plus chacune ] — 4 au plus,',
+  '  "vigilances": [ risques ou points ouverts, 15 mots au plus chacun ] — 3 au plus,',
+  '  "jalons": [ { "quand": la date telle qu’elle doit s’afficher, courte (« 28 nov. », « Fin janv. », « T2 »), "libelle": 6 mots au plus, "detail": 10 mots au plus ou "", "etat": "fait" | "a_venir" | "objectif" } ] — 6 au plus,',
+  '  "options": [ { "titre": 6 mots au plus, "pour": [ 2 au plus, 10 mots chacun ], "contre": [ 2 au plus, 10 mots chacun ], "retenue": true | false } ] — 3 au plus,',
+  '  "idees": [ { "theme": 4 mots au plus, "icone": un pictogramme, "idees": [ { "texte": 12 mots au plus, "votes": nombre entier ou null, "retenue": true | false } ] — 3 au plus } ] — 4 thèmes au plus,',
+  '  "bilan": { "reussites": [ ce qui a marché ], "difficultes": [ ce qui a coincé ], "essais": [ ce qu’on essaiera ] } — 4 lignes de 12 mots au plus par colonne,',
+  '  "participants": [ les personnes présentes, nom tel qu’écrit dans les matériaux ] — 10 au plus,',
+  '  "prochaineEtape": la prochaine réunion ou échéance en une ligne, ou ""',
+  '}',
   '',
-  'TYPOGRAPHIE : une seule famille sans empattement ; trois tailles seulement (titre, intertitres, corps) ; texte horizontal, aligné à gauche, jamais incliné, courbé ni en perspective ; le corps reste lisible en vignette.',
+  'FORMES DES CHIFFRES : "part" pour une part d’un tout (un pourcentage, ou une valeur sur sa cible) ; "progression" pour un avancement vers une cible (valeur ET cible) ; "objectif" pour un niveau à atteindre (valeur ET cible) ; "evolution" pour une variation depuis une valeur précédente (valeur ET precedent) ; "valeur" sinon. Les nombres sont des nombres JSON (1.32, jamais "1,32 M€") ; l’unité va dans "unite", jamais dans "valeur".',
+  `PICTOGRAMMES : uniquement des noms de cette liste — ${INFOGRAPHIC_ICONS.join(', ')}. Choisis celui qui évoque le sujet, pas un au hasard.`,
   '',
-  'COULEURS : choisis une palette adaptée au sujet — sobre pour un comité ou un budget, plus chaleureuse pour une équipe ou un atelier — et nomme chaque couleur par son code hexadécimal : un fond uni (clair ou sombre), une couleur de texte très contrastée, UNE couleur d’accent, une ou deux couleurs secondaires, des gris neutres. Quatre teintes au plus hors neutres ; des aplats, des dégradés très légers seulement. Toutes les cartes reçoivent le même traitement : coins arrondis, ombre douce ou bordure fine.',
-  '',
-  'BUDGET DE TEXTE : entre 150 et 250 mots sur l’image, jamais de paragraphe — des libellés de 8 mots au plus, 2 à 4 lignes par carte, les chiffres en grand plutôt qu’en phrase. Chaque texte à faire figurer est écrit dans le prompt entre guillemets doubles (" … "), exactement tel qu’il doit apparaître, dans la langue de l’infographie fixée par la demande.',
-  '',
-  'INTERDITS, à rappeler dans le prompt : texte de remplissage ou faux mots, photo, rendu 3D, logo ou marque, filigrane, zone vide, élément coupé par un bord, texte illisible.',
-  '',
-  "Si la demande porte un style graphique imposé, il PRIME sur tes propres choix — couleurs, typographie, mise en page, mentions à faire figurer : reporte-le fidèlement et explicitement dans le prompt d'image.",
-  'TOUT le contenu vient des matériaux fournis : sujets, décisions, chiffres, échéances, personnes — riche et fidèle. Le contenu principal vient de la transcription ; les actions et les notes le complètent.',
-  'La demande fixe la LANGUE de l’infographie : tous les textes de l’image s’écrivent dans cette langue, même si les matériaux sont dans une autre — traduis-les alors fidèlement.',
-  "N'invente rien, et recopie noms propres et sigles EXACTEMENT (les notes font foi pour les graphies).",
-  '',
-  'FORME DU PROMPT : une description continue, dans la langue de l’infographie, dans cet ordre — une phrase qui résume l’image (nature, style, format, sujet), le style et la palette, chaque zone de haut en bas avec sa position, sa taille relative, son pictogramme et ses textes entre guillemets, la typographie, puis les interdits. Pas de markdown ni de titres en capitales : tout ce qui n’est pas entre guillemets est une consigne, tout ce qui est entre guillemets s’affiche.',
-  'Réponds uniquement par le prompt, sans commentaire.',
+  "N'invente rien : chaque texte, chiffre, date et nom vient des matériaux. Une rubrique sans matière reste vide plutôt que remplie au hasard. Recopie noms propres et sigles EXACTEMENT (les notes font foi pour les graphies).",
+  "Les actions de la réunion sont affichées par l'application elle-même : ne les recopie dans aucune rubrique.",
+  'La demande fixe la LANGUE de l’infographie : tous les textes s’écrivent dans cette langue, même si les matériaux sont dans une autre — traduis-les alors fidèlement.',
+  'Des libellés courts et concrets, sans phrase de remplissage, sans markdown, sans émoji.',
+  'Réponds uniquement par l’objet JSON, COMPACT : sur une seule ligne, sans indentation ni retour à la ligne.',
 ].join('\n');
-
-// Les règles de densité (réécrivain) et de cadrage (prompt d'image) ajoutées
-// contre les pieds coupés de gpt-image-1 ont été RETIRÉES le 2026-09-02 :
-// gpt-image-2 compose entier et sans coquille sans elles (mesuré, même
-// réunion). Ne pas les réintroduire sans re-mesurer — elles bridaient la
-// maquette (4 à 6 zones) pour compenser un défaut du modèle précédent. Le
-// budget de texte et la grille de cartes ci-dessus sont d'une autre nature
-// (lisibilité, cf. le commentaire de tête) et n'ajoutent rien au prompt
-// d'IMAGE : ils guident le réécrivain seulement.
 
 /** La langue de l'infographie, nommée dans la phrase de la demande. */
 const LANGUAGE_NAMES = { fr: 'en français', en: 'en anglais' };
+
+/**
+ * Modèles de compte rendu intégrés (src/config/templates.js), nommés pour
+ * l'indice de la demande. Un modèle personnel n'a pas de nom ici : pas
+ * d'indice plutôt qu'un identifiant que le modèle ne saurait pas lire.
+ */
+const SUMMARY_TEMPLATE_NAMES = {
+  standard: 'Standard',
+  decision: 'Réunion de décision',
+  rh: 'Entretien RH',
+  brainstorming: 'Brainstorming',
+  planning: 'Planification',
+  retrospective: 'Rétrospective',
+};
 
 /** Bornes des blocs fixes, pour que la transcription garde l'essentiel de la place. */
 const INFOGRAPHIC_NOTES_MAX = 4000;
 const INFOGRAPHIC_ACTIONS_MAX = 3000;
 
 /**
- * LE prompt envoyé au modèle d'image — un seul appel, sans étape de
- * condensation : la consigne est celle de l'utilisateur, telle quelle, suivie
- * des trois matériaux (et de la charte de l'installation, si elle en a une).
+ * La DEMANDE envoyée au modèle de contenu : une consigne courte, puis les
+ * trois matériaux.
  *
  * ⚠️ ORDRE MESURÉ (2026-08-31) : la première version plaçait #ACTIONS puis
- * #NOTES en tête et la transcription en queue — l'image générée était un
- * poster « ACTIONS » qui recopiait les deux blocs étiquetés et IGNORAIT la
- * transcription. Un modèle d'image dessine ce qui est court, structuré et
- * proche de la consigne. D'où : la transcription d'abord (c'est le contenu),
- * une phrase qui le dit explicitement, actions et notes en complément à la
- * fin. La transcription reste la seule tronquée (début + fin).
+ * #NOTES en tête et la transcription en queue — le modèle recopiait les deux
+ * blocs étiquetés et IGNORAIT la transcription. D'où : la transcription
+ * d'abord (c'est le contenu), une phrase qui le dit explicitement, actions et
+ * notes en complément à la fin. La transcription reste la seule tronquée
+ * (début + fin).
  *
- * `style` est la charte de l'installation (Administration → IA), FACULTATIVE :
- * elle est posée dans la DEMANDE, en phrase, et non dans un bloc étiqueté —
- * un bloc en tête se fait recopier tel quel sur l'image (leçon #ACTIONS
- * ci-dessus). La demande porte déjà des consignes en phrases, que le modèle
- * n'écrit jamais dans l'image. Elle voyage avec les matériaux, et non dans les
- * règles du réécrivain, pour que le REPLI (réécriture en panne, les matériaux
- * bruts partent au modèle d'image) la respecte lui aussi.
+ * `language` est celle de l'interface (repli fr) ; `template` le modèle de
+ * compte rendu de la réunion, donné en indice pour le choix du gabarit.
  *
- * `language` est celle de l'interface (repli fr) : posée elle aussi en phrase
- * dans la demande, pour la même raison — et parce que, sans elle, le modèle
- * écrivait l'image dans la langue de la transcription.
- *
- * @param {{transcription?: string, actions?: Array, notes?: string, style?: string,
- *          language?: string}} params
+ * @param {{transcription?: string, actions?: Array, notes?: string,
+ *          language?: string, template?: string}} params
  * @returns {string}
  */
 export function infographicPrompt({
   transcription = '',
   actions = [],
   notes = '',
-  style = '',
   language,
+  template,
 } = {}) {
   const lang = normalizeLang(language);
   // Seules les actions NON MASQUÉES : une action retirée par l'utilisateur
   // (`show: false`) reste en base et dans le corps de /resume, mais ne doit
-  // pas ressortir sur l'image — même règle que l'écran et le compte rendu
+  // pas inspirer l'infographie — même règle que l'écran et le compte rendu
   // (une action sans champ `show` est visible).
   const actionLines = (Array.isArray(actions) ? actions : [])
     .filter((a) => a && a.show !== false)
@@ -608,18 +587,16 @@ export function infographicPrompt({
     .map((line) => `- ${line}`)
     .join('\n')
     .slice(0, INFOGRAPHIC_ACTIONS_MAX);
-  const styleLine = String(style || '')
-    .trim()
-    .slice(0, INFOGRAPHIC_STYLE_MAX);
+  const templateName = Object.hasOwn(SUMMARY_TEMPLATE_NAMES, template || '')
+    ? SUMMARY_TEMPLATE_NAMES[template]
+    : '';
   const intro = [
-    'Fais une infographie en fonction de cette transcription de réunion, des actions qui en découlent et de ces notes que je te joins.',
+    "Prépare le contenu de l'infographie de cette réunion, à partir de sa transcription, des actions qui en découlent et des notes que je te joins.",
     "Le contenu principal de l'infographie vient de la TRANSCRIPTION — les sujets abordés, les décisions et les chiffres qui s'y trouvent ; les actions et les notes la complètent.",
     `Tous les textes de l'infographie sont rédigés ${LANGUAGE_NAMES[lang] || `dans la langue « ${lang} »`}, même si la transcription, les actions ou les notes sont dans une autre langue.`,
-    // Absente quand l'organisation n'impose rien : le modèle retrouve alors
-    // exactement la demande d'avant ce réglage, et son libre choix de palette.
-    ...(styleLine
+    ...(templateName
       ? [
-          `Style graphique imposé pour cette infographie, prioritaire sur tout autre choix esthétique : ${styleLine}`,
+          `Modèle de compte rendu choisi par l'utilisateur pour cette réunion : « ${templateName} ».`,
         ]
       : []),
     '',

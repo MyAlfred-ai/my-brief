@@ -146,29 +146,55 @@ Ils portent des règles, la première étant le quota de minutes de réunion
 (plus bas), et le modèle est posé pour que les suivantes s'y accrochent sans
 le refaire.
 
-Trois décisions, et leur alternative écartée :
+Cinq décisions, et leur alternative écartée :
 
+- **Un seul groupe par compte** (2026-10-26). Les groupes ont d'abord été
+  multiples, le plus généreux des quotas et l'union des droits s'appliquant :
+  la règle se lisait mal — un quota posé sur « Commerciaux » ne limitait
+  personne tant que « Défaut » restait illimité, et l'écran devait expliquer
+  « Aussi dans ». Entrer dans un groupe fait désormais quitter le précédent. Le
+  champ reste un TABLEAU (`groupIds: [id]`) : le renommer demandait une reprise
+  sur chaque base et rendait destructeur un retour à l'image précédente, qui
+  lit ce tableau. La reprise du démarrage (`seedGroups`) a ramené chaque compte
+  au groupe qui lui donnait DÉJÀ ses minutes (`pickGroupId` : le plus généreux,
+  puis celui qui donne les infographies, puis un autre que « Défaut ») — la
+  mise à jour ne retire de minutes à personne.
 - **Un groupe « Défaut » (`id: 'default'`), créé au démarrage, jamais
-  supprimé, et l'invariant « un compte est toujours dans au moins un
-  groupe »** : tout compte y naît (administration, première connexion SSO,
-  compte d'amorçage, `ADMIN_EMAILS`), et un compte retiré de son dernier groupe
-  y retombe (`normalizeGroupIds`, réappliqué à chaque écriture). L'alternative
+  supprimé, et l'invariant « un compte est toujours dans un groupe »** : tout
+  compte d'utilisateur y naît (administration, première connexion SSO), et un
+  compte retiré de son groupe y retombe (`groupIdOf`, réappliqué à chaque
+  écriture). L'alternative
   — un groupe par défaut IMPLICITE, « les comptes qui n'en ont aucun » — rendait
   l'écran illisible : on ne pouvait ni y ajouter quelqu'un ni l'en retirer, et
   une règle par groupe n'aurait pas su quoi appliquer au vide. Le groupe se
   renomme librement : « Défaut » n'est qu'un nom de naissance, et le seed
   (`$setOnInsert` seul) ne le réécrit jamais.
+- **Un groupe « Admin » (`id: 'admin'`), illimité et avec tous les droits à
+  sa naissance, où entre tout compte qui DEVIENT administrateur** (création
+  avec ce rôle, promotion depuis la fiche, compte d'amorçage, `ADMIN_EMAILS`,
+  `ADMIN_EMAIL_DOMAINS`) ; un administrateur rétrogradé qui y était revient
+  dans « Défaut » (`groupAfterRoleChange`). C'est un placement PAR DÉFAUT,
+  pas une contrainte « rôle ⇔ groupe » : l'administration peut ensuite placer
+  un administrateur ailleurs, et un rétrogradé placé ailleurs y reste. La
+  contrainte stricte, écartée, aurait interdit de limiter un administrateur
+  ou d'accorder l'illimité à un utilisateur sans lui donner le rôle. Le groupe
+  ne se supprime pas (la promotion n'aurait plus où envoyer) ; les
+  administrateurs existants y ont été placés UNE fois, à sa naissance
+  (`ensureAdmin` rend vrai), pas à chaque démarrage, qui défairait les
+  placements décidés ensuite. Côté route, un appel qui change le rôle ET
+  choisit le groupe garde le groupe choisi : la fiche applique déjà la règle à
+  l'écran, ce qu'elle envoie est ce que l'administrateur a vu.
 - **L'appartenance vit sur le compte (`user.groupIds`), pas dans une
   collection de liaison** : elle est lue à chaque ouverture de l'app (`/init`,
   `/auth/session`, `/auth/login` renvoient les groupes RÉSOLUS, nom et couleur,
   parce que l'utilisateur n'a pas accès aux routes d'administration) et le sera
   à chaque règle de quota, alors qu'elle change rarement. Index multikey sur
   `groupIds` ; « les membres du groupe X » est `GET /admin/users?group=`, la même
-  liste que l'onglet Utilisateurs. Corollaire : supprimer un groupe le retire
-  d'abord de tous les comptes (`detachGroup`), puis ramène au défaut ceux
-  laissés sans groupe, et seulement ensuite supprime le document — un échec au
-  milieu laisse un groupe vide, jamais des membres fantômes.
-- **Le backfill du démarrage (`seedDefaultGroup`) inscrit les comptes
+  liste que l'onglet Utilisateurs. Corollaire : supprimer un groupe renvoie
+  d'abord ses membres dans « Défaut » (`detachGroup`), et seulement ensuite
+  supprime le document — un échec au milieu laisse un groupe vide, jamais des
+  membres fantômes.
+- **Le backfill du démarrage (`seedGroups`) inscrit les comptes
   historiques EN BASE**, et pas seulement à la lecture : la liste des membres du
   groupe par défaut interroge l'index, elle ne verrait pas un compte sans champ,
   et l'effectif affiché serait faux. Non bloquant, comme les autres reprises.
@@ -182,11 +208,10 @@ ouvertes, contrairement à un changement de rôle.
 première règle portée par un groupe : des minutes par personne et par mois
 civil, `null` = illimité. Cinq décisions :
 
-- **le plus généreux des groupes d'un compte s'applique, « illimité »
-  l'emporte** : être ajouté à un groupe ne retire jamais de minutes, l'admin
-  limite « Défaut » pour un quota de base et exempte par un groupe illimité ;
-  l'alternative (le plus restrictif, ou le premier) rendait un second groupe
-  imprévisible ;
+- **le quota du groupe du compte s'applique, tel quel** (un seul groupe par
+  compte, cf. plus haut) : l'admin limite « Défaut » pour un quota de base et
+  exempte par un groupe illimité. Du temps des groupes multiples, le plus
+  généreux l'emportait (`effectiveLimit` le sait encore d'une liste) ;
 - **le mois civil, à l'heure de Paris** : il se lit sans explication
   (« renouvelé le 1er »), là où une fenêtre glissante demande un calcul, et
   c'est à l'heure de Paris que les organisations lisent « le 1er ». UTC, le
@@ -262,9 +287,9 @@ sauf s'il porte sur un mois écoulé : `/tempkey` tranchera.
 DROIT porté par un groupe : un booléen, là où le quota est une mesure. Quatre
 décisions :
 
-- **cumulatif** : un compte a le droit dès qu'UN de ses groupes le donne,
-  comme il garde le quota le plus généreux. L'administrateur le réserve à
-  quelques personnes en le retirant à « Défaut » ;
+- **celui du groupe du compte** (un seul groupe, cf. plus haut ; cumulatif du
+  temps des groupes multiples). L'administrateur le réserve à quelques
+  personnes en le retirant à « Défaut » et en le donnant à leurs groupes ;
 - **« Défaut » le donne au déploiement**, par LECTURE : un groupe antérieur
   au champ vaut « accordé » s'il est le groupe par défaut, « refusé » sinon
   (`normalizeInfographicAllowed`), et un groupe créé ensuite naît sans. Une

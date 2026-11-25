@@ -1,133 +1,133 @@
 {
   "entries": [
     {
-      "id": "statistiques-pilotage",
-      "date": "2026-10-26",
-      "version": "1.3.0.97",
+      "id": "aide-ia-idees-espacees",
+      "date": "2026-11-25",
+      "version": "1.3.0.159",
+      "kind": "improvement",
+      "audience": "all",
+      "title": "Aide IA : moins d'idées, et mieux choisies",
+      "body": "La boîte à idées de l'Aide IA se fait rare : au plus une idée toutes les dix minutes, toutes les cinq en interventions « Soutenues », aucune en « Discrètes ». Elle attend que la réunion soit lancée, part du sujet qui vous occupe depuis plusieurs minutes, et se tait plutôt que de redire une idée ou d'énoncer une banalité.",
+      "en": {
+        "title": "AI Help: fewer ideas, better chosen",
+        "body": "The AI Help idea box now speaks up rarely: one idea every ten minutes at most, every five with \"Frequent\" interventions, none with \"Discreet\". It waits until the meeting is under way, works from the topic you have been on for several minutes, and stays silent rather than repeat an idea or state the obvious."
+      }
+    },
+    {
+      "id": "aide-ia-tag-projet",
+      "date": "2026-11-23",
+      "version": "1.3.0.158",
+      "kind": "improvement",
+      "audience": "all",
+      "title": "Aide IA : un tag retient le projet de ses réunions",
+      "body": "Quand l'Aide IA connaît le projet d'une réunion taguée, elle propose de relier le tag à sa fiche dans myBrain. Un clic sur « Relier », et les réunions suivantes avec ce tag partent directement sur le bon projet : plus de question, plus d'homonymes à départager.",
+      "en": {
+        "title": "AI Help: a tag remembers its meetings' project",
+        "body": "When AI Help knows the project of a tagged meeting, it offers to link the tag to its myBrain sheet. One click on \"Link\", and the next meetings with this tag start straight on the right project: no more question, no more look-alikes to choose from."
+      }
+    },
+    {
+      "id": "tags-logo-fiche",
+      "date": "2026-11-18",
+      "version": "1.3.0.157",
       "kind": "new",
-      "audience": "admins",
-      "title": "Statistiques : filtres, usage par personne et rapport PDF",
-      "body": "Administration → Statistiques se filtre par dates, groupe, utilisateur et template, et compare chaque chiffre à la période précédente. « Santé de l'adoption » montre qui utilise myBrief chaque semaine et qui ne l'a jamais démarré ; le tableau par utilisateur se trie et s'exporte en CSV. « Exporter en PDF » produit un rapport des sections choisies.",
-      "en": {
-        "title": "Statistics: filters, usage per person and PDF report",
-        "body": "Administration → Statistics can be filtered by dates, group, user and template, and compares every figure with the previous period. \"Adoption health\" shows who uses myBrief every week and who never started; the per-user table can be sorted and exported as CSV. \"Export as PDF\" produces a report of the chosen sections."
-      }
-    },
-    {
-      "id": "actions-langue-interface",
-      "date": "2026-10-21",
-      "version": "1.3.0.93",
-      "kind": "fix",
       "audience": "all",
-      "title": "Actions détectées et infographie suivent la langue de l'interface",
-      "body": "Avec l'anglais choisi, les actions détectées pouvaient s'écrire en français, et l'infographie prenait la langue parlée en réunion. Toutes deux suivent désormais la langue choisie, FR ou EN, comme le compte rendu. Pour une infographie dans l'autre langue, changez de langue puis cliquez « Régénérer l'infographie ».",
+      "title": "Un logo pour chaque tag, et une fiche plus simple",
+      "body": "Dans Réglages → Mes tags, déposez le logo du client ou du projet : il se pose en médaillon sur l'infographie et en tête du compte rendu PDF. La fiche du tag s'enregistre au fil de vos gestes : le nom se modifie sur place, la couleur en un clic, et le rangement et l'envoi tiennent sur une ligne.",
       "en": {
-        "title": "Detected actions and the infographic follow the interface language",
-        "body": "With English selected, detected actions could be written in French, and the infographic took the language spoken in the meeting. Both now follow the chosen language, FR or EN, like the report. For an infographic in the other language, switch language, then click “Regenerate the infographic”."
+        "title": "A logo for every tag, and a simpler tag page",
+        "body": "In Settings → My tags, drop the client's or project's logo: it appears as a medallion on the infographic and at the top of the PDF report. The tag page saves as you go: rename in place, change the colour in one click, and filing and sending fit on one line each."
       }
     },
     {
-      "id": "transcription-nombres-colles",
-      "date": "2026-10-19",
-      "version": "1.3.0.92",
-      "kind": "fix",
-      "audience": "all",
-      "title": "Transcription : un nombre ne se colle plus au mot qui le précède",
-      "body": "En direct, un nombre dit après un mot s'écrivait collé à lui : « jusqu'à4 h », « le12 mars ». L'espace est de retour, à l'écran comme dans la transcription exportée et résumée. Les réunions déjà enregistrées gardent leur texte.",
-      "en": {
-        "title": "Transcription: a number no longer sticks to the word before it",
-        "body": "During live transcription, a number spoken after a word was written stuck to it: “until4 pm”, “March12”. The space is back, on screen and in the exported and summarized transcript. Meetings already recorded keep their text."
-      }
-    },
-    {
-      "id": "modeles-transcription-retires",
-      "date": "2026-10-15",
-      "version": "1.3.0.84",
-      "kind": "improvement",
-      "audience": "admins",
-      "title": "Transcription : les modèles qu'OpenAI arrête sont déjà remplacés",
-      "body": "OpenAI arrête trois modèles de transcription le 26 février 2027 : Administration → IA ne les propose plus. Si l'un d'eux était choisi, un modèle qui transcrit de la même façon a déjà pris le relais ; la carte le dit, et un clic confirme ce choix.",
-      "en": {
-        "title": "Transcription: the models OpenAI is shutting down are already replaced",
-        "body": "OpenAI shuts down three transcription models on 26 February 2027: Administration → AI no longer offers them. If one of them was chosen, a model that transcribes the same way has already taken over; the card says so, and one click confirms the choice."
-      }
-    },
-    {
-      "id": "menu-compte-ce-mois",
-      "date": "2026-10-14",
-      "version": "1.3.0.83",
+      "id": "tags-recherche-creation",
+      "date": "2026-11-18",
+      "version": "1.3.0.155",
       "kind": "improvement",
       "audience": "all",
-      "title": "Un menu de compte qui dit où vous en êtes ce mois-ci",
-      "body": "En bas de la colonne de gauche, un anneau autour de votre avatar et la ligne sous votre nom disent ce qu'il vous reste ce mois-ci. Votre nom ouvre le menu de compte : « Ce mois-ci » y résume votre crédit, vos réunions et vos comptes rendus, et la langue s'y choisit. Sur téléphone, Configuration et Administration sont dans ce menu.",
+      "title": "Trouvez et créez vos tags d'un geste",
+      "body": "Le menu qui range une réunion cherche dans le nom de vos tags et dans ce que vous avez écrit sur eux : tapez le nom d'une cliente, le tag de son projet apparaît. Un nom inconnu ? « Créer » le crée et y range la réunion. Les tags de vos dernières réunions passent en tête.",
       "en": {
-        "title": "An account menu that shows where you stand this month",
-        "body": "At the bottom of the left column, a ring around your avatar and the line under your name show what you have left this month. Your name opens the account menu: “This month” sums up your credit, meetings and summaries, and you pick the language there. On phones, Settings and Administration are in this menu."
+        "title": "Find and create your tags in one go",
+        "body": "The menu that files a meeting searches your tag names and what you wrote about them: type a client's name and her project's tag shows up. Unknown name? \"Create\" makes the tag and files the meeting in it. Tags from your latest meetings come first."
       }
     },
     {
-      "id": "phrase-accueil-anglaise",
-      "date": "2026-10-13",
-      "version": "1.3.0.82",
+      "id": "contexte-des-tags",
+      "date": "2026-11-18",
+      "version": "1.3.0.154",
+      "kind": "new",
+      "audience": "all",
+      "title": "Dites à l'IA de quoi parle un tag",
+      "body": "Dans Réglages → Mes tags, chaque tag a un champ « Que doit savoir l'IA ? » : le projet, ses acteurs et leurs rôles, les sigles. Comptes rendus, infographie et Aide IA d'une réunion taguée s'en servent pour comprendre de quoi on parle, sans rien ajouter qui n'ait été dit. Pendant l'enregistrement, un nom ou un sigle écorché par la transcription est rétabli tel que vous l'avez écrit.",
+      "en": {
+        "title": "Tell the AI what a tag is about",
+        "body": "In Settings → My tags, every tag has a \"What should the AI know?\" field: the project, its people and their roles, the acronyms. Reports, the infographic and AI Help for a tagged meeting use it to understand what is being discussed, without adding anything that was not said. While recording, a name or acronym the transcript mangles is restored as you wrote it."
+      }
+    },
+    {
+      "id": "extension-chrome-mises-a-jour",
+      "date": "2026-11-18",
+      "version": "1.3.0.152",
       "kind": "improvement",
-      "audience": "admins",
-      "title": "La phrase d'accueil, aussi en anglais",
-      "body": "Dans Administration → Configuration, la carte « Phrase d'accueil » accepte une seconde phrase, en anglais : elle s'affiche sous le logo quand l'interface est en anglais. Laissée vide, la phrase en français reste affichée.",
+      "audience": "all",
+      "title": "L'extension Chrome s'installe sans accroc et annonce ses mises à jour",
+      "body": "Sous Windows, « Extraire tout » sur le fichier .zip donne directement le dossier à choisir dans Chrome. Quand une nouvelle version de l'extension existe, Réglages → Outils → Extension Chrome l'annonce et la propose. Sur un autre ordinateur, le menu de l'extension offre de lui redonner accès à votre MyBrief d'un clic.",
       "en": {
-        "title": "The tagline, in English too",
-        "body": "In Administration → Configuration, the \"Tagline\" card takes a second line, in English: it shows under the logo when the interface is in English. Left empty, the French tagline stays."
+        "title": "The Chrome extension installs smoothly and announces its updates",
+        "body": "On Windows, \"Extract All\" on the .zip file gives you the folder to pick in Chrome straight away. When a new version of the extension is out, Settings → Tools → Chrome extension says so and offers it. On another computer, the extension's menu lets you give it back access to your MyBrief in one click."
       }
     },
     {
-      "id": "actions-detectees-restent-courtes",
-      "date": "2026-10-13",
-      "version": "1.3.0.81",
-      "kind": "fix",
+      "id": "reprendre-reunion-terminee",
+      "date": "2026-11-18",
+      "version": "1.3.0.150",
+      "kind": "new",
       "audience": "all",
-      "title": "Les actions détectées en direct restent courtes",
-      "body": "Pendant une longue réunion, une action détectée pouvait grossir au fil de la conversation, ajout après ajout, jusqu'à recopier tout ce qui s'était dit. Elle reste désormais une tâche courte : la carte se complète quand on précise qui la fait, pour quand ou ce qu'il faut livrer ; le reste de la discussion va au compte rendu.",
+      "title": "Une réunion terminée peut reprendre",
+      "body": "Arrêtée trop tôt, coupée par le déjeuner, ou qui continue le lendemain : « Reprendre », juste après l'arrêt, ou « Reprendre l'enregistrement », en bas de la transcription d'une réunion rouverte, relance l'enregistrement. La suite s'ajoute à la même réunion, et un seul compte rendu couvre le tout.",
       "en": {
-        "title": "Live-detected actions stay short",
-        "body": "During a long meeting, a detected action could grow with the conversation, addition after addition, until it copied everything that was said. It now stays a short task: the card is completed when someone says who does it, by when or what to deliver; the rest of the discussion goes into the report."
+        "title": "A finished meeting can resume",
+        "body": "Stopped too early, interrupted by lunch, or continued the next day: \"Resume\", right after stopping, or \"Resume recording\", at the bottom of a reopened meeting's transcript, starts recording again. What follows is added to the same meeting, and a single summary covers it all."
       }
     },
     {
-      "id": "interface-anglaise-complete",
-      "date": "2026-10-13",
-      "version": "1.3.0.80",
-      "kind": "fix",
+      "id": "pdf-resume-charte",
+      "date": "2026-11-18",
+      "version": "1.3.0.149",
+      "kind": "improvement",
       "audience": "all",
-      "title": "Interface en anglais : plus de textes restés en français",
-      "body": "Avec l'anglais choisi, l'écran d'accueil, la phrase sous le logo, les groupes de l'historique (cette semaine, semaine dernière, les mois), le menu d'une réunion et l'écran d'enregistrement restaient en partie en français. Tout s'affiche désormais en anglais, jusqu'au titre de l'onglet du navigateur.",
+      "title": "Le compte rendu en PDF, à votre marque",
+      "body": "Le PDF du compte rendu — téléchargé, joint à un mail ou déposé sur un Drive — porte le logo de votre entreprise en tête et vos couleurs en dégradé discret : en haut de chaque page, sous le titre et devant les intertitres. Le texte reste noir sur blanc, et le logo de myBrief signe le pied de page.",
       "en": {
-        "title": "English interface: no more text left in French",
-        "body": "With English selected, the home screen, the line under the logo, the history groups (this week, last week, the months), a meeting's menu and the recording screen still partly showed in French. Everything now shows in English, down to the browser tab title."
+        "title": "Your PDF summary, in your brand",
+        "body": "The PDF summary — downloaded, attached to an email or saved to a Drive — carries your company logo at the top and your colours as a subtle gradient: across each page, under the title and beside headings. Text stays black on white, and the myBrief logo signs the footer."
       }
     },
     {
-      "id": "transcription-debut-en-double",
-      "date": "2026-10-13",
-      "version": "1.3.0.79",
+      "id": "reprise-apres-pause",
+      "date": "2026-11-18",
+      "version": "1.3.0.148",
       "kind": "fix",
       "audience": "all",
-      "title": "Transcription : le début d'une phrase ne s'écrit plus en double",
-      "body": "Avec certains modèles de transcription, quand quelqu'un enchaînait deux phrases sans marquer de pause, la première pouvait s'écrire deux fois, et se retrouver en double dans le compte rendu. Elle ne s'écrit plus qu'une fois : quand la personne s'arrête de parler, ses phrases se regroupent sur une seule ligne.",
+      "title": "Après une pause, le micro et la transcription repartent tout de suite",
+      "body": "Après une longue pause — un café, l'ordinateur mis en veille, le casque éteint entre-temps —, « Reprendre » retrouve le son du micro et la transcription dès les premiers mots. La pause elle-même n'est plus notée « Enregistrement interrompu » dans la transcription.",
       "en": {
-        "title": "Transcription: the start of a sentence is no longer written twice",
-        "body": "With some transcription models, when someone ran two sentences together without pausing, the first one could be written twice and end up twice in the report. It is now written only once: when the person stops speaking, their sentences come together on a single line."
+        "title": "After a break, the microphone and transcript come back right away",
+        "body": "After a long break — coffee, the computer gone to sleep, the headset switched off in the meantime — \"Resume\" picks up the microphone and the transcript from the very first words. The break itself is no longer marked as \"Recording interrupted\" in the transcript."
       }
     },
     {
-      "id": "visio-ordre-des-repliques",
-      "date": "2026-10-13",
-      "version": "1.3.0.78",
-      "kind": "fix",
+      "id": "infographie-gabarits",
+      "date": "2026-11-17",
+      "version": "1.3.0.143",
+      "kind": "new",
       "audience": "all",
-      "title": "En visio, votre dernière phrase ne reste plus en avant-dernier",
-      "body": "Quand vous vous taisiez pendant une visio, votre dernière phrase restait affichée en avant-dernier, au-dessus des répliques de vos interlocuteurs pourtant dites après elle, parfois pendant plusieurs minutes. Elle reprend sa place dès qu'ils parlent : la transcription suit l'ordre de la conversation.",
+      "title": "Infographies : six mises en page à votre marque, sur une page A4",
+      "body": "L'infographie, toujours sur une page A4, choisit la mise en page qui convient à la réunion — Synthèse, Décision, Feuille de route, Tableau de bord, Atelier ou Bilan — avec dégradés, pictogrammes et graphiques. Elle porte le logo de votre entreprise et vos couleurs, ses textes sont exacts, et elle arrive bien plus vite. Les anciennes restent consultables et téléchargeables.",
       "en": {
-        "title": "In a video call, your last sentence no longer stays second to last",
-        "body": "When you went quiet during a video call, your last sentence stayed second to last, above what the others said after it, sometimes for minutes. It now takes its place as soon as they speak: the transcript follows the order of the conversation."
+        "title": "Infographics: six branded layouts, on one A4 page",
+        "body": "The infographic, always on one A4 page, picks the layout that suits the meeting — Overview, Decision, Roadmap, Dashboard, Workshop or Review — with gradients, icons and charts. It carries your company's logo and colours, its text is exact, and it arrives much faster. Older infographics can still be viewed and downloaded."
       }
     }
   ]

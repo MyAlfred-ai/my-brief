@@ -42,12 +42,15 @@ une réunion, d'où que vous soyez sur le web. Elle n'existe que sur un ordinate
 navigateur qui en dérive — Edge, Brave. Elle n'est pas encore sur le Chrome Web Store : Chrome la
 charge depuis un dossier.
 
-1. Dans myBrief, ouvrez **Ma configuration → Extension Chrome**, puis cliquez **Télécharger
+1. Dans myBrief, ouvrez **Réglages → Outils**, descendez au bloc **Extension Chrome**, puis cliquez **Télécharger
    l'extension (.zip)**.
 2. Décompressez le fichier : un dossier « mybrief-extension » apparaît. **Gardez-le** : Chrome lit
    l'extension dedans, le supprimer la désinstalle.
 3. Ouvrez l'adresse `chrome://extensions`, puis activez **Mode développeur**, en haut à droite.
-4. Cliquez **Charger l'extension non empaquetée** et choisissez le dossier décompressé.
+4. Cliquez **Charger l'extension non empaquetée** et choisissez le dossier « mybrief-extension » :
+   celui qui contient le fichier `manifest.json`. Si Chrome répond « Fichier manifeste absent ou
+   illisible », le dossier choisi ne le contient pas : ouvrez-le, et choisissez le dossier où se
+   trouve `manifest.json`.
 5. Épinglez l'icône : la pièce de puzzle à droite de la barre d'adresse, puis la punaise à côté de
    myBrief.
 
@@ -60,9 +63,27 @@ L'extension doit savoir où est votre myBrief. Elle le lit dans l'onglet ouvert 
 3. Cliquez **Utiliser ce site comme mon MyBrief**, puis acceptez la demande d'accès de Chrome : c'est
    ce qui permet à l'extension de retrouver votre onglet au lieu d'en ouvrir un second.
 
-Dans **Ma configuration → Extension Chrome**, la ligne d'état passe au vert : « Extension installée et
+Dans **Réglages → Outils**, bloc **Extension Chrome**, la ligne d'état passe au vert : « Extension installée et
 liée à ce site ». Ce que l'extension sait faire ensuite :
 [Démarrer une réunion depuis l'extension Chrome](enregistrement/demarrer-depuis-l-extension-chrome.md).
+
+Sur un autre ordinateur où Chrome est connecté au même compte, l'extension connaît déjà votre
+myBrief, mais pas encore l'accès au site : son menu affiche un bouton **Autoriser** suivi de
+l'adresse de votre myBrief. Cliquez-le et acceptez la demande de Chrome.
+
+### Mettre l'extension à jour
+
+Chargée depuis un dossier, l'extension ne se met pas à jour seule. Quand une nouvelle version existe,
+la ligne d'état de **Réglages → Outils**, bloc **Extension Chrome**, l'annonce : « Une nouvelle version
+de l'extension est disponible ».
+
+1. Cliquez **Télécharger la nouvelle version (.zip)**.
+2. Décompressez-la **dans le dossier « mybrief-extension » déjà installé**, en remplaçant ses
+   fichiers. Son emplacement figure sur la carte myBrief de `chrome://extensions`.
+3. Sur cette carte, cliquez la flèche circulaire ↻.
+
+Décompressée dans un autre dossier, la nouvelle version deviendrait une seconde extension, à lier de
+nouveau.
 
 ## Résultat
 

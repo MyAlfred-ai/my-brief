@@ -363,7 +363,7 @@ describe('AfterSummaryDialog — refermer', () => {
     expect(actionsApi.saveActionSettings).toHaveBeenCalledWith({ afterSummary: { offer: false } });
     await waitFor(() =>
       expect(get(toasts).map((t) => t.message)).toContain(
-        'Cette fenêtre ne s’ouvrira plus. Réactivez-la dans Ma configuration, rubrique Actions.',
+        'Cette fenêtre ne s’ouvrira plus. Réactivez-la dans Réglages → Après la réunion.',
       ),
     );
   });

@@ -28,7 +28,8 @@
 # du `.env` en place : en tirer de nouveaux rendrait la base injoignable et ses
 # secrets chiffrés illisibles.
 set -euo pipefail
-cd "$(dirname "$0")"
+SCRIPT="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+cd "$(dirname "$SCRIPT")"
 
 # ── Affichage ───────────────────────────────────────────────────────────────
 if [ -t 1 ]; then
@@ -474,7 +475,7 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
     status)   do_status ;;
     backup)   do_backup ;;
     logs)     shift; do_logs "${1:-}" ;;
-    -h|--help|help) sed -n '3,22p' "$0" ;;
+    -h|--help|help) sed -n '3,22p' "$SCRIPT" ;;
     *) die "commande inconnue : $1 (voir : bash install.sh --help)" ;;
   esac
 fi

@@ -56,7 +56,7 @@ que le micro écoute.
 ## Le bouton retour, dans l'application Android
 
 Le bouton — ou le geste — retour ferme ce qui est ouvert, une chose à la fois : un menu, une fenêtre,
-le menu **Partager**, les notes ou les actions, **Ma configuration**, le menu de l'historique. Une
+le menu **Partager**, les notes ou les actions, **Réglages**, le menu de l'historique. Une
 fenêtre de suppression se referme comme par **Annuler** : rien n'est supprimé.
 
 Quand plus rien n'est ouvert, l'application passe en arrière-plan, comme n'importe quelle application
@@ -70,7 +70,23 @@ Deux questions attendent votre réponse, et le retour n'y répond pas à votre p
 | Vous utilisez… | Ce qui se passe |
 |---|---|
 | **L'application Android** | L'enregistrement continue écran verrouillé ou application en arrière-plan. Une notification « Enregistrement en cours… » le signale : autorisez les notifications quand Android le demande. |
-| **Le navigateur**, sur iPhone comme sur Android | Rien ne garantit la suite de l'enregistrement si l'écran se verrouille ou si vous changez d'application. Gardez myBrief au premier plan, écran allumé. Le message « App en arrière-plan - enregistrement peut être interrompu » vous alerte. |
+| **Le navigateur**, sur iPhone comme sur Android | Rien ne garantit que le micro continue si l'écran se verrouille ou si vous changez d'application : gardez myBrief au premier plan, écran allumé. Si le téléphone a suspendu l'enregistrement, myBrief le relance à votre retour et marque le trou dans la transcription — voir ci-dessous. |
+
+## Un appel, un changement d'application
+
+Un appel reçu prend le micro ; passer sur une autre application peut suspendre myBrief. La réunion
+n'est pas arrêtée :
+
+- à votre retour, le micro et la transcription repartent seuls : « ✅ Enregistrement repris après …
+  d'interruption » ;
+- un repère « Enregistrement interrompu pendant … » marque le trou dans la transcription. Ce qui s'est
+  dit pendant ce temps n'a pas été capté ;
+- si le message « ⚠️ Enregistrement interrompu (appel, autre application) — touchez l'écran pour le
+  reprendre » reste affiché, touchez l'écran, n'importe où.
+
+Si le téléphone a fermé myBrief entre-temps, la fenêtre **Réunion interrompue** vous attend à la
+réouverture : **Reprendre** continue la même réunion, chronomètre compris — voir
+[Reprendre une réunion interrompue](../pause-et-fin/reprendre-une-reunion-interrompue.md).
 
 ## Sans réseau
 
@@ -78,8 +94,9 @@ Deux questions attendent votre réponse, et le retour n'y répond pas à votre p
   est enregistré, la transcription rattrapera au retour du réseau » s'affiche, et un repère « Passage
   hors ligne » marque chaque coupure dans la transcription. Au retour du réseau, le texte manquant
   prend sa place. **Gardez l'application ouverte** tant qu'un message signale des passages en attente.
-- **Dans le navigateur**, pas d'enregistrement sans réseau : une coupure en cours de réunion laisse un
-  trou dans la transcription.
+- **Dans le navigateur**, pas de démarrage sans réseau. Une coupure **en cours de réunion**, elle, est
+  rattrapée : le repère « Passage hors ligne » marque l'endroit, et le texte prend sa place au retour
+  du réseau. **Gardez la page ouverte** jusque-là : fermée avant, elle emporte l'audio de la coupure.
 
 Une réunion démarrée hors ligne n'a pas de bouton **Enregistrer** : générez son résumé une fois le
 réseau revenu.
@@ -101,5 +118,7 @@ réseau revenu.
 | « Tournez votre appareil » | Remettez le téléphone en portrait. |
 | « Micro refusé : autorisez-le pour MyBrief dans les réglages du navigateur ou du téléphone, puis relancez l'enregistrement. » | Autorisez le micro — réglages du navigateur, ou du téléphone pour l'application —, puis touchez de nouveau **Démarrer**. |
 | L'enregistrement s'est arrêté écran verrouillé | Dans le navigateur, gardez l'écran allumé ; ou utilisez l'application Android si elle vous est proposée. |
+| « Enregistrement interrompu (appel, autre application) — touchez l'écran pour le reprendre » | Touchez l'écran. Si le micro ne revient pas, **Pause** puis **Reprendre**. |
+| Un repère « Enregistrement interrompu pendant … » dans la transcription | Le micro a été coupé ce temps-là — appel, application en arrière-plan, fermeture puis reprise. Rien n'a été capté : complétez par vos notes. |
 | « Connexion impossible » au lancement de l'application | Le téléphone n'a pas de réseau : **Réessayer** une fois connecté. |
-| Des repères « Passage hors ligne » restent dans la transcription | Le texte n'a pas pu être rattrapé : ces passages sont perdus pour la transcription. |
+| Des repères « Passage hors ligne » restent dans la transcription | Le texte n'a pas pu être rattrapé : ces passages sont perdus pour la transcription. Dans le navigateur, c'est le cas quand la page a été fermée avant le retour du réseau. |

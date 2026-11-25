@@ -1,6 +1,6 @@
 <script>
   /**
-   * Onglet « Actions » de « Ma configuration ».
+   * Onglet « Actions » de « Réglages ».
    *
    * L'utilisateur y règle ce qui lui appartient : à qui partent ses comptes
    * rendus, dans quel dossier ils se déposent, sous quel objet et sous quel nom.

@@ -34,6 +34,15 @@
   import IconPause from '~icons/solar/pause-bold';
   import IconPlay from '~icons/solar/play-bold';
   import IconStop from '~icons/solar/stop-bold';
+  import AiOrb from './aiHelp/AiOrb.svelte';
+  import { fill } from '../utils/i18nFormat.js';
+  import {
+    aiHelp,
+    aiHelpOrb,
+    aiHelpDeskOpen,
+    aiHelpOpenItems,
+    toggleAiHelpDesk,
+  } from '../stores/aiHelp.js';
 
   export let isPaused = false;
   export let analyser = null;
@@ -46,6 +55,17 @@
   export let onPause = () => {};
   export let onResume = () => {};
   export let onEnd = () => {};
+
+  // Aide IA (stores/aiHelp.js) : une cinquième commande, pour les comptes qui y
+  // ont droit. Elle ouvre le pupitre — sur téléphone, c'est là qu'on l'allume,
+  // qu'on choisit ses domaines et qu'on lui écrit.
+  $: aiCount = $aiHelp.enabled ? $aiHelpOpenItems.length : 0;
+  // Sous l'orbe, le MOT D'APPEL à la place de « Aide IA », tant qu'il déclenche
+  // quelque chose (allumée — questions-réponses coupées, il fait encore les
+  // gestes) : cinq commandes de front, il n'y a pas la place d'une ligne de
+  // plus — et c'est ce mot qu'on cherche au moment de lui parler. Le nom
+  // « Aide IA » reste celui que lit un lecteur d'écran, suivi du mode d'emploi.
+  $: aiCall = $aiHelp.enabled && $aiHelp.wakeWord ? $aiHelp.wakeWord : '';
 </script>
 
 <div class="mmb" role="toolbar" aria-label={$uiText.meetingBar.title}>
@@ -58,7 +78,7 @@
     {/if}
   </div>
 
-  <div class="mmb-row">
+  <div class="mmb-row" class:mmb-row-ai={$aiHelp.available}>
     <button type="button" class="mmb-btn" on:click={onNotes}>
       <span class="mmb-icon">
         <IconNotes width="24" height="24" aria-hidden="true" />
@@ -78,6 +98,29 @@
       </span>
       <span class="mmb-label">{$uiText.meetingBar.actions}</span>
     </button>
+
+    {#if $aiHelp.available}
+      <button
+        type="button"
+        class="mmb-btn"
+        class:mmb-btn-ai={$aiHelp.enabled}
+        aria-expanded={$aiHelpDeskOpen}
+        aria-label={aiCall
+          ? `${$uiText.aiHelp.name}. ${fill($uiText.aiHelp.wakeHint, { name: aiCall })}`
+          : undefined}
+        on:click={toggleAiHelpDesk}
+      >
+        <span class="mmb-icon">
+          <AiOrb state={$aiHelpOrb} size={28} />
+          {#if aiCount > 0}
+            <span class="mmb-count mmb-count-ai">{aiCount}</span>
+          {/if}
+        </span>
+        <span class="mmb-label mmb-label-wake">
+          {aiCall ? fill($uiText.aiHelp.wakeLabel, { name: aiCall }) : $uiText.aiHelp.name}
+        </span>
+      </button>
+    {/if}
 
     {#if isPaused}
       <button type="button" class="mmb-btn mmb-btn-resume" on:click={onResume}>
@@ -168,6 +211,23 @@
     gap: 4px;
   }
 
+  /* Cinq commandes quand l'Aide IA est proposée — APRÈS la règle de base. */
+  .mmb-row-ai {
+    grid-template-columns: repeat(5, 1fr);
+  }
+  /* Deux classes : ces règles précèdent .mmb-btn et .mmb-count dans la feuille,
+     et à spécificité égale c'est la dernière qui gagnerait. */
+  .mmb-btn.mmb-btn-ai {
+    background: var(--ai-soft);
+    color: var(--ai-ink);
+  }
+  .mmb-count.mmb-count-ai {
+    /* Décalé : le compteur ne doit pas masquer l'orbe, qui dit l'état de l'IA. */
+    top: -5px;
+    right: -13px;
+    background: var(--ai);
+  }
+
   .mmb-btn {
     min-height: 58px;
     padding: 4px 2px;
@@ -197,6 +257,16 @@
     font-weight: 500;
     line-height: 1;
     white-space: nowrap;
+  }
+  /* Le mot d'appel est réglé par l'administrateur : long, il s'ellipse plutôt
+     que de pousser ses voisins. */
+  .mmb-label-wake {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    /* line-height 1 rogne les guillemets et les jambages sous overflow. */
+    line-height: 1.25;
+    margin: -1px 0;
   }
 
   /* Icône simple (notes, actions), avec sa pastille ou son compteur. */

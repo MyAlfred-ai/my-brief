@@ -9,6 +9,8 @@ Un **résumé** est le compte rendu que l'IA rédige à partir de la transcripti
 forme décidée par un [template](../templates/index.md). Il s'affiche dans l'onglet **Résumé** de la
 réunion : vous pouvez le retoucher, en générer d'autres versions et le partager.
 
+![La carte de génération, ouverte par Nouveau résumé sur la réunion Comité de pilotage : les six templates fournis, Standard coché avec sa pastille 1 p. ; dessous, le Pagimètre réglé sur 1 page, environ 113 mots, avec l'avertissement « Réunion courte » ; puis Ajouter au compte rendu, la tuile Actions détectées allumée avec ses 3 actions et la tuile Infographie éteinte ; en bas, Annuler et Générer.](../../images/nouveau-resume.png)
+
 ## À quoi ça sert
 
 À obtenir en quelques instants un compte rendu prêt à diffuser, au lieu de relire une heure de
@@ -70,7 +72,7 @@ longueur de la réunion ; au-delà de cinq minutes, la génération est abandonn
 | Résumer une réunion enregistrée sans résumé, ou en tirer un autre format | [Résumer une réunion plus tard](resumer-une-reunion-plus-tard.md) |
 | Passer d'une version à l'autre, en supprimer | [Gérer les versions d'un résumé](gerer-les-versions.md) |
 | Corriger ou compléter le texte produit | [Éditer un résumé](editer-un-resume.md) |
-| Illustrer la réunion d'une image | [Créer une infographie](creer-une-infographie.md) |
+| Résumer la réunion en une page visuelle | [Créer une infographie](creer-une-infographie.md) |
 
 Pour envoyer, déposer ou télécharger le compte rendu : [Les actions après réunion](../actions/index.md).
 
@@ -79,7 +81,7 @@ Pour envoyer, déposer ou télécharger le compte rendu : [Les actions après r�
 - À chaque génération : le template, la longueur avec le Pagimètre, les instructions supplémentaires,
   l'infographie.
 - Avant de générer : la transcription, vos notes et vos actions — ce que l'IA lira.
-- Une fois pour toutes : vos templates et votre contexte, dans **Ma configuration**.
+- Une fois pour toutes : vos templates et votre contexte, dans **Réglages**.
 
 Votre administrateur choisit le modèle d'IA qui rédige — c'est lui qui fait la qualité des comptes
 rendus, et leur longueur quand le template n'a pas de Pagimètre —, le vocabulaire de l'organisation joint à chaque résumé, et si

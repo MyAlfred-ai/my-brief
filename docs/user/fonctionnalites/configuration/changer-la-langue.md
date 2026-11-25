@@ -11,11 +11,12 @@ l'**infographie**.
 
 ## Étapes
 
-Cliquez votre **nom**, en bas de la colonne de gauche, puis, sur la ligne **Langue** du menu, **FR**
-ou **EN**. L'interface bascule aussitôt, menu ouvert.
+1. Ouvrez **Réglages → Mon profil** : le bouton **Réglages**, en bas de la colonne de gauche — sur
+   téléphone, votre **avatar**, en haut à droite, puis **Réglages**. **Mon profil** est la page qui
+   s'affiche.
+2. Dans la carte **Langue**, cliquez **Français** ou **English**.
 
-Sur téléphone, touchez votre **avatar**, en haut à droite : la même ligne **Langue** est dans son menu,
-qui se referme une fois la langue choisie.
+L'interface bascule aussitôt ; la page reste ouverte.
 
 ## Ce que la langue change
 
@@ -37,4 +38,6 @@ qui se referme une fois la langue choisie.
   la transcription reste en français, le compte rendu est rédigé en anglais.
 - **La langue est propre au navigateur** : un autre appareil garde la sienne. Par défaut, myBrief est en
   français.
+- **Il n'y a pas d'autre réglage de langue** : ce choix est aussi la langue de la transcription, des
+  actions détectées, du compte rendu et de l'infographie.
 - Un audio importé est reconnu dans sa langue, quelle que soit celle de l'interface.

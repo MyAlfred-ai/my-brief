@@ -29,6 +29,7 @@ import { createRealtimeSupervisor } from './supervisor.js';
 import { createSilenceWatchdog } from './watchdog.js';
 import { classifyRealtimeError, realtimeErrorToastKey } from './errors.js';
 import { createClientEventReporter, CLIENT_EVENT_TYPES } from './telemetry.js';
+import { REALTIME_PAUSE_REFRESH_MS } from '../../config/constants.js';
 
 /**
  * Health check du canal système, plus lent que celui du micro (10 s). Ce flux
@@ -48,8 +49,10 @@ const SYSTEM_HEALTH_CHECK_MS = 30_000;
  *   deps.onTempKey - une clé éphémère vient d'arriver. `primary` distingue le
  *   canal micro du canal système : App.svelte ne retient comme `clientSecret`
  *   (réutilisé comme `sessionId` à la génération du résumé) que celle du micro.
- * @param {(lang: string) => Promise<{ok: boolean, status: number, data: object}>}
- *   deps.fetchTempKey - GET /tempkey (contrat apiClient)
+ * @param {(query: URLSearchParams) => Promise<{ok: boolean, status: number, data: object}>}
+ *   deps.fetchTempKey - GET /tempkey?{query} (contrat apiClient) : `lang`, et
+ *   `meetingId` de la réunion en cours, qui exempte la rotation du quota de
+ *   minutes (services/api/routes/ai.js)
  * @param {() => boolean} deps.isRecording
  * @param {() => boolean} deps.isPaused
  * @param {(message: object, source: 'local'|'remote') => void} deps.onMessage
@@ -61,10 +64,13 @@ const SYSTEM_HEALTH_CHECK_MS = 30_000;
  * @param {() => void} [deps.onSystemReady] - le canal système vient de
  *   (re)basculer : créer le ScriptProcessorNode s'il n'existe pas encore
  * @param {(key: string, level: string, ms: number) => void} deps.showToast
- * @param {() => string} [deps.getMeetingId] - pour la télémétrie
+ * @param {() => string} [deps.getMeetingId] - pour la télémétrie, et nommée
+ *   à /tempkey (rotation d’une réunion entamée)
  * @param {number} deps.rotationMs - RECONNECT_INTERVAL_MS
  * @param {number} deps.staleMs - REALTIME_SILENT_STREAM_MS
  * @param {number} deps.silenceCheckMs - REALTIME_SILENCE_CHECK_MS
+ * @param {number} [deps.pauseRefreshMs] - REALTIME_PAUSE_REFRESH_MS : pause au-delà
+ *   de laquelle la reprise renouvelle les canaux
  * @param {object} [deps.reporter] - télémétrie injectable (tests)
  * @param {() => number} [deps.now]
  * @param {typeof WebSocket} [deps.WebSocketImpl]
@@ -87,6 +93,7 @@ export function createRealtimeStack({
   rotationMs,
   staleMs,
   silenceCheckMs,
+  pauseRefreshMs = REALTIME_PAUSE_REFRESH_MS,
   reporter,
   now = Date.now,
   WebSocketImpl,
@@ -95,6 +102,8 @@ export function createRealtimeStack({
   // Instant de la dernière coupure NON planifiée, pour mesurer sa durée à la
   // reprise : c'est la métrique qui manquait le plus au diagnostic.
   let droppedAt = null;
+  // Début de la pause en cours (notePaused) ; null hors pause.
+  let pausedAt = null;
   // Le flux système a-t-il déjà été rattaché ? Tant que non, son superviseur
   // reste inerte : sans ce garde, son health check verrait un socket « mort »
   // (jamais ouvert) et demanderait un /tempkey toutes les 30 s sur toutes les
@@ -146,10 +155,14 @@ export function createRealtimeStack({
   /**
    * Clé éphémère + rotation d'un canal. Le modèle est relu à chaque fois :
    * /tempkey vient de créer le jeton avec lui et le `session.update` doit
-   * reprendre le même (cf. channel.js).
+   * reprendre le même (cf. channel.js). La réunion est nommée : le serveur ne
+   * refuse pas pour le quota la rotation d'une réunion entamée.
    */
   async function connectChannel(channel, primary) {
-    const res = await fetchTempKey(getLang());
+    const meetingId = getMeetingId();
+    const res = await fetchTempKey(
+      new URLSearchParams({ lang: getLang(), ...(meetingId ? { meetingId } : {}) }),
+    );
     // Session OIDC morte/expirée : ne JAMAIS forceReauth ici — on est en plein
     // enregistrement (reload = réunion perdue). Le throw part vers le retry
     // silencieux du superviseur ; la session peut se rétablir côté serveur.
@@ -310,9 +323,55 @@ export function createRealtimeStack({
       sysSupervisor.start();
     },
 
-    /** Reprise après pause : le compte du chien de garde repart de zéro. */
+    /**
+     * La capture revient d'une interruption longue (page gelée en arrière-plan,
+     * appel téléphonique) : ne pas attendre le chien de garde. Socket fermé →
+     * reconnexion ; socket encore « ouvert » → rotation silencieuse, car sous
+     * une page gelée il est le plus souvent mort sans que `onclose` soit
+     * encore passé, et le chien de garde mettrait 40 s d'audio à le dire.
+     * Coût : une clé éphémère. Single-flight comme tout le reste.
+     */
+    refresh() {
+      if (!isRecording()) return;
+      micWatchdog.reset();
+      micSupervisor.reconnect(!micChannel.isDeadOrDying());
+      if (systemAttached) sysSupervisor.reconnect(!sysChannel.isDeadOrDying());
+    },
+
+    /**
+     * Le navigateur annonce la perte ou le retour du réseau (`offline` /
+     * `online`). Perte : le socket est abandonné tout de suite (channel.js,
+     * `abandon`) — la coupure commence à l'instant vrai, pas 40 s plus tard.
+     * Retour : la reconnexion part sans attendre le retry de 5 s.
+     * @param {boolean} online
+     */
+    noteNetwork(online) {
+      if (!isRecording()) return;
+      if (!online) {
+        micChannel.abandon();
+        if (systemAttached) sysChannel.abandon();
+        return;
+      }
+      if (micChannel.isDeadOrDying()) micSupervisor.reconnect(false);
+      if (systemAttached && sysChannel.isDeadOrDying()) sysSupervisor.reconnect(false);
+    },
+
+    /** Mise en pause : l'instant est retenu, la reprise jugera de l'état des sockets. */
+    notePaused() {
+      if (pausedAt === null) pausedAt = now();
+    },
+
+    /**
+     * Reprise après pause. Le silence de la pause ne compte pas : le chien de
+     * garde repart de zéro. Une pause longue renouvelle en plus les canaux
+     * (cf. REALTIME_PAUSE_REFRESH_MS) : rien n'y est passé pendant des minutes,
+     * et un socket resté « ouvert » peut être mort sans le savoir.
+     */
     noteResumed() {
       micWatchdog.reset();
+      const pausedMs = pausedAt === null ? 0 : now() - pausedAt;
+      pausedAt = null;
+      if (pausedMs >= pauseRefreshMs) this.refresh();
     },
 
     /**
@@ -338,6 +397,7 @@ export function createRealtimeStack({
       sysSupervisor.stop();
       systemAttached = false;
       droppedAt = null;
+      pausedAt = null;
     },
 
     /** Ferme les deux sockets sans émettre onUnexpectedClose. */

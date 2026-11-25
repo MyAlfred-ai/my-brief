@@ -69,9 +69,10 @@ describe('resolveSummaryModel — provenance', () => {
   });
 
   it("une valeur d'ENVIRONNEMENT hors liste est CONSERVÉE — c'est la porte de sortie", () => {
-    // `gpt-5-mini` est hors liste depuis qu'il a été mesuré peu fiable sur la
-    // recopie du scaffold : un déploiement peut malgré tout l'imposer.
-    expect(resolveSummaryModel('', 'gpt-5-mini')).toBe('gpt-5-mini');
+    // `gpt-5.6-luna` n'est pas proposé à l'écran : un déploiement peut malgré
+    // tout l'imposer. (Un modèle RETIRÉ par OpenAI, lui, est vidé plus tôt,
+    // par loadConfig — cf. retiredModels.test.js.)
+    expect(resolveSummaryModel('', 'gpt-5.6-luna')).toBe('gpt-5.6-luna');
     // Volontairement différent de la transcription, qui l'ignore : là-bas
     // l'amont refuse tout identifiant inconnu, ici l'administrateur système
     // doit pouvoir viser un modèle que cette version ne connaît pas encore.

@@ -13,7 +13,7 @@
  *     sans rechargement.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen } from '@testing-library/svelte';
+import { render, screen, waitFor } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { uiTextData } from '../config/uiText.js';
 
@@ -27,11 +27,23 @@ vi.mock('../services/apiClient.js', () => ({
   get: (...args) => apiGet(...args),
   post: (...args) => apiPost(...args),
 }));
+// Le rendu PNG (html2canvas) n'a pas de sens sous jsdom : on vérifie qu'il est
+// DEMANDÉ avec le contenu affiché, et que le fichier part.
+const renderPng = vi.fn(async () => new Blob(['png'], { type: 'image/png' }));
+const saveFile = vi.fn(async () => {});
+vi.mock('../lib/infographic/exportPng.js', () => ({
+  renderInfographicPng: (...args) => renderPng(...args),
+}));
+vi.mock('../platform/download.js', () => ({
+  saveFile: (...args) => saveFile(...args),
+  interceptAnchorDownload: () => {},
+}));
 
 const { default: ResumeOverlays } = await import('./ResumeOverlays.svelte');
 const { auth } = await import('../stores/auth.js');
 const { historyItems } = await import('../stores/history.js');
 const { resetInfographic } = await import('../stores/infographic.js');
+const { resetCompanyLogo } = await import('../stores/companyLogo.js');
 
 const T = uiTextData.fr.infographic;
 
@@ -130,6 +142,118 @@ describe('ResumeOverlays — invite « Créer une infographie »', () => {
     render(ResumeOverlays, { meetingId: 'm-1' });
     expect(await screen.findByRole('button', { name: T.openAria })).toBeTruthy();
     expect(screen.queryByRole('button', { name: T.createInvite })).toBeNull();
+  });
+});
+
+describe('ResumeOverlays — infographie en gabarit', () => {
+  const LAYOUT = {
+    version: 1,
+    gabarit: 'bilan',
+    langue: 'fr',
+    titre: 'Sprint 14 : objectifs tenus',
+    sousTitre: '',
+    heros: { valeur: '8/10', libelle: 'objectifs atteints', icone: 'cible' },
+    chiffres: [],
+    repartition: null,
+    sujets: [],
+    decisions: [],
+    vigilances: [],
+    jalons: [],
+    options: [],
+    idees: [],
+    bilan: { reussites: ['Démo réussie'], difficultes: ['Revues lentes'], essais: [] },
+    participants: [],
+    prochaineEtape: '',
+    actions: [{ texte: 'Créer le créneau de revue', responsable: 'Ben Nguyen', echeance: '' }],
+    actionsTotal: 1,
+    date: null,
+    dureeSec: null,
+  };
+  const READY_LAYOUT = {
+    ok: true,
+    status: 200,
+    data: { status: 'ready', layout: LAYOUT, updatedAt: 't1' },
+  };
+
+  const COMPANY = 'data:image/png;base64,Q09NUEFOWQ==';
+  /** GET /infographic → le contenu ; GET /branding/company-logo → `company`. */
+  const serve = (company = '') =>
+    apiGet.mockImplementation(async (path) =>
+      path.startsWith('/branding/company-logo')
+        ? { ok: true, status: 200, data: { companyLogo: company } }
+        : READY_LAYOUT,
+    );
+
+  beforeEach(() => {
+    resetCompanyLogo();
+    serve();
+    historyItems.set([meetingWithSummary({ infographic: { status: 'ready', updatedAt: 't1' } })]);
+  });
+
+  it("deux logos : celui de l'entreprise en tête, celui de l'application en pied avec « myBrief »", async () => {
+    serve(COMPANY);
+    render(ResumeOverlays, { meetingId: 'm-1' });
+    await userEvent.click(await screen.findByRole('button', { name: T.openAria }));
+    const dialog = screen.getByRole('dialog', { name: T.title });
+    await waitFor(() =>
+      expect(dialog.querySelector('.ig-logo-badge img')?.getAttribute('src')).toBe(COMPANY),
+    );
+    const made = dialog.querySelector('.ig-made');
+    expect(made.textContent).toContain(T.sheet.madeWith);
+    expect(made.querySelector('img').getAttribute('src')).not.toBe(COMPANY);
+  });
+
+  it("sans logo d'entreprise, celui de l'application prend sa place en tête", async () => {
+    render(ResumeOverlays, { meetingId: 'm-1' });
+    await userEvent.click(await screen.findByRole('button', { name: T.openAria }));
+    const dialog = screen.getByRole('dialog', { name: T.title });
+    await waitFor(() => expect(apiGet).toHaveBeenCalledWith('/branding/company-logo'));
+    const head = dialog.querySelector('.ig-logo-badge img').getAttribute('src');
+    expect(head).toBeTruthy();
+    expect(head).toBe(dialog.querySelector('.ig-made img').getAttribute('src'));
+  });
+
+  it('la miniature est la feuille elle-même — muette pour les lecteurs d’écran', async () => {
+    const { container } = render(ResumeOverlays, { meetingId: 'm-1' });
+    expect(await screen.findByRole('button', { name: T.openAria })).toBeTruthy();
+    const mini = container.querySelector('.igc-mini .igx');
+    expect(mini).toBeTruthy();
+    expect(mini.getAttribute('aria-hidden')).toBe('true');
+    expect(mini.textContent).toContain('Sprint 14 : objectifs tenus');
+    // Pas d'image d'avant les gabarits.
+    expect(container.querySelector('.igc-thumb img[alt="' + T.thumbAlt + '"]')).toBeNull();
+  });
+
+  it('en grand : du vrai texte, avec les libellés du gabarit', async () => {
+    render(ResumeOverlays, { meetingId: 'm-1' });
+    await userEvent.click(await screen.findByRole('button', { name: T.openAria }));
+    const dialog = screen.getByRole('dialog', { name: T.title });
+    expect(dialog.textContent).toContain('Sprint 14 : objectifs tenus');
+    expect(dialog.textContent).toContain(T.sheet.worked);
+    expect(dialog.textContent).toContain('Créer le créneau de revue');
+  });
+
+  it('télécharger rend l’image au clic, avec le contenu affiché, puis l’enregistre', async () => {
+    render(ResumeOverlays, { meetingId: 'm-1' });
+    await screen.findByRole('button', { name: T.openAria });
+    // Un bouton, pas un lien : l'image n'existe qu'au moment du clic.
+    expect(screen.queryByRole('link', { name: T.download })).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: T.download }));
+    expect(renderPng).toHaveBeenCalledTimes(1);
+    expect(renderPng.mock.calls[0][0].layout).toEqual(LAYOUT);
+    expect(saveFile).toHaveBeenCalledWith(
+      expect.objectContaining({ filename: 'mybrief-infographie.png', mimeType: 'image/png' }),
+    );
+  });
+
+  it('image impossible à préparer : un message, pas de fichier', async () => {
+    renderPng.mockRejectedValueOnce(new Error('canvas'));
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    render(ResumeOverlays, { meetingId: 'm-1' });
+    await screen.findByRole('button', { name: T.openAria });
+    await userEvent.click(screen.getByRole('button', { name: T.download }));
+    expect(saveFile).not.toHaveBeenCalled();
+    error.mockRestore();
   });
 });
 

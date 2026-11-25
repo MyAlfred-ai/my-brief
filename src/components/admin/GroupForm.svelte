@@ -4,8 +4,9 @@
    * couleur, quota de minutes et droits. Même machine à états `saveState` que
    * UserForm.svelte.
    *
-   * Les droits sont des interrupteurs, un par droit : ils s'additionnent d'un
-   * groupe à l'autre (cf. services/api/lib/repositories/groups.js, `rightsOf`).
+   * Les droits sont des interrupteurs, un par droit : ce sont ceux de chaque
+   * membre, un compte n'ayant qu'un groupe (cf.
+   * services/api/lib/repositories/groups.js, `rightsOf`).
    * Un groupe neuf naît sans aucun droit : un droit se donne explicitement.
    *
    * La palette proposée est celle que l'API a renvoyée (`GET /admin/groups`),
@@ -17,6 +18,8 @@
   import { createEventDispatcher } from 'svelte';
   import IconBack from '~icons/solar/arrow-left-linear';
   import IconGallery from '~icons/solar/gallery-linear';
+  import IconAiHelp from '../icons/AiHelpIcon.svelte';
+  import IconBrain from '../icons/BrainIcon.svelte';
   import GroupChip from '../ui/GroupChip.svelte';
   import ToggleSwitch from '../ui/ToggleSwitch.svelte';
   import { auth } from '../../stores/auth.js';
@@ -42,6 +45,11 @@
     ? group.meetingMinutesPerMonth
     : 120;
   let infographicAllowed = group?.infographicAllowed === true;
+  // Aide IA d'une réunion, et la laisser lire myBrain : le second droit ne vaut
+  // rien sans le premier — éteindre l'un éteint l'autre.
+  let aiHelpAllowed = group?.aiHelpAllowed === true;
+  let aiHelpMyBrainAllowed = group?.aiHelpMyBrainAllowed === true;
+  $: if (!aiHelpAllowed) aiHelpMyBrainAllowed = false;
   let saveState = 'idle'; // 'idle' | 'saving' | 'error'
   let errorMessage = '';
 
@@ -83,6 +91,8 @@
       color,
       meetingMinutesPerMonth: minutes,
       infographicAllowed,
+      aiHelpAllowed,
+      aiHelpMyBrainAllowed,
     };
     const res = isEdit
       ? await updateGroup({ id: group.id, ...payload })
@@ -189,7 +199,7 @@
           <p class="gf-hint">{texts.quotaHint}</p>
         </fieldset>
 
-        <!-- Droits : un interrupteur par droit, cumulatifs d'un groupe à l'autre. -->
+        <!-- Droits : un interrupteur par droit, ceux de chaque membre du groupe. -->
         <fieldset class="gf-rights">
           <legend class="gf-label">{texts.rightsLabel}</legend>
           <div class="gf-right" class:gf-right-on={infographicAllowed}>
@@ -209,11 +219,39 @@
           {#if infographicAllowed && !infographicOffered}
             <p class="gf-hint gf-hint-warn">{texts.infographicGlobalOff}</p>
           {/if}
+          <div class="gf-right" class:gf-right-on={aiHelpAllowed}>
+            <span class="gf-right-icon" aria-hidden="true">
+              <IconAiHelp width="17" height="17" />
+            </span>
+            <span class="gf-right-text">
+              <span class="gf-right-title">{texts.aiHelpLabel}</span>
+              <span class="gf-right-hint">{texts.aiHelpHint}</span>
+            </span>
+            <ToggleSwitch
+              bind:checked={aiHelpAllowed}
+              label={texts.aiHelpLabel}
+              disabled={saveState === 'saving'}
+            />
+          </div>
+          <div class="gf-right" class:gf-right-on={aiHelpMyBrainAllowed}>
+            <span class="gf-right-icon" aria-hidden="true">
+              <IconBrain width="17" height="17" />
+            </span>
+            <span class="gf-right-text">
+              <span class="gf-right-title">{texts.aiHelpMyBrainLabel}</span>
+              <span class="gf-right-hint">{texts.aiHelpMyBrainHint}</span>
+            </span>
+            <ToggleSwitch
+              bind:checked={aiHelpMyBrainAllowed}
+              label={texts.aiHelpMyBrainLabel}
+              disabled={saveState === 'saving' || !aiHelpAllowed}
+            />
+          </div>
         </fieldset>
       </div>
 
       <!-- Aperçu : la puce telle qu'elle s'affichera sur les comptes et dans
-           le menu de compte de chaque membre. -->
+           la page « Mon profil » de chaque membre. -->
       <aside class="gf-preview" aria-live="polite">
         <span class="gf-preview-label">{texts.previewLabel}</span>
         <div class="gf-preview-card" style="--pv-soft: {groupColorVars(color).soft}">
@@ -229,6 +267,12 @@
               <span class="gf-preview-right">
                 <IconGallery width="12" height="12" aria-hidden="true" />
                 {texts.infographicPill}
+              </span>
+            {/if}
+            {#if aiHelpAllowed}
+              <span class="gf-preview-right">
+                <IconAiHelp width="12" height="12" aria-hidden="true" />
+                {aiHelpMyBrainAllowed ? texts.aiHelpMyBrainPill : texts.aiHelpPill}
               </span>
             {/if}
           </div>

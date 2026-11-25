@@ -13,9 +13,19 @@
  *   texte échoue (police injoignable hors ligne, navigateur trop ancien), pour
  *   qu'un PDF sorte toujours : une pièce jointe manquante ne se voit qu'à
  *   réception.
+ *
+ * ── Charte (depuis le 2026-11-18) ─────────────────────────────────────────
+ * Le texte reste noir sur blanc. La marque (Marque & apparence) habille les
+ * bords : logo de l'ENTREPRISE en tête de la première page s'il est
+ * renseigné, dégradé primaire → secondaire en bande sur chaque page, sous le
+ * titre et devant les intertitres, logo de MyBrief discret au pied. Rien de
+ * cela ne touche à la zone de texte ni à ses tailles : le Pagimètre
+ * (lib/pageMeter.js) rejoue cette mise en page, une retouche des marges ou
+ * des corps l'obligerait à être recalibré.
  */
+import { get } from 'svelte/store';
 import { saveFile } from '../platform/download.js';
-import { drawFooter, drawLayout, PAGE, pdfBytes, usedFontStyles } from '../lib/pdf/draw.js';
+import { drawLayout, drawPageFrame, PAGE, pdfBytes, usedFontStyles } from '../lib/pdf/draw.js';
 import {
   loadPdfFonts,
   PDF_FONT_FAMILY,
@@ -23,6 +33,54 @@ import {
   registerPdfFonts,
 } from '../lib/pdf/fonts.js';
 import { measureLayout, prepareForMeasure } from '../lib/pdf/measure.js';
+import { logoForPdf } from '../lib/pdf/logo.js';
+import { pdfBrandColors } from '../lib/pdf/brand.js';
+import { branding } from '../stores/branding.js';
+import { companyLogo, loadCompanyLogo } from '../stores/companyLogo.js';
+import { tagsById, ensureTagLogo } from '../stores/tags.js';
+import mybriefLogo from '../logo.webp';
+
+/** Logo de l'entreprise en tête : boîte d'affichage, en px CSS de la bande de 210 mm (≈ 50 × 13 mm). */
+const COMPANY_LOGO_BOX = { maxWidth: 220, maxHeight: 56 };
+/**
+ * Logo du TAG de la réunion (client, projet), à côté de celui de l'entreprise :
+ * plus étroit, il l'accompagne sans le concurrencer.
+ */
+const TAG_LOGO_BOX = { maxWidth: 150, maxHeight: 56 };
+/** Logo de MyBrief au pied : dessiné à 6,5 mm par draw.js, préparé à ~400 dpi. */
+const FOOT_LOGO_BOX = { maxWidth: 26, maxHeight: 26 };
+/**
+ * Attente maximale du logo de l'entreprise (lu une fois par session) : hors
+ * ligne, le PDF sort sans lui plutôt que de rester suspendu.
+ */
+const COMPANY_LOGO_WAIT_MS = 3000;
+
+const escapeHtml = (value) =>
+  String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+
+/** Logo de l'entreprise (data URL), ou '' s'il n'est pas renseigné ou pas joignable à temps. */
+async function companyLogoSource() {
+  const timeout = new Promise((resolve) => setTimeout(resolve, COMPANY_LOGO_WAIT_MS));
+  await Promise.race([loadCompanyLogo(), timeout]).catch(() => {});
+  return get(companyLogo).logo;
+}
+
+/**
+ * Logo du tag de la réunion (data URL), ou '' : pas de tag, pas de logo, ou
+ * pas lu à temps — même délai que celui de l'entreprise. Il ne vient pas avec
+ * la liste des tags : lu ici s'il ne l'a pas déjà été (stores/tags.js).
+ * @param {string|null|undefined} tagId
+ */
+async function tagLogoSource(tagId) {
+  const tag = tagId ? get(tagsById).get(tagId) : null;
+  if (!tag?.logoAt) return '';
+  const timeout = new Promise((resolve) => setTimeout(() => resolve(null), COMPANY_LOGO_WAIT_MS));
+  return (await Promise.race([ensureTagLogo(tag), timeout]).catch(() => null)) || '';
+}
 
 /**
  * Génère un PDF à partir d'un résumé HTML
@@ -75,26 +133,59 @@ const PDF_STYLES = `
       }
 
       .pdf-header {
-        margin-bottom: 20px;
-        border-bottom: 2px solid #6366f1;
-        padding-bottom: 15px;
+        margin-bottom: 24px;
       }
 
-      .pdf-header h1 {
-        color: #6366f1;
-        font-size: 20pt;
-        margin-bottom: 10px;
-        font-weight: bold;
+      .pdf-brandline {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 24px;
+        margin-bottom: 22px;
+      }
+
+      .pdf-logos {
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        flex: none;
+      }
+
+      .pdf-company-logo,
+      .pdf-tag-logo {
+        display: block;
+        flex: none;
       }
 
       .pdf-metadata {
+        margin-left: auto;
+        text-align: right;
         color: #64748b;
-        font-size: 10pt;
-        margin-top: 10px;
+        font-size: 9.5pt;
+        line-height: 1.5;
       }
 
       .pdf-metadata p {
-        margin: 3px 0;
+        margin: 0;
+      }
+
+      .pdf-metadata .pdf-date {
+        color: #0f172a;
+        font-weight: bold;
+      }
+
+      .pdf-header h1 {
+        color: #0f172a;
+        font-size: 21pt;
+        line-height: 1.25;
+        font-weight: bold;
+        margin: 0 0 12px;
+      }
+
+      .pdf-accent {
+        width: 72px;
+        height: 5px;
+        background: linear-gradient(90deg, var(--pdf-from), var(--pdf-to));
       }
 
       .pdf-content {
@@ -102,27 +193,38 @@ const PDF_STYLES = `
       }
 
       .pdf-content h1 {
-        color: #6366f1;
+        color: #0f172a;
         font-size: 15pt;
         margin-top: 20px;
         margin-bottom: 10px;
         font-weight: bold;
+        position: relative;
       }
 
       .pdf-content h2 {
-        color: #6366f1;
+        color: #0f172a;
         font-size: 13pt;
         margin-top: 15px;
         margin-bottom: 8px;
         font-weight: bold;
+        position: relative;
       }
 
       .pdf-content h3 {
-        color: #6366f1;
+        color: #1e293b;
         font-size: 12pt;
         margin-top: 12px;
         margin-bottom: 6px;
         font-weight: bold;
+      }
+
+      .pdf-content .pdf-tick {
+        position: absolute;
+        left: -14px;
+        top: 0.3em;
+        width: 4px;
+        height: 1em;
+        background: linear-gradient(180deg, var(--pdf-from), var(--pdf-to));
       }
 
       .pdf-content p {
@@ -217,23 +319,53 @@ export async function buildSummaryPdfBlob(config) {
     setStatus('statuses.summaryGenerating');
 
     // Avant la mise en page : le navigateur doit mesurer avec la police que
-    // le PDF embarquera. Sans elle, repli sur la capture image.
-    const fonts = await loadPdfFonts().catch((error) => {
-      console.warn('⚠️ Police du PDF indisponible, rendu en image:', error);
-      return null;
-    });
+    // le PDF embarquera. Sans elle, repli sur la capture image. Les logos se
+    // préparent en même temps (cf. lib/pdf/logo.js) ; un logo qui ne vient
+    // pas laisse sa place vide, le document sort quand même.
+    const [fonts, headLogo, tagLogo, footLogo] = await Promise.all([
+      loadPdfFonts().catch((error) => {
+        console.warn('⚠️ Police du PDF indisponible, rendu en image:', error);
+        return null;
+      }),
+      companyLogoSource().then((src) => logoForPdf(src, COMPANY_LOGO_BOX)),
+      tagLogoSource(config.tagId).then((src) => logoForPdf(src, TAG_LOGO_BOX)),
+      logoForPdf(mybriefLogo, FOOT_LOGO_BOX),
+    ]);
+    const colors = pdfBrandColors(get(branding));
 
     styleElement = document.createElement('style');
     styleElement.textContent = PDF_STYLES;
 
+    // Le logo de l'entreprise, puis celui du client ou du projet (le tag de
+    // la réunion) : les deux à gauche, la date à droite.
+    const logoImg = (logo, className) =>
+      logo
+        ? `<img class="${className}" data-pdf-logo alt="" src="${logo.data}"
+           style="width: ${logo.width}px; height: ${logo.height}px">`
+        : '';
+    const logoHtml =
+      headLogo || tagLogo
+        ? `<div class="pdf-logos">${logoImg(headLogo, 'pdf-company-logo')}${logoImg(tagLogo, 'pdf-tag-logo')}</div>`
+        : '';
+    // Sans nom d'utilisateur, `userName` vaut déjà le libellé par défaut :
+    // « Intervenant: Intervenant » n'apprend rien.
+    const authorHtml =
+      finalUserName && finalUserName !== uiText.transcription.defaultAuthor
+        ? `<p>${escapeHtml(uiText.transcription.defaultAuthor)}: ${escapeHtml(finalUserName)}</p>`
+        : '';
+
     // Créer le contenu HTML pour le PDF (sans footer, il sera ajouté sur chaque page)
     const htmlContent = `
       <div class="pdf-header">
-        <h1>${pdfTitle}</h1>
-        <div class="pdf-metadata">
-          <p>${dateStr}</p>
-          <p>${uiText.transcription.defaultAuthor}: ${finalUserName}</p>
+        <div class="pdf-brandline">
+          ${logoHtml}
+          <div class="pdf-metadata">
+            <p class="pdf-date">${escapeHtml(dateStr)}</p>
+            ${authorHtml}
+          </div>
         </div>
+        <h1>${escapeHtml(pdfTitle)}</h1>
+        <div class="pdf-accent"></div>
       </div>
 
       <div class="pdf-content">
@@ -254,19 +386,40 @@ export async function buildSummaryPdfBlob(config) {
     tempDiv.style.minHeight = '100px';
     tempDiv.style.backgroundColor = 'white';
     tempDiv.style.pointerEvents = 'none';
+    tempDiv.style.setProperty('--pdf-from', colors.from);
+    tempDiv.style.setProperty('--pdf-to', colors.to);
+
+    // Trait de la marque devant les intertitres principaux : un élément vide
+    // en position absolue, dans la marge — rien ne bouge dans le texte.
+    for (const heading of tempDiv.querySelectorAll('.pdf-content h1, .pdf-content h2')) {
+      const tick = document.createElement('span');
+      tick.className = 'pdf-tick';
+      tick.setAttribute('aria-hidden', 'true');
+      heading.prepend(tick);
+    }
 
     // Ajouter le style et le contenu au document
     document.head.appendChild(styleElement);
     document.body.appendChild(tempDiv);
 
-    // Attendre que le DOM soit bien mis à jour
+    // Attendre que le DOM soit bien mis à jour, et les images décodées : une
+    // image pas encore prête n'est pas relevée (cf. measure.js).
     await new Promise((resolve) => setTimeout(resolve, 300));
+    await Promise.all(
+      Array.from(tempDiv.querySelectorAll('img'), (img) => img.decode?.().catch(() => {})),
+    );
 
     const footerText =
       currentLanguage === 'fr'
         ? 'Document généré par MyBrief - développé par MyAlfred.ai'
         : 'Document generated by MyBrief - developed by MyAlfred.ai';
-    const meta = { title: pdfTitle, author: finalUserName, language: currentLanguage, footerText };
+    const meta = {
+      title: pdfTitle,
+      author: finalUserName,
+      language: currentLanguage,
+      footerText,
+      chrome: { from: colors.fromRgb, to: colors.toRgb, logo: footLogo },
+    };
 
     let pdf = null;
     if (fonts) {
@@ -302,7 +455,9 @@ export async function buildSummaryPdfBlob(config) {
  * marqué `data-pdf-keep` ne se coupe pas d'une page à l'autre (cf. measure.js).
  *
  * @param {{html: string, styles: string, className: string,
- *          meta: {title: string, author: string, language: string, footerText: string}}} input
+ *          meta: {title: string, author: string, language: string, footerText: string,
+ *                 chrome?: import('../lib/pdf/draw.js').PageChrome}}} input
+ *   - sans `chrome`, le pied d'origine (cf. drawPageFrame)
  * @returns {Promise<Blob>}
  */
 export async function htmlToPdfBlob({ html, styles, className, meta }) {
@@ -372,7 +527,11 @@ async function renderTextPdf(container, fonts, meta) {
 
   const pdf = newPdf(jsPDF, meta);
   registerPdfFonts(pdf, fonts, usedFontStyles(layout));
-  const pages = drawLayout(pdf, layout, { footerText: meta.footerText, metrics });
+  const pages = drawLayout(pdf, layout, {
+    footerText: meta.footerText,
+    metrics,
+    chrome: meta.chrome || null,
+  });
   console.log(`📄 PDF texte : ${pages} page(s)`);
   return pdf;
 }
@@ -428,7 +587,7 @@ async function renderImagePdf(tempDiv, meta) {
       imgWidth,
       displayHeight,
     );
-    drawFooter(pdf, i + 1, totalPages, meta.footerText);
+    drawPageFrame(pdf, i + 1, totalPages, meta.footerText, meta.chrome || null);
   }
   console.log(`📄 PDF image : ${totalPages} page(s)`);
   return pdf;

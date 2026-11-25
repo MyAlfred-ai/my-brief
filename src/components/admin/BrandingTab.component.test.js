@@ -1,7 +1,8 @@
 /**
- * Onglet « Configuration » de l'administration : vocabulaire de l'organisation
- * + apparence (logo, phrase, couleur), UN bouton Enregistrer pour deux
- * documents serveur.
+ * Onglet « Configuration » de l'administration : vocabulaire de l'organisation,
+ * corrections automatiques et apparence (logo, phrase, couleurs), en tableau
+ * de bord replié — une tuile par réglage, un seul déplié à la fois — et UN
+ * bouton Enregistrer pour trois documents serveur.
  *
  * Ce qui casserait sans ces tests : un bouton qui enverrait le vocabulaire à
  * chaque enregistrement de couleur (ou l'inverse) — un « vide = retour à la
@@ -9,7 +10,8 @@
  * le store d'assemblage du prompt (l'administrateur est un utilisateur comme
  * un autre, son compte rendu suivant doit porter ce qu'il vient d'écrire, sans
  * rechargement) ; et un échec d'un côté qui s'afficherait « Enregistré » parce
- * que l'autre côté a réussi.
+ * que l'autre côté a réussi. Et, depuis le repli : une saisie perdue en
+ * repliant sa tuile, ou une tuile qui tairait « Modifié ».
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { get } from 'svelte/store';
@@ -48,6 +50,7 @@ vi.mock('../../stores/auth.js', async (importOriginal) => ({
 }));
 
 const { default: BrandingTab } = await import('./BrandingTab.svelte');
+const { companyLogo: companyLogoStore } = await import('../../stores/companyLogo.js');
 
 const t = uiTextData.fr.adminBranding;
 const c = uiTextData.fr.adminOrgContext;
@@ -83,13 +86,95 @@ beforeEach(() => {
   saveOrgContextSettings.mockResolvedValue({ ok: true, data: { settings: org() } });
 });
 
-/** Rendu + attente du chargement initial (onMount asynchrone). */
-async function renderTab() {
+/**
+ * Tuile d'un réglage : un bouton qui déplie (aria-expanded). L'ⓘ du panneau
+ * déplié porte un nom qui commence parfois pareil (« Vocabulaire et contexte… »).
+ */
+const tile = (label) => {
+  const found = screen
+    .getAllByRole('button', { name: new RegExp(`^${label}`) })
+    .filter((button) => button.hasAttribute('aria-expanded'));
+  expect(found).toHaveLength(1);
+  return found[0];
+};
+
+/** Déplie le réglage d'une tuile (sans le replier s'il l'est déjà). */
+async function open(label) {
+  if (tile(label).getAttribute('aria-expanded') !== 'true') await userEvent.click(tile(label));
+}
+
+/** Rendu + attente du chargement initial (onMount asynchrone), puis une tuile dépliée. */
+async function renderTab(label = t.tileContext) {
   render(BrandingTab);
-  await screen.findByLabelText(c.label);
+  await screen.findByRole('button', { name: new RegExp(`^${t.tileContext}`) });
+  if (label) await open(label);
 }
 
 const saveButton = () => screen.getByRole('button', { name: u.save });
+
+describe('BrandingTab — tableau de bord replié', () => {
+  it('s’ouvre replié : six tuiles, aucun champ', async () => {
+    await renderTab(null);
+    for (const label of [
+      t.tileContext,
+      t.tileCorrections,
+      t.tileCompanyLogo,
+      t.tileLogo,
+      t.tileTagline,
+      t.tileColors,
+    ]) {
+      expect(tile(label).getAttribute('aria-expanded')).toBe('false');
+    }
+    expect(screen.queryByLabelText(c.label)).toBeNull();
+    expect(screen.queryByLabelText(t.taglineLabel)).toBeNull();
+    expect(tile(t.tileTagline).textContent).toContain(t.tileTaglineDefault);
+    expect(tile(t.tileColors).textContent).toContain(t.tileColorsDefault);
+  });
+
+  it('un seul réglage déplié ; replier ne perd pas la saisie, la tuile dit « Modifié »', async () => {
+    await renderTab(t.tileTagline);
+    await userEvent.type(screen.getByLabelText(t.taglineLabel), 'Brouillon');
+    expect(tile(t.tileTagline).textContent).toContain('Brouillon');
+
+    await open(t.tileContext);
+    expect(screen.queryByLabelText(t.taglineLabel)).toBeNull();
+    expect(tile(t.tileTagline).getAttribute('aria-expanded')).toBe('false');
+    expect(tile(t.tileTagline).textContent).toContain(t.tileChanged);
+    expect(tile(t.tileContext).textContent).not.toContain(t.tileChanged);
+
+    await open(t.tileTagline);
+    expect(screen.getByLabelText(t.taglineLabel).value).toBe('Brouillon');
+    expect(saveButton().disabled).toBe(false);
+  });
+
+  it('les tuiles disent ce qui est en place : logo, phrase, couleurs, corrections', async () => {
+    fetchBrandingSettings.mockResolvedValue({
+      ok: true,
+      data: {
+        settings: branding({
+          logo: 'data:image/png;base64,AAAA',
+          tagline: 'Assistant de réunion',
+          taglineEn: 'Meeting assistant',
+          primaryColor: '#123abc',
+          updatedBy: 'patron@client.fr',
+        }),
+      },
+    });
+    fetchTranscriptCorrections.mockResolvedValue({
+      ok: true,
+      data: { settings: corrections({ rules: RULES }) },
+    });
+    await renderTab(null);
+
+    expect(tile(t.tileLogo).textContent).toContain(t.logoCustomBadge);
+    expect(tile(t.tileTagline).textContent).toContain('Assistant de réunion');
+    expect(tile(t.tileTagline).textContent).toContain('Meeting assistant');
+    expect(tile(t.tileColors).textContent).toContain('#123abc');
+    expect(tile(t.tileColors).textContent).toContain(t.tileColorsCustom);
+    expect(tile(t.tileCorrections).textContent).toContain('Klobex → Globex');
+    expect(screen.getByText(`${t.updatedBy} patron@client.fr`)).toBeTruthy();
+  });
+});
 
 describe('BrandingTab — vocabulaire de l’organisation', () => {
   it('montre le texte enregistré et son état dès le chargement', async () => {
@@ -162,7 +247,7 @@ describe('BrandingTab — apparence', () => {
       ok: true,
       data: { settings: branding({ tagline: 'Réunions sans prise de notes' }) },
     });
-    await renderTab();
+    await renderTab(t.tileTagline);
     await userEvent.type(screen.getByLabelText(t.taglineLabel), 'Réunions sans prise de notes');
     await userEvent.click(saveButton());
 
@@ -184,7 +269,7 @@ describe('BrandingTab — apparence', () => {
         settings: branding({ tagline: 'Assistant de réunion', taglineEn: 'Meeting assistant' }),
       },
     });
-    await renderTab();
+    await renderTab(t.tileTagline);
     expect(screen.getByLabelText(t.taglineLabel).value).toBe('Assistant de réunion');
     await userEvent.type(screen.getByLabelText(t.taglineEnLabel), '  Meeting assistant ');
     await userEvent.click(saveButton());
@@ -202,8 +287,9 @@ describe('BrandingTab — apparence', () => {
       ok: true,
       data: { settings: org({ context: TEXT }) },
     });
-    await renderTab();
+    await renderTab(t.tileTagline);
     await userEvent.type(screen.getByLabelText(t.taglineLabel), 'Nouvelle phrase');
+    await open(t.tileContext);
     await userEvent.type(screen.getByLabelText(c.label), TEXT);
     await userEvent.click(saveButton());
 
@@ -219,8 +305,9 @@ describe('BrandingTab — apparence', () => {
       ok: true,
       data: { settings: org({ context: TEXT }) },
     });
-    await renderTab();
+    await renderTab(t.tileTagline);
     await userEvent.type(screen.getByLabelText(t.taglineLabel), 'Nouvelle phrase');
+    await open(t.tileContext);
     await userEvent.type(screen.getByLabelText(c.label), TEXT);
     await userEvent.click(saveButton());
 
@@ -231,6 +318,8 @@ describe('BrandingTab — apparence', () => {
     expect(get(orgContext)).toBe(TEXT);
     expect(screen.getByText(t.unsavedHint)).toBeTruthy();
     expect(saveButton().disabled).toBe(false);
+    expect(tile(t.tileTagline).textContent).toContain(t.tileChanged);
+    expect(tile(t.tileContext).textContent).not.toContain(t.tileChanged);
   });
 
   it('« Annuler » rend aux deux documents leur valeur enregistrée', async () => {
@@ -238,22 +327,67 @@ describe('BrandingTab — apparence', () => {
       ok: true,
       data: { settings: org({ context: TEXT }) },
     });
-    await renderTab();
+    await renderTab(t.tileTagline);
     await userEvent.type(screen.getByLabelText(t.taglineLabel), 'Brouillon');
+    await open(t.tileContext);
     await userEvent.clear(screen.getByLabelText(c.label));
     await userEvent.click(screen.getByRole('button', { name: t.discardChanges }));
 
-    expect(screen.getByLabelText(t.taglineLabel).value).toBe('');
     expect(screen.getByLabelText(c.label).value).toBe(TEXT);
+    await open(t.tileTagline);
+    expect(screen.getByLabelText(t.taglineLabel).value).toBe('');
     expect(saveButton().disabled).toBe(true);
   });
 
   it('signale l’échec du chargement sans cacher le formulaire', async () => {
     fetchBrandingSettings.mockResolvedValue({ ok: false, data: { error: 'forbidden' } });
-    await renderTab();
+    await renderTab(t.tileTagline);
 
     expect(screen.getByRole('alert')).toBeTruthy();
     expect(screen.getByLabelText(t.taglineLabel)).toBeTruthy();
+  });
+});
+
+describe("BrandingTab — logo de l'entreprise", () => {
+  const COMPANY = 'data:image/png;base64,iVBORw0KGgo=';
+
+  it('absent : la tuile le signale, et le panneau dit ce qui le remplace', async () => {
+    await renderTab(null);
+    expect(tile(t.tileCompanyLogo).textContent).toContain(t.tileCompanyLogoMissing);
+    expect(tile(t.tileCompanyLogo).textContent).toContain(t.companyLogoMissingBadge);
+    await open(t.tileCompanyLogo);
+    expect(screen.getByText(t.companyLogoFallback)).toBeTruthy();
+  });
+
+  it('renseigné : la tuile le montre, sans avertissement', async () => {
+    fetchBrandingSettings.mockResolvedValue({
+      ok: true,
+      data: { settings: branding({ companyLogo: COMPANY }) },
+    });
+    await renderTab(null);
+    expect(tile(t.tileCompanyLogo).textContent).toContain(t.companyLogoSetBadge);
+    expect(tile(t.tileCompanyLogo).textContent).not.toContain(t.tileCompanyLogoMissing);
+  });
+
+  it('choisi puis enregistré : lui seul part, et les infographies le reçoivent aussitôt', async () => {
+    saveBrandingSettings.mockImplementation(async (patch) => ({
+      ok: true,
+      data: { settings: branding({ companyLogo: patch.companyLogo }) },
+    }));
+    const { container } = render(BrandingTab);
+    await screen.findByRole('button', { name: new RegExp(`^${t.tileContext}`) });
+    await open(t.tileCompanyLogo);
+    await userEvent.click(screen.getByRole('button', { name: t.logoChoose }));
+    const file = new File([new Uint8Array([137, 80, 78, 71])], 'logo.png', { type: 'image/png' });
+    await userEvent.upload(container.querySelector('input[type="file"]'), file);
+    await screen.findByAltText(t.companyLogoPreviewAlt);
+    await userEvent.click(saveButton());
+
+    expect(saveBrandingSettings).toHaveBeenCalledTimes(1);
+    const patch = saveBrandingSettings.mock.calls[0][0];
+    expect(Object.keys(patch)).toEqual(['companyLogo']);
+    expect(patch.companyLogo).toMatch(/^data:image\/png;base64,/);
+    expect(get(companyLogoStore)).toEqual({ loaded: true, logo: patch.companyLogo });
   });
 });
 
@@ -267,14 +401,14 @@ describe('BrandingTab — couleurs primaire et secondaire', () => {
       ok: true,
       data: { settings: branding({ primaryColor: '#123abc', secondaryColor: '#abc123' }) },
     });
-    await renderTab();
+    await renderTab(t.tileColors);
 
     expect(hex(t.colorLabel).value).toBe('#123abc');
     expect(hex(t.colorSecondaryLabel).value).toBe('#abc123');
   });
 
   it('rien de personnalisé : les deux champs montrent les teintes intégrées', async () => {
-    await renderTab();
+    await renderTab(t.tileColors);
     expect(hex(t.colorLabel).value).toBe(DEFAULT_PRIMARY_COLOR);
     expect(hex(t.colorSecondaryLabel).value).toBe(DEFAULT_SECONDARY_COLOR);
     expect(saveButton().disabled).toBe(true);
@@ -285,7 +419,7 @@ describe('BrandingTab — couleurs primaire et secondaire', () => {
       ok: true,
       data: { settings: branding({ secondaryColor: '#00aa55' }) },
     });
-    await renderTab();
+    await renderTab(t.tileColors);
     const field = hex(t.colorSecondaryLabel);
     await userEvent.clear(field);
     await userEvent.type(field, '#00AA55');
@@ -302,7 +436,7 @@ describe('BrandingTab — couleurs primaire et secondaire', () => {
       ok: true,
       data: { settings: branding({ primaryColor: '#3366cc', secondaryColor: '#00aa55' }) },
     });
-    await renderTab();
+    await renderTab(t.tileColors);
     await userEvent.clear(hex(t.colorLabel));
     await userEvent.type(hex(t.colorLabel), '#3366cc');
     await userEvent.clear(hex(t.colorSecondaryLabel));
@@ -321,7 +455,7 @@ describe('BrandingTab — couleurs primaire et secondaire', () => {
       data: { settings: branding({ secondaryColor: '#00aa55' }) },
     });
     saveBrandingSettings.mockResolvedValue({ ok: true, data: { settings: branding() } });
-    await renderTab();
+    await renderTab(t.tileColors);
     await userEvent.click(
       within(screen.getByRole('group', { name: t.colorSecondaryLabel })).getByRole('button', {
         name: t.colorSecondaryReset,
@@ -333,12 +467,13 @@ describe('BrandingTab — couleurs primaire et secondaire', () => {
   });
 
   it('un hexadécimal invalide bloque l’enregistrement des DEUX couleurs', async () => {
-    await renderTab();
+    await renderTab(t.tileColors);
     const field = hex(t.colorSecondaryLabel);
     await userEvent.clear(field);
     await userEvent.type(field, 'orange');
 
     expect(screen.getByText(t.colorInvalid)).toBeTruthy();
+    expect(tile(t.tileColors).textContent).toContain(t.tileInvalid);
     expect(saveButton().disabled).toBe(true);
     expect(saveBrandingSettings).not.toHaveBeenCalled();
   });
@@ -349,14 +484,14 @@ describe('BrandingTab — corrections automatiques de la transcription', () => {
   const toInputs = () => screen.getAllByLabelText(tc.toHeader);
 
   it('dit la portée — toutes les réunions, tous les comptes — et invite à la modération', async () => {
-    await renderTab();
+    await renderTab(t.tileCorrections);
     const note = screen.getByRole('note');
     expect(note.textContent).toContain(tc.scopeTitle);
     expect(note.textContent).toContain(tc.scopeText);
   });
 
   it('liste vide : un exemple et un seul geste pour commencer', async () => {
-    await renderTab();
+    await renderTab(t.tileCorrections);
     expect(screen.getByText(tc.emptyTitle)).toBeTruthy();
     expect(screen.getByText(tc.badgeEmpty)).toBeTruthy();
     await userEvent.click(screen.getByRole('button', { name: tc.add }));
@@ -369,7 +504,7 @@ describe('BrandingTab — corrections automatiques de la transcription', () => {
       ok: true,
       data: { settings: corrections({ rules: RULES, updatedBy: 'patron@client.fr' }) },
     });
-    await renderTab();
+    await renderTab(t.tileCorrections);
     await screen.findByDisplayValue('Klobex, Clobex');
     expect(toInputs().map((i) => i.value)).toEqual(['Globex', "l'ADV"]);
     expect(screen.getByText(tc.badgeMany.replace('{n}', '2'))).toBeTruthy();
@@ -383,7 +518,7 @@ describe('BrandingTab — corrections automatiques de la transcription', () => {
       ok: true,
       data: { settings: corrections({ rules: [RULES[0]] }) },
     });
-    await renderTab();
+    await renderTab(t.tileCorrections);
     await userEvent.click(screen.getByRole('button', { name: tc.add }));
     await userEvent.type(fromInputs()[0], ' Klobex ,Clobex');
     await userEvent.type(toInputs()[0], 'Globex');
@@ -398,7 +533,7 @@ describe('BrandingTab — corrections automatiques de la transcription', () => {
   });
 
   it('une ligne incomplète est signalée, compte comme modifiée, et bloque l’enregistrement', async () => {
-    await renderTab();
+    await renderTab(t.tileCorrections);
     await userEvent.click(screen.getByRole('button', { name: tc.add }));
     await userEvent.type(fromInputs()[0], 'Klobex');
 
@@ -409,7 +544,7 @@ describe('BrandingTab — corrections automatiques de la transcription', () => {
   });
 
   it('un mot courant est signalé sans bloquer : c’est un choix, mais éclairé', async () => {
-    await renderTab();
+    await renderTab(t.tileCorrections);
     await userEvent.click(screen.getByRole('button', { name: tc.add }));
     await userEvent.type(fromInputs()[0], 'ca');
     await userEvent.type(toInputs()[0], 'CA');
@@ -423,7 +558,7 @@ describe('BrandingTab — corrections automatiques de la transcription', () => {
       ok: true,
       data: { settings: corrections({ rules: RULES }) },
     });
-    await renderTab();
+    await renderTab(t.tileCorrections);
     await screen.findByDisplayValue('Klobex, Clobex');
     await userEvent.click(screen.getByRole('button', { name: tc.add }));
     await userEvent.type(fromInputs()[2], 'KLOBEX');
@@ -434,7 +569,7 @@ describe('BrandingTab — corrections automatiques de la transcription', () => {
   });
 
   it('« Essayer » applique les lignes telles que saisies, avant tout enregistrement', async () => {
-    await renderTab();
+    await renderTab(t.tileCorrections);
     await userEvent.click(screen.getByRole('button', { name: tc.add }));
     await userEvent.type(fromInputs()[0], 'Klobex');
     await userEvent.type(toInputs()[0], 'Globex');
@@ -455,7 +590,7 @@ describe('BrandingTab — corrections automatiques de la transcription', () => {
       ok: true,
       data: { settings: corrections({ rules: [RULES[0]] }) },
     });
-    await renderTab();
+    await renderTab(t.tileCorrections);
     await screen.findByDisplayValue('Klobex, Clobex');
     await userEvent.click(screen.getByRole('button', { name: new RegExp(tc.remove) }));
     await userEvent.click(saveButton());
@@ -468,7 +603,7 @@ describe('BrandingTab — corrections automatiques de la transcription', () => {
       ok: true,
       data: { settings: corrections({ rules: [RULES[0]] }) },
     });
-    await renderTab();
+    await renderTab(t.tileCorrections);
     await screen.findByDisplayValue('Klobex, Clobex');
     await userEvent.clear(toInputs()[0]);
     await userEvent.type(toInputs()[0], 'Faux');
@@ -476,5 +611,60 @@ describe('BrandingTab — corrections automatiques de la transcription', () => {
 
     expect(toInputs()[0].value).toBe('Globex');
     expect(saveButton().disabled).toBe(true);
+  });
+});
+
+/**
+ * Deux pages, un composant : « Entreprise » (`view="company"`) et « Marque &
+ * apparence » (`view="look"`). Chaque page ne montre — donc ne peut modifier —
+ * que sa moitié ; l'autre document n'est jamais envoyé.
+ */
+describe('BrandingTab — deux pages, un composant', () => {
+  const tiles = () =>
+    screen
+      .getAllByRole('button')
+      .filter((button) => button.hasAttribute('aria-expanded'))
+      .map((button) => button.textContent);
+  const hasTile = (label) => tiles().some((text) => text.includes(label));
+
+  it('« Entreprise » : le vocabulaire et les corrections, pas l’apparence', async () => {
+    render(BrandingTab, { props: { view: 'company' } });
+    await screen.findByRole('button', { name: new RegExp(`^${t.tileContext}`) });
+
+    expect(screen.getByRole('heading', { name: t.groupWords })).toBeTruthy();
+    expect(hasTile(t.tileContext)).toBe(true);
+    expect(hasTile(t.tileCorrections)).toBe(true);
+    expect(screen.queryByRole('heading', { name: t.groupLook })).toBeNull();
+    for (const label of [t.tileLogo, t.tileTagline, t.tileColors]) {
+      expect(hasTile(label)).toBe(false);
+    }
+  });
+
+  it('« Marque & apparence » : logo, phrase et couleurs, pas les mots', async () => {
+    render(BrandingTab, { props: { view: 'look' } });
+    await screen.findByRole('button', { name: new RegExp(`^${t.tileLogo}`) });
+
+    expect(screen.getByRole('heading', { name: t.groupLook })).toBeTruthy();
+    for (const label of [t.tileLogo, t.tileTagline, t.tileColors]) {
+      expect(hasTile(label)).toBe(true);
+    }
+    expect(screen.queryByRole('heading', { name: t.groupWords })).toBeNull();
+    expect(hasTile(t.tileContext)).toBe(false);
+  });
+
+  it('« Entreprise » enregistre le vocabulaire sans rien envoyer de l’apparence', async () => {
+    saveOrgContextSettings.mockResolvedValue({
+      ok: true,
+      data: { settings: org({ context: TEXT }) },
+    });
+    render(BrandingTab, { props: { view: 'company' } });
+    await screen.findByRole('button', { name: new RegExp(`^${t.tileContext}`) });
+    await open(t.tileContext);
+    await userEvent.type(screen.getByLabelText(c.label), TEXT);
+    await userEvent.click(saveButton());
+
+    await vi.waitFor(() => expect(saveOrgContextSettings).toHaveBeenCalledTimes(1));
+    expect(saveBrandingSettings).not.toHaveBeenCalled();
+    expect(saveTranscriptCorrections).not.toHaveBeenCalled();
   });
 });

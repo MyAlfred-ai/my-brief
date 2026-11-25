@@ -19,7 +19,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { tick } from 'svelte';
 import { render, screen } from '@testing-library/svelte';
-import { get } from 'svelte/store';
 import userEvent from '@testing-library/user-event';
 import { uiTextData } from '../../config/uiText.js';
 
@@ -35,10 +34,8 @@ vi.mock('../../services/statsApi.js', () => ({
 const { default: CreditGauge } = await import('./CreditGauge.svelte');
 const { default: PersonalStats } = await import('./PersonalStats.svelte');
 const { default: TeamCredits } = await import('./TeamCredits.svelte');
-const { default: StatsPanel } = await import('../StatsPanel.svelte');
 const { default: CreditsTab } = await import('../admin/CreditsTab.svelte');
 const { auth } = await import('../../stores/auth.js');
-const { panelNav } = await import('../../stores/panels.js');
 
 const t = uiTextData.fr.myStats;
 const qt = uiTextData.fr.quota;
@@ -360,17 +357,16 @@ describe('TeamCredits', () => {
   });
 });
 
-describe('Mes statistiques : sa propre consommation, rien de l équipe', () => {
-  it('même pour un administrateur : une seule section, aucune lecture de l équipe', async () => {
+describe('Usage & crédits : sa propre consommation, rien de l équipe', () => {
+  it('même pour un administrateur : aucune lecture de l équipe', async () => {
     auth.set({
       status: 'authenticated',
       user: { email: 'patron@client.fr', name: 'Patron', role: 'admin' },
       capabilities: {},
     });
     fetchMyStats.mockResolvedValue({ ok: true, data: payload() });
-    render(StatsPanel);
+    render(PersonalStats);
     await screen.findByText('4 h 08');
-    expect(get(panelNav).items.map((item) => item.id)).toEqual(['me']);
     expect(screen.queryByText(t.teamIntro)).toBeNull();
     expect(fetchTeamCredits).not.toHaveBeenCalled();
     expect(fetchAccountStats).not.toHaveBeenCalled();

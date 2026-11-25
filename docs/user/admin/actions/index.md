@@ -5,9 +5,9 @@ sidebar:
   order: 3
 ---
 
-L'onglet **Administration → Actions** décide des **boutons** proposés après chaque réunion et chaque
-résumé — **Envoyer par mail**, **Entreposer**, **Télécharger** —, du **fournisseur** des comptes que
-les utilisateurs relient, et des **limites** de leurs envois.
+La page **Administration → Capacités → Actions** décide des **boutons** proposés après chaque réunion
+et chaque résumé — **Envoyer par mail**, **Entreposer**, **Télécharger** —, du **fournisseur** des
+comptes que les utilisateurs relient, et des **limites** de leurs envois.
 
 ## À quoi ça sert
 
@@ -42,6 +42,15 @@ flowchart TB
 et **après chaque résumé** — sur l'onglet **Résumé**. Par défaut, les six sont ouverts, et le fournisseur
 est **Aucun** : le bouton **Entreposer** n'apparaît qu'une fois un fournisseur choisi.
 
+**La page s'ouvre repliée.** En tête, **Ce que verront vos utilisateurs** : la barre de boutons après
+chaque réunion et après chaque résumé. Dessous, deux groupes de tuiles : **Les boutons proposés** —
+**Envoyer par mail**, **Entreposer**, **Télécharger** — et **Réglages communs** — **Compte relié**, **Nom
+des fichiers**. Chaque tuile dit où son bouton apparaît (« Réunion et résumé », « Après le résumé »,
+« Désactivé ») et ce qui le règle : le plafond de destinataires, le dossier, le fournisseur. Un clic
+déplie son réglage sous le groupe, un seul à la fois. Un bouton activé qui n'apparaîtra pas le dit sur
+sa tuile, sans la déplier : **Aucun relais**, **Compte requis**. Une tuile qui porte **Modifié** a un
+changement pas encore enregistré.
+
 **Ce que chaque bouton demande** en plus de son interrupteur :
 
 | Bouton | Il faut aussi |
@@ -67,7 +76,7 @@ est **Aucun** : le bouton **Entreposer** n'apparaît qu'une fois un fournisseur 
 | Interrupteurs **Après chaque réunion**, **Après chaque résumé** | Actions → Envoyer par mail, Entreposer, Télécharger | Les boutons proposés | [Choisir les boutons proposés](choisir-les-boutons-proposes.md) |
 | **Fournisseur**, **Proposer les bibliothèques SharePoint**, **Dossier cible** | Actions → Compte relié, Entreposer | Google ou Microsoft, les bibliothèques SharePoint, et le dossier de dépôt par défaut | [Choisir le compte relié](choisir-le-compte-relie.md) |
 | **Destinataires maximum**, **Autoriser le relais du serveur à écrire à des tiers**, **Objet du mail** | Actions → Envoyer par mail | Les limites et le format des envois | [Régler l'envoi par mail](regler-l-envoi-par-mail.md) |
-| **Nom des fichiers par défaut** | Actions → Nom des fichiers par défaut | Le nom des documents envoyés et déposés | [Nommer les fichiers par défaut](nommer-les-fichiers-par-defaut.md) |
+| **Nom des fichiers par défaut** | Actions → Nom des fichiers | Le nom des documents envoyés et déposés | [Nommer les fichiers par défaut](nommer-les-fichiers-par-defaut.md) |
 | **Tester l'envoi**, **Tester le dépôt** | Actions | Une exécution réelle avec les valeurs de l'organisation | [Tester la configuration](tester-la-configuration.md) |
 
 ## Exemples de configuration
@@ -85,9 +94,10 @@ choisissent eux-mêmes une bibliothèque SharePoint par tag.
 
 ## Vérifier que tout fonctionne
 
-1. **Ce que verront vos utilisateurs**, en tête de l'onglet : la barre de boutons telle qu'elle
+1. **Ce que verront vos utilisateurs**, en tête de la page : la barre de boutons telle qu'elle
    apparaîtra.
-2. **Tester l'envoi** et **Tester le dépôt**, avec votre compte.
+2. **Tester l'envoi** et **Tester le dépôt**, avec votre compte, dans les tuiles **Envoyer par mail** et
+   **Entreposer** dépliées.
 3. Avec un compte de test : relier un compte, envoyer un compte rendu, entreposer.
 
 ## Voir aussi

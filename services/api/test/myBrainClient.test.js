@@ -214,3 +214,141 @@ describe('client myBrain — les refus', () => {
     );
   });
 });
+
+describe('client myBrain — la lecture (Aide IA)', () => {
+  it('recherche : GET, la requête en paramètre, résultats bornés et renommés', async () => {
+    const fetchImpl = fakeFetch(() =>
+      jsonResponse(200, {
+        resultats: [
+          {
+            chemin: 'wiki/projets/atlas.md',
+            titre: 'Projet Atlas',
+            type: 'projet',
+            extrait: 'Refonte',
+          },
+          { chemin: '', titre: 'sans chemin' },
+          'pas un objet',
+        ],
+      }),
+    );
+    const client = createMyBrainClient({ fetchImpl });
+    const found = await client.search({
+      url: URL_BASE,
+      apiKey: API_KEY,
+      query: 'atlas & co',
+      limit: 5,
+    });
+
+    expect(found).toEqual([
+      { path: 'wiki/projets/atlas.md', title: 'Projet Atlas', type: 'projet', excerpt: 'Refonte' },
+    ]);
+    const { url, init } = fetchImpl.calls[0];
+    expect(url).toBe(`${URL_BASE}/api/v1/recherche?q=atlas+%26+co&limite=5`);
+    expect(init.method).toBe('GET');
+    expect(init.redirect).toBe('manual');
+    expect(init.headers.authorization).toBe(`Bearer ${API_KEY}`);
+  });
+
+  it('fiche par chemin : le contenu, plafonné', async () => {
+    const fetchImpl = fakeFetch(() =>
+      jsonResponse(200, {
+        chemin: 'wiki/projets/atlas.md',
+        titre: 'Projet Atlas',
+        contenu: 'x'.repeat(90_000),
+      }),
+    );
+    const client = createMyBrainClient({ fetchImpl });
+    const sheet = await client.sheet({
+      url: URL_BASE,
+      apiKey: API_KEY,
+      path: 'wiki/projets/atlas.md',
+    });
+
+    expect(sheet.path).toBe('wiki/projets/atlas.md');
+    expect(sheet.title).toBe('Projet Atlas');
+    expect(sheet.content).toHaveLength(60_000);
+    expect(fetchImpl.calls[0].url).toBe(
+      `${URL_BASE}/api/v1/fiche?chemin=wiki%2Fprojets%2Fatlas.md`,
+    );
+  });
+
+  it('fiche par nom ambigu : mybrain_not_found, avec les candidats de myBrain', async () => {
+    const client = createMyBrainClient({
+      fetchImpl: fakeFetch(() =>
+        jsonResponse(404, {
+          erreur: 'aucune fiche ne porte ce nom',
+          candidats: [
+            { chemin: 'wiki/projets/atlas.md', titre: 'Projet Atlas' },
+            { chemin: 'wiki/projets/atlas-lot-1.md', titre: 'Projet Atlas — lot 1' },
+          ],
+        }),
+      ),
+    });
+    const err = await failureOf(client.sheet({ url: URL_BASE, apiKey: API_KEY, name: 'Atlas' }));
+
+    expect(err).toBeInstanceOf(MyBrainError);
+    expect(err.code).toBe('mybrain_not_found');
+    expect(err.candidates).toEqual([
+      { path: 'wiki/projets/atlas.md', title: 'Projet Atlas' },
+      { path: 'wiki/projets/atlas-lot-1.md', title: 'Projet Atlas — lot 1' },
+    ]);
+  });
+
+  it('contexte : POST de la question, extraits et fiches citées', async () => {
+    const fetchImpl = fakeFetch(() =>
+      jsonResponse(200, {
+        contexte: '## Projet Atlas\nLivraison du lot 2 : 15 mars 2027.',
+        tronque: true,
+        fiches: [
+          {
+            chemin: 'wiki/projets/atlas.md',
+            titre: 'Projet Atlas',
+            url: 'https://ailleurs.test/x',
+          },
+        ],
+      }),
+    );
+    const client = createMyBrainClient({ fetchImpl });
+    const got = await client.context({
+      url: URL_BASE,
+      apiKey: API_KEY,
+      question: 'date de livraison du lot 2',
+      budget: 6000,
+    });
+
+    expect(got).toEqual({
+      context: '## Projet Atlas\nLivraison du lot 2 : 15 mars 2027.',
+      truncated: true,
+      // L'adresse que myBrain joint à une fiche n'est pas reprise : myBrief
+      // construit ses liens depuis l'adresse vérifiée par l'administration.
+      sheets: [{ path: 'wiki/projets/atlas.md', title: 'Projet Atlas' }],
+    });
+    const { url, init } = fetchImpl.calls[0];
+    expect(url).toBe(`${URL_BASE}/api/v1/contexte`);
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body)).toEqual({ question: 'date de livraison du lot 2', budget: 6000 });
+  });
+
+  it("une lecture qui ne rend pas la forme attendue n'est pas crue", async () => {
+    const client = createMyBrainClient({
+      fetchImpl: fakeFetch(() => jsonResponse(200, { autre: 1 })),
+    });
+    for (const reading of [
+      client.search({ url: URL_BASE, apiKey: API_KEY, query: 'x' }),
+      client.sheet({ url: URL_BASE, apiKey: API_KEY, path: 'wiki/x.md' }),
+      client.context({ url: URL_BASE, apiKey: API_KEY, question: 'x' }),
+    ]) {
+      expect((await failureOf(reading)).code).toBe('mybrain_invalid_response');
+    }
+  });
+
+  it('sans le droit « lire », myBrain répond 403 : mybrain_right_missing', async () => {
+    const client = createMyBrainClient({
+      fetchImpl: fakeFetch(() =>
+        jsonResponse(403, { erreur: "cette clé n'a pas le droit « lire »" }),
+      ),
+    });
+    const err = await failureOf(client.context({ url: URL_BASE, apiKey: API_KEY, question: 'x' }));
+    expect(err.code).toBe('mybrain_right_missing');
+  });
+});

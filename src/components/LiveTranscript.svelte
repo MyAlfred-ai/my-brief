@@ -9,7 +9,15 @@
    * App (au plafond `max-lines`, cf. eslint.config.js) ne fait qu'appeler
    * `scrollToLatest()` après chaque ajout au transcript.
    */
+  import { tick } from 'svelte';
+  import { uiText } from '../store.js';
+  import { fill } from '../utils/i18nFormat.js';
+  import { wakeWordSpan } from '../utils/wakeWord.js';
+  import { aiHelp, aiHelpCalledLines, aiHelpLineKey } from '../stores/aiHelp.js';
+  import { aiHelpTimer } from '../stores/aiHelpTimer.js';
   import EditableTranscript from './EditableTranscript.svelte';
+  import AiHelpStage from './aiHelp/AiHelpStage.svelte';
+  import AiHelpTimer from './aiHelp/AiHelpTimer.svelte';
   import IconArrowDown from '~icons/solar/alt-arrow-down-linear';
 
   // Historique de transcription : même forme que EditableTranscript.items
@@ -45,23 +53,92 @@
     if (!naming) scrollToLatest();
   }
 
+  // Onglet caché — le cas courant : l'utilisateur est dans l'onglet de sa
+  // visio, ou l'app mobile est en arrière-plan. Personne ne voit la liste :
+  // elle reste figée (ni rendu ni défilement à chaque delta, et pas de mise
+  // en page forcée par `scrollHeight`), puis rattrape le direct d'un coup au
+  // retour. `visibilityState`, pas `document.hidden` : un document en
+  // « prerender » n'est pas caché.
+  const isHidden = () => typeof document !== 'undefined' && document.visibilityState === 'hidden';
+  let hidden = isHidden();
+  let shown = items;
+  $: if (!hidden) shown = items;
+  async function onVisibilityChange() {
+    hidden = isHidden();
+    if (hidden) return;
+    await tick();
+    scrollToLatest();
+  }
+
   // Appelé par App après chaque ajout (post-tick). Sans `force`, ne recolle
   // la vue que si l'utilisateur n'est pas parti lire plus haut, ni en train de
   // nommer une voix.
   export function scrollToLatest(force = false) {
-    if (!container || (!force && (naming || !following))) return;
+    if (!container || hidden || (!force && (naming || !following))) return;
     following = true;
     container.scrollTop = container.scrollHeight;
   }
+
+  // Le prénom qui a déclenché l'Aide IA s'écrit dans SA teinte : on voit qu'elle
+  // a pris la phrase pour elle. La fonction est REFAITE dès qu'une de ses
+  // dépendances change — la liste des lignes, le mot d'appel, la langue — :
+  // la réactivité de Svelte ne voit pas ce qu'une fonction lit en dedans.
+  $: aiMark = aiMarker($aiHelpCalledLines, $aiHelp.wakeWord, $uiText.aiHelp.wakeMark);
+  function aiMarker(called, wakeWord, label) {
+    if (!called.size || !wakeWord) return null;
+    return (item) => {
+      if (item.isDelta || !called.has(aiHelpLineKey(item))) return null;
+      const text = String(item.text || '');
+      const span = wakeWordSpan(text, wakeWord);
+      if (!span) return null;
+      return {
+        before: text.slice(0, span.start),
+        word: text.slice(span.start, span.end),
+        after: text.slice(span.end),
+        label: fill(label, { name: wakeWord }),
+      };
+    };
+  }
+
+  // Scène de l'Aide IA (AiHelpStage) : elle se pose sur le bas de la
+  // transcription. Les dernières lignes remontent de sa hauteur, pour que ce
+  // qui vient d'être dit reste lisible au-dessus de la carte.
+  const STAGE_GAP_PX = 16;
+  let stageRoom = 0;
+  async function onStageResize(e) {
+    stageRoom = e.detail ? e.detail + STAGE_GAP_PX : 0;
+    await tick();
+    scrollToLatest();
+  }
+
+  // Le minuteur de l'Aide IA (AiHelpTimer) prend une rangée au-dessus de la
+  // liste, qui raccourcit d'autant : la vue se recolle au direct quand il
+  // apparaît ou s'en va — sinon la dernière phrase passait sous le bas.
+  $: timerShown = !!$aiHelp.meetingId && !!$aiHelpTimer;
+  $: onTimerRow(timerShown);
+  async function onTimerRow() {
+    await tick();
+    scrollToLatest();
+  }
 </script>
 
+<svelte:document on:visibilitychange={onVisibilityChange} />
+
 <div class="live-transcript-shell">
+  <!-- Le minuteur demandé à l'IA : sa propre rangée, au-dessus de la liste. -->
+  <AiHelpTimer />
   <div class="rec-live-transcript" bind:this={container} on:scroll={handleScroll}>
-    <EditableTranscript {items} {selfName} on:edit on:speaker on:naming={onNaming} />
+    <EditableTranscript items={shown} {selfName} {aiMark} on:edit on:speaker on:naming={onNaming} />
     {#if items.length === 0}
       <div class="rec-waiting">{waitingText}</div>
     {/if}
+    <!-- `flex: none` : la liste est une colonne flex, qui écraserait cette
+         réserve au lieu de défiler (mesuré : 148 px rendus pour 253 demandés). -->
+    <div style:height="{stageRoom}px" style:flex="none" aria-hidden="true"></div>
   </div>
+  <!-- `on:edit` : une correction de la transcription demandée à l'IA remonte à
+       App par le même événement qu'une ligne corrigée à la main. -->
+  <AiHelpStage {items} {selfName} on:resize={onStageResize} on:edit />
   {#if !following}
     <button
       type="button"

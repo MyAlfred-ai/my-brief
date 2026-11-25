@@ -46,6 +46,7 @@ const ADMIN = 'chef@exemple.fr';
 
 const GROUPS = [
   { id: 'default', name: 'Défaut', color: 'slate', isDefault: true, memberCount: 1 },
+  { id: 'admin', name: 'Admin', color: 'violet', isDefault: false, isAdmin: true, memberCount: 0 },
   { id: 'g-sales', name: 'Commerciaux', color: 'blue', isDefault: false, memberCount: 0 },
 ];
 
@@ -82,7 +83,13 @@ beforeEach(() => {
   listUsers.mockResolvedValue({ ok: true, data: { users: [user()], total: 1 } });
   listGroups.mockResolvedValue({
     ok: true,
-    data: { groups: GROUPS, colors: ['slate', 'blue'], max: 50, defaultId: 'default' },
+    data: {
+      groups: GROUPS,
+      colors: ['slate', 'blue'],
+      max: 50,
+      defaultId: 'default',
+      adminId: 'admin',
+    },
   });
 });
 
@@ -172,24 +179,46 @@ describe('UsersTab — groupes', () => {
     expect(row.querySelectorAll('.gc')).toHaveLength(2);
   });
 
-  it('la fiche coche les groupes du compte et envoie la sélection', async () => {
-    updateUser.mockResolvedValue({
-      ok: true,
-      data: { user: user({ groupIds: ['default', 'g-sales'] }) },
-    });
+  it('la fiche choisit UN groupe pour le compte et envoie ce choix', async () => {
+    updateUser.mockResolvedValue({ ok: true, data: { user: user({ groupIds: ['g-sales'] }) } });
     render(UsersTab);
     await screen.findByText('paul@exemple.fr');
     await waitFor(() => expect(listGroups).toHaveBeenCalledTimes(1));
 
     await openFiche('paul@exemple.fr');
-    const sales = screen.getByRole('checkbox', { name: 'Commerciaux' });
-    expect(screen.getByRole('checkbox', { name: 'Défaut' }).checked).toBe(true);
+    const def = screen.getByRole('radio', { name: 'Défaut' });
+    const sales = screen.getByRole('radio', { name: 'Commerciaux' });
+    expect(def.checked).toBe(true);
     expect(sales.checked).toBe(false);
     await userEvent.click(sales);
+    // Choisir un groupe quitte le précédent.
+    expect(def.checked).toBe(false);
     await userEvent.click(screen.getByRole('button', { name: t.save }));
 
     expect(updateUser).toHaveBeenCalledWith(
-      expect.objectContaining({ email: 'paul@exemple.fr', groupIds: ['default', 'g-sales'] }),
+      expect.objectContaining({ email: 'paul@exemple.fr', groupIds: ['g-sales'] }),
+    );
+  });
+
+  it('passer le rôle à Administrateur choisit le groupe Admin ; revenir à Utilisateur l en sort', async () => {
+    updateUser.mockResolvedValue({ ok: true, data: { user: user({ groupIds: ['default'] }) } });
+    render(UsersTab);
+    await screen.findByText('paul@exemple.fr');
+    await waitFor(() => expect(listGroups).toHaveBeenCalledTimes(1));
+
+    await openFiche('paul@exemple.fr');
+    const role = screen.getByLabelText(t.roleLabel);
+    await userEvent.selectOptions(role, 'admin');
+    expect(screen.getByRole('radio', { name: 'Admin' }).checked).toBe(true);
+    await userEvent.selectOptions(role, 'user');
+    expect(screen.getByRole('radio', { name: 'Défaut' }).checked).toBe(true);
+
+    // Un groupe choisi après le rôle l'emporte : la fiche envoie ce qu'elle montre.
+    await userEvent.selectOptions(role, 'admin');
+    await userEvent.click(screen.getByRole('radio', { name: 'Commerciaux' }));
+    await userEvent.click(screen.getByRole('button', { name: t.save }));
+    expect(updateUser).toHaveBeenCalledWith(
+      expect.objectContaining({ role: 'admin', groupIds: ['g-sales'] }),
     );
   });
 

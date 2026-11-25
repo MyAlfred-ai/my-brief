@@ -47,9 +47,9 @@ Suite : [Installer myBrief sur le serveur](installer-mybrief-sur-le-serveur.md).
 
 | Pour… | Il faut… | Quand |
 |---|---|---|
-| La transcription et les résumés | La clé OpenAI de l'organisation | À l'installation, ou plus tard dans l'onglet **IA** — voir [Enregistrer la clé OpenAI](../ia/enregistrer-la-cle-openai.md) |
+| La transcription et les résumés | La clé OpenAI de l'organisation | À l'installation, ou plus tard dans **Administration → Modèles IA → Clés API** — voir [Enregistrer la clé OpenAI](../ia/enregistrer-la-cle-openai.md) |
 | Le premier compte | L'adresse mail de la personne qui administrera myBrief | À l'installation |
-| La connexion par Google ou par Microsoft | Une application déclarée chez Google Cloud ou dans Microsoft Entra | Google : après l'installation, les adresses de redirection à y déclarer s'affichent dans l'onglet **Authentification** — voir [Autoriser myBrief dans Google Workspace](../connexion/autoriser-mybrief-dans-google-workspace.md). Microsoft : **avant**, ses identifiants se posent au déploiement — voir [Autoriser myBrief dans Microsoft Entra ID](../connexion/autoriser-mybrief-dans-microsoft-entra-id.md) |
+| La connexion par Google ou par Microsoft | Une application déclarée chez Google Cloud ou dans Microsoft Entra | Google : après l'installation, les adresses de redirection à y déclarer s'affichent dans **Administration → Organisation → Authentification** — voir [Autoriser myBrief dans Google Workspace](../connexion/autoriser-mybrief-dans-google-workspace.md). Microsoft : **avant**, ses identifiants se posent au déploiement — voir [Autoriser myBrief dans Microsoft Entra ID](../connexion/autoriser-mybrief-dans-microsoft-entra-id.md) |
 
 ## En cas de problème
 

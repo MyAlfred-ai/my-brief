@@ -1,13 +1,15 @@
 ---
-title: Mes statistiques
+title: Usage & crédits
 description: Votre usage de myBrief — réunions, temps enregistré, modèles — et la jauge de votre crédit de temps du mois, avec son rythme.
 sidebar:
   order: 14
 ---
 
-**Mes statistiques** montre votre propre usage de myBrief : combien de réunions, combien de temps
+**Usage & crédits** montre votre propre usage de myBrief : combien de réunions, combien de temps
 enregistré, quels modèles, quels jours. Si votre groupe a un crédit de minutes, une jauge dit ce qu'il
 vous en reste ce mois-ci, et si vous allez plus vite que le mois.
+
+![Réglages, page Usage & crédits, sur Ce mois : la jauge Temps de réunion, 4 h 34 restantes sur 10 h, avec le Rythme régulier et le quota du groupe Défaut, renouvelé le 1er du mois suivant ; à côté, Réunions, Temps enregistré, Durée moyenne et Comptes rendus ; dessous, la courbe Au fil du mois, ce qui reste du crédit jour après jour, jusqu'à aujourd'hui.](../../images/usage-et-credits.png)
 
 ## À quoi ça sert
 
@@ -19,10 +21,12 @@ vous en reste ce mois-ci, et si vous allez plus vite que le mois.
 
 ## Comment ça marche
 
-**Où l'ouvrir.** Cliquez votre nom, en bas de la colonne de gauche — sur téléphone, votre avatar, en
-haut à droite. Le bloc **Ce mois-ci** du menu résume le mois : ce qu'il vous reste et le **Rythme
-régulier**, si votre groupe a un quota, puis trois chiffres — **Réunions**, **Enregistrées**, **Comptes
-rendus**. **Voir mes statistiques** ouvre la page complète.
+**Où l'ouvrir.** **Réglages → Usage & crédits** : le bouton **Réglages**, en bas de la colonne de
+gauche, puis **Usage & crédits**, dans le groupe **Mon compte**. Sur ordinateur, la ligne sous votre
+nom dit déjà ce qu'il vous reste ce mois-ci, si votre groupe a un quota. Sur téléphone, touchez votre
+avatar, en haut à droite : le bloc **Ce mois-ci** de la carte du compte résume le mois — ce qu'il vous
+reste et le **Rythme régulier**, si votre groupe a un quota, puis trois chiffres, **Réunions**,
+**Enregistrées**, **Comptes rendus** — et **Voir le détail** ouvre la page complète.
 
 **La jauge du crédit.** Un cadran qui se vide comme un réservoir : plein le 1er du mois, vide quand le
 crédit est épuisé. Le reste est écrit au centre — « 4 h 08 restantes sur 10 h » —, et le curseur, la

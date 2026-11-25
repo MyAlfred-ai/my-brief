@@ -150,7 +150,7 @@ describe('POST /api/actions/detection', () => {
   it('n’écrit que chez son auteur', async () => {
     const { app } = buildTestApp({ seed: seed() });
     await save(app, { sensitivity: 'wide' }, A);
-    expect((await get(app, B)).json().settings.sensitivity).toBe('balanced');
+    expect((await get(app, B)).json().settings.sensitivity).toBe('explicit');
   });
 
   it('ne touche pas aux réglages d’actions du même document', async () => {

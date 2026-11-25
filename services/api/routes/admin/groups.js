@@ -2,10 +2,10 @@
  * Groupes d'utilisateurs — réservés aux administrateurs.
  *
  * Même style que routes/admin/users.js (verbe dans le chemin, identifiant dans
- * le corps), même contrat d'erreur (lib/errors.js). Le modèle — groupe par
- * défaut, appartenance sur le compte, invariant « jamais sans groupe » — est
- * expliqué dans lib/repositories/groups.js ; ici on ne fait qu'arbitrer ce que
- * l'administration envoie.
+ * le corps), même contrat d'erreur (lib/errors.js). Le modèle — un seul
+ * groupe par compte, groupes fixes « Défaut » et « Admin », appartenance sur
+ * le compte — est expliqué dans lib/repositories/groups.js ; ici on ne fait
+ * qu'arbitrer ce que l'administration envoie.
  *
  * Les membres d'un groupe se LISENT par `GET /admin/users?group=<id>` : c'est
  * la même liste de comptes, avec la même projection publique et la même
@@ -15,6 +15,7 @@ import { requireAdmin } from '../../lib/rbac.js';
 import { fail } from '../../lib/errors.js';
 import { normalizeEmail } from '../../lib/repositories/users.js';
 import {
+  ADMIN_GROUP_ID,
   DEFAULT_GROUP_ID,
   GROUP_COLORS,
   GROUP_NAME_MAX,
@@ -57,7 +58,7 @@ export default function adminGroupsRoutes(app) {
 
   /**
    * Catalogue + le vocabulaire dont l'écran a besoin (palette, plafond,
-   * identifiant du groupe par défaut) : servis ici pour qu'aucune seconde
+   * identifiants des deux groupes fixes) : servis ici pour qu'aucune seconde
    * source de vérité ne vive côté client.
    */
   app.get('/groups', async (req, reply) => {
@@ -68,6 +69,7 @@ export default function adminGroupsRoutes(app) {
       colors: GROUP_COLORS,
       max: GROUPS_MAX,
       defaultId: DEFAULT_GROUP_ID,
+      adminId: ADMIN_GROUP_ID,
     };
   });
 
@@ -80,6 +82,8 @@ export default function adminGroupsRoutes(app) {
       color = GROUP_COLORS[0],
       meetingMinutesPerMonth = null,
       infographicAllowed = false,
+      aiHelpAllowed = false,
+      aiHelpMyBrainAllowed = false,
     } = req.body;
     const refused = validateGroupInput({ name, description, color });
     if (refused) return fail(reply, refused.status, refused.code, refused.extra);
@@ -97,6 +101,8 @@ export default function adminGroupsRoutes(app) {
       // Borné par le schéma ; `null` = illimité (cf. lib/quota.js).
       meetingMinutesPerMonth,
       infographicAllowed,
+      aiHelpAllowed,
+      aiHelpMyBrainAllowed,
       createdBy: admin.emailLower,
     });
     return reply.code(201).send({ group: toPublicGroup(doc, 0) });
@@ -110,7 +116,16 @@ export default function adminGroupsRoutes(app) {
    */
   app.post('/groups/update', { schema: { body: adminGroupUpdateBody } }, async (req, reply) => {
     if (!requireAdmin(req, reply)) return;
-    const { id, name, description, color, meetingMinutesPerMonth, infographicAllowed } = req.body;
+    const {
+      id,
+      name,
+      description,
+      color,
+      meetingMinutesPerMonth,
+      infographicAllowed,
+      aiHelpAllowed,
+      aiHelpMyBrainAllowed,
+    } = req.body;
     const doc = await app.groups.findById(id);
     if (!doc) return fail(reply, 404, 'group_not_found');
     const refused = validateGroupInput({ name, description, color });
@@ -128,15 +143,18 @@ export default function adminGroupsRoutes(app) {
       color,
       meetingMinutesPerMonth,
       infographicAllowed,
+      aiHelpAllowed,
+      aiHelpMyBrainAllowed,
     });
     return { group: await publicWithCount(updated) };
   });
 
   /**
-   * Suppression. Les membres sont d'abord retirés du groupe (ceux qui n'en
-   * avaient pas d'autre retombent dans le groupe par défaut), puis le document
-   * part — cf. `users.detachGroup` pour l'ordre. Le groupe par défaut ne se
-   * supprime pas : c'est lui qui garantit qu'un compte n'est jamais sans groupe.
+   * Suppression. Les membres sont d'abord renvoyés dans le groupe par défaut,
+   * puis le document part — cf. `users.detachGroup` pour l'ordre. Les deux
+   * groupes fixes ne se suppriment pas : le groupe par défaut garantit qu'un
+   * compte n'est jamais sans groupe, celui des administrateurs reçoit chaque
+   * compte promu.
    */
   app.post('/groups/delete', { schema: { body: adminGroupDeleteBody } }, async (req, reply) => {
     if (!requireAdmin(req, reply)) return;
@@ -144,6 +162,7 @@ export default function adminGroupsRoutes(app) {
     const doc = await app.groups.findById(id);
     if (!doc) return fail(reply, 404, 'group_not_found');
     if (doc.isDefault || id === DEFAULT_GROUP_ID) return fail(reply, 409, 'default_group');
+    if (id === ADMIN_GROUP_ID) return fail(reply, 409, 'admin_group');
 
     await app.users.detachGroup(id);
     await app.groups.remove(id);
@@ -151,9 +170,11 @@ export default function adminGroupsRoutes(app) {
   });
 
   /**
-   * Entrées et sorties d'un groupe, par adresse. Tout ou rien : une adresse
-   * inconnue refuse l'appel entier avant la moindre écriture, plutôt que
-   * d'appliquer la moitié d'une sélection.
+   * Entrées et sorties d'un groupe, par adresse. Entrer ici fait quitter le
+   * groupe précédent, sortir renvoie au groupe par défaut (cf.
+   * `users.changeGroupMembers`). Tout ou rien : une adresse inconnue refuse
+   * l'appel entier avant la moindre écriture, plutôt que d'appliquer la
+   * moitié d'une sélection.
    */
   app.post('/groups/members', { schema: { body: adminGroupMembersBody } }, async (req, reply) => {
     if (!requireAdmin(req, reply)) return;

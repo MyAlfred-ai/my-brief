@@ -1,6 +1,8 @@
 <script>
   /**
-   * « Ma configuration » — réglages personnels de l'utilisateur.
+   * « Réglages » — l'espace du COMPTE : tout ce qui regarde la personne
+   * connectée, et rien de l'organisation (qui a l'Administration). Le bouton
+   * « Réglages » de la carte du compte l'ouvre, sur « Mon profil ».
    *
    * Reprend la mise en page de l'administration : le panneau occupe toute la
    * zone à droite de l'historique (monté DANS le layout flex, pas en overlay).
@@ -8,12 +10,20 @@
    * (stores/panels.js) ; sur mobile, où la sidebar est un drawer, le déroulant
    * PanelTabs les garde sous la main.
    *
-   * Panneau UNIQUE des réglages de l'utilisateur : « Mes templates », « Mes
-   * tags », « Importer un audio » et « Aide » étaient trois panneaux plein
-   * écran et une modale, chacun avec sa coquille et son chemin d'accès. Trois
-   * façons d'ouvrir la même famille d'écrans, c'était trois endroits où
-   * chercher. Ils sont devenus des sections, groupées dans la colonne ;
-   * « Aide » est depuis un lien vers la documentation en ligne.
+   * Panneau UNIQUE : « Mes templates », « Mes tags », « Importer un audio »,
+   * « Mes statistiques » et le menu déroulant du nom étaient autant de
+   * panneaux, de modales et de popovers, chacun avec son chemin d'accès. Ils
+   * sont devenus des sections, groupées dans la colonne (la liste et ses
+   * raisons : config/configSections.js) ; « Aide » est un lien vers la
+   * documentation en ligne, « Se déconnecter » ferme la colonne.
+   *
+   * Trois pages REGROUPENT des écrans, en onglets (ui/SubTabs) : « Préférences
+   * IA » (« Mon contexte », « Aide IA »), « Pendant la réunion » (« Micro et
+   * son », « Mots remplacés », « Détection d'actions », « Aide IA ») et « Après
+   * la réunion » (un onglet par action). Un écran = une page reste vrai, avec
+   * son propre bouton Enregistrer ; la colonne ne compte plus une entrée par
+   * écran. « Aide IA » est le même écran sous ses deux pages. « Outils », lui,
+   * empile ses deux blocs : aucun n'a de bouton Enregistrer.
    *
    * Le micro et le son de l'ordinateur sont gardés par appareil
    * (stores/audioDevices.js) : un deviceId n'a aucun sens d'une machine à
@@ -32,21 +42,31 @@
   import IconMyConfig from '~icons/solar/tuning-4-linear';
   import IconMic from '~icons/solar/microphone-2-linear';
   import IconUserId from '~icons/solar/user-id-linear';
-  import IconRadar from '~icons/solar/radar-2-linear';
+  import IconProfile from '~icons/solar/user-circle-linear';
+  import IconMagic from '~icons/solar/magic-stick-3-linear';
+  import IconShare from '~icons/solar/square-share-line-linear';
+  import IconChart from '~icons/solar/chart-square-linear';
+  import IconLogout from '~icons/solar/logout-2-linear';
   import IconCheck from '~icons/solar/check-circle-linear';
   import IconWarn from '~icons/solar/danger-triangle-linear';
   import IconSave from '~icons/solar/diskette-linear';
-  import IconMail from '~icons/solar/letter-linear';
-  import IconCloud from '~icons/solar/cloud-upload-linear';
   import IconLink from '~icons/solar/link-minimalistic-2-linear';
   import IconTemplates from '~icons/solar/clipboard-list-linear';
   import IconTag from '~icons/solar/tag-linear';
-  import IconImport from '~icons/solar/upload-minimalistic-linear';
   import IconHelp from '~icons/solar/question-circle-linear';
   import IconBug from '~icons/solar/bug-linear';
-  import IconExtension from '~icons/solar/widget-add-linear';
-  import IconBrain from './icons/BrainIcon.svelte';
+  import IconMeeting from '~icons/solar/record-circle-linear';
+  import IconTools from '~icons/solar/case-minimalistic-linear';
+  // L'orbe à la sonnette — celle de l'Aide IA en réunion, pas une cloche de
+  // notification : on doit reconnaître ici ce qu'on a vu là-bas.
+  import IconAiHelp from './icons/AiHelpIcon.svelte';
   import ActionDetectionSection from './settings/ActionDetectionSection.svelte';
+  import CorrectionsSection from './settings/CorrectionsSection.svelte';
+  import AiHelpSection from './settings/AiHelpSection.svelte';
+  import { aiHelp, loadAiHelp } from '../stores/aiHelp.js';
+  import ProfileSection from './settings/ProfileSection.svelte';
+  import PersonalStats from './stats/PersonalStats.svelte';
+  import SubTabs from './ui/SubTabs.svelte';
   import MyBrainSection from './settings/MyBrainSection.svelte';
   import ActionsSettingsTab from './settings/ActionsSettingsTab.svelte';
   import TemplatesSection from './settings/TemplatesSection.svelte';
@@ -62,10 +82,17 @@
     connectStartUrl,
     createConnectTicket,
   } from '../services/connectApi.js';
-  import { visibleConfigSections } from '../config/configSections.js';
+  import {
+    movedConfigTarget,
+    visibleActionTabs,
+    visibleAiTabs,
+    visibleConfigSections,
+    visibleMeetingTabs,
+  } from '../config/configSections.js';
   import { myBrain, refreshMyBrain } from '../stores/myBrain.js';
   import { configChecks, refreshConfigChecks } from '../stores/configChecks.js';
-  import { alertsBySection } from '../utils/configAlerts.js';
+  import { alertsBySection, mergeAlerts } from '../utils/configAlerts.js';
+  import { accountView } from '../utils/userIdentity.js';
   import { isNative } from '../platform/index.js';
   import { openConnectFlow } from '../platform/auth.js';
   import { auth } from '../stores/auth.js';
@@ -79,6 +106,10 @@
   export let onSaveContext = async (_text) => true; // doit renvoyer true/false
   export let onImportAudio = () => {};
   export let onClose = () => {};
+  /** Langue de l'interface (« Mon profil ») : c'est App qui la porte. */
+  export let onSetLanguage = (_lang) => {};
+  /** Gestes de compte remontés à App : 'password', 'logout'. */
+  export let onAccountAction = (_id) => {};
 
   $: c = uiText.config;
 
@@ -105,65 +136,104 @@
   // lui-même — l'endpoint qui possède le réglage est celui qui dit ce qui est
   // éditable.
   //
-  // Trois groupes, parce que ces huit écrans ne sont pas de même nature : on
-  // règle l'app, on tient sa bibliothèque, on se sert d'un outil.
-  // La LISTE vit dans config/configSections.js. Ne restent ici que les
-  // icônes — des composants Svelte, qui n'ont rien à faire dans un module de
-  // configuration.
+  // La LISTE, ses groupes et leurs raisons vivent dans
+  // config/configSections.js. Ne restent ici que les icônes — des composants
+  // Svelte, qui n'ont rien à faire dans un module de configuration.
   const SECTION_ICONS = {
-    audio: IconMic,
-    context: IconUserId,
-    detection: IconRadar,
-    'action-mail': IconMail,
-    'action-storage': IconCloud,
+    profile: IconProfile,
+    ai: IconMagic,
     mail: IconLink,
-    mybrain: IconBrain,
+    usage: IconChart,
+    meeting: IconMeeting,
+    actions: IconShare,
     templates: IconTemplates,
     tags: IconTag,
-    import: IconImport,
-    extension: IconExtension,
+    tools: IconTools,
     help: IconHelp,
     feedback: IconBug,
+    logout: IconLogout,
   };
-  // « Connexion » s'affiche dès qu'il y a un fournisseur à relier, même si
-  // l'administration a fermé l'envoi par mail — le dépôt Drive a besoin du
+  const HOME_SECTION = 'profile';
+  // Un raccourci écrit avant le déménagement d'un écran (« audio », « aiHelp »,
+  // « import »…) aboutit à sa place d'aujourd'hui, pas à « Mon profil ».
+  // EN TÊTE des déclarations réactives, et ce n'est pas un détail : Svelte les
+  // exécute dans l'ordre du fichier, une fois par passe. Placée après le calcul
+  // des onglets, la redirection changeait la nav trop tard — la page s'ouvrait
+  // sur son premier onglet au lieu de celui visé. Avant l'enregistrement de la
+  // colonne aussi : à l'ouverture, la nav n'a pas encore de propriétaire.
+  $: moved = $panelNav.owner !== 'admin' && movedConfigTarget($panelNav.active, $panelNav.sub);
+  $: if (moved) selectPanelSection(moved.section, moved.sub);
+  // Pastille de chaque section : ce que le diagnostic du compte y trouve à
+  // régler — compte relié, dossier de dépôt, dossiers par tag.
+  $: alerts = alertsBySection($configChecks.account, uiText.configChecks);
+  // Onglets de la page « Après la réunion ». « MyBrain » n'existe que là où
+  // l'administration l'a branché : l'état vient du store (stores/myBrain.js),
+  // chargé au montage et partagé avec la section. Chaque onglet porte la
+  // pastille de SON action ; l'entrée de la colonne les réunit, sans quoi un
+  // dossier de dépôt à corriger ne se verrait qu'une fois la page ouverte sur
+  // le bon onglet.
+  $: actionTabs = visibleActionTabs({ myBrain: $myBrain.available }).map((tab) => ({
+    id: tab.id,
+    label: tab.label(uiText),
+    alert: (tab.alertSection && alerts[tab.alertSection]) || null,
+  }));
+  $: actionTab = actionTabs.some((tab) => tab.id === $panelNav.sub)
+    ? $panelNav.sub
+    : actionTabs[0].id;
+  $: sectionAlerts = { ...alerts, actions: mergeAlerts(actionTabs.map((tab) => tab.alert)) };
+  // Onglets de « Préférences IA » et de « Pendant la réunion ». L'onglet
+  // « Aide IA » est le même sous les deux pages : même libellé, même orbe dans
+  // sa teinte (`tone`), et il suit le droit du groupe — sans lui, « Préférences
+  // IA » n'a qu'un écran, et pas de rangée d'onglets.
+  const toTab = (tab, t) => ({
+    id: tab.id,
+    label: tab.label(t),
+    ...(tab.id === 'aiHelp' ? { icon: IconAiHelp, tone: 'ai' } : {}),
+  });
+  $: aiTabs = visibleAiTabs({ aiHelp: $aiHelp.available }).map((tab) => toTab(tab, uiText));
+  $: aiTab = aiTabs.some((tab) => tab.id === $panelNav.sub) ? $panelNav.sub : aiTabs[0].id;
+  $: meetingTabs = visibleMeetingTabs({ aiHelp: $aiHelp.available }).map((tab) =>
+    toTab(tab, uiText),
+  );
+  $: meetingTab = meetingTabs.some((tab) => tab.id === $panelNav.sub)
+    ? $panelNav.sub
+    : meetingTabs[0].id;
+  // « Comptes connectés » s'affiche dès qu'il y a un fournisseur à relier, même
+  // si l'administration a fermé l'envoi par mail — le dépôt Drive a besoin du
   // même compte.
-  // « MyBrain » n'existe que là où l'administration l'a branché : l'état vient
-  // du store (stores/myBrain.js), chargé au montage et partagé avec la section.
   $: TABS = visibleConfigSections({
     connectable: mailTabVisible || provider.available,
-    native: isNative,
-    myBrain: $myBrain.available,
     feedbackUrl: $auth.capabilities.feedbackUrl,
     docsUrl: $auth.capabilities.docsUrl,
+    signedIn: !!accountView($auth.user).name,
   }).map((section) => ({
     id: section.id,
     label: section.label(uiText),
     icon: SECTION_ICONS[section.id],
-    group: c[section.group],
+    group: section.group ? c[section.group] : '',
     href: section.href,
-    alert: alerts[section.id] || null,
+    action: section.action,
+    danger: section.danger,
+    alert: sectionAlerts[section.id] || null,
   }));
-  // Pastille de chaque section : ce que le diagnostic du compte y trouve à
-  // régler — compte relié, dossier de dépôt, dossiers par tag.
-  $: alerts = alertsBySection($configChecks.account, uiText.configChecks);
   // Les sections vivent dans stores/panels.js : la SIDEBAR les rend à la
   // place de l'historique (desktop), le déroulant PanelTabs les garde sur
   // mobile. Ré-enregistré à chaque évolution de la liste (plafond mail,
   // langue) — le store préserve la section choisie.
-  $: registerPanelNav('config', { title: c.title, items: TABS, active: 'audio' });
-  // Repli sur la première section si l'active enregistrée n'existe pas (nav
-  // vidée par un autre panneau, valeur orpheline) : l'écran ne peut pas être
-  // vide. Exception : « mail » reste montrable SANS onglet visible — le retour
-  // OAuth en échec (#config?connectError) doit afficher son message même quand
-  // aucune action mail n'est ouverte par l'administration. Une entrée LIEN
-  // (« Aide ») n'a pas d'écran : si elle arrive comme section, repli aussi.
+  $: registerPanelNav('config', { title: c.title, items: TABS, active: HOME_SECTION });
+  // Repli sur « Mon profil » si l'active enregistrée n'existe pas (nav vidée
+  // par un autre panneau, valeur orpheline) : l'écran ne peut pas être vide.
+  // Exception : « mail » reste montrable SANS entrée visible — le retour OAuth
+  // en échec (#config?connectError) doit afficher son message même quand
+  // aucune action mail n'est ouverte par l'administration. Un LIEN (« Aide »)
+  // ou un GESTE (« Se déconnecter ») n'a pas d'écran : s'il arrive comme
+  // section, repli aussi.
   $: activeTab =
     $panelNav.owner === 'config' &&
-    (TABS.some((t) => t.id === $panelNav.active && !t.href) ||
+    (TABS.some((t) => t.id === $panelNav.active && !t.href && !t.action) ||
       ($panelNav.active === 'mail' && mailError))
       ? $panelNav.active
-      : 'audio';
+      : HOME_SECTION;
   onDestroy(() => clearPanelNav('config'));
 
   // ── Audio ─────────────────────────────────────────────────────────────────
@@ -320,6 +390,8 @@
     loadDevices();
     loadMailSettings();
     refreshMyBrain();
+    // L'onglet « Aide IA » suit le droit du groupe : relu à l'ouverture.
+    loadAiHelp();
     readMailErrorFromUrl();
     window.addEventListener('mybrief:connect-returned', onConnectReturned);
     return () => window.removeEventListener('mybrief:connect-returned', onConnectReturned);
@@ -341,143 +413,203 @@
       onSelect={selectPanelSection}
       ariaLabel={c.title}
       newTabLabel={uiText.ariaLabels.newTab}
+      onAction={onAccountAction}
     />
   </svelte:fragment>
 
-  <!-- ── Réglages audio ── -->
-  {#if activeTab === 'audio'}
-    <div class="sp-body">
-      <p class="sp-intro">{c.audioIntro}</p>
+  <!-- ── Mon profil : identité, groupe, langue, mot de passe ── -->
+  {#if activeTab === 'profile'}
+    <ProfileSection {onSetLanguage} {onAccountAction} />
 
-      <section class="sp-card">
-        <header class="sp-card-head">
-          <span class="sp-card-icon" aria-hidden="true"><IconMic width="20" height="20" /></span>
-          <div class="sp-card-title">
-            <h4>{c.audioSection}</h4>
-            <p class="sp-hint">{c.audioLabel}</p>
-          </div>
-          {#if audioSaved}
-            <span class="sp-ok"
-              ><IconCheck width="15" height="15" aria-hidden="true" /> {c.saved}</span
-            >
-          {/if}
-        </header>
+    <!-- ── Pendant la réunion : quatre ONGLETS, dans l'ordre où la réunion
+         s'en sert — ce qu'elle entend (« Micro et son »), ce qu'elle écrit
+         (« Mots remplacés »), ce que l'IA y repère (« Détection d'actions »),
+         ce que l'IA y dit (« Aide IA », pour un compte qui y a droit). -->
+  {:else if activeTab === 'meeting'}
+    <SubTabs
+      tabs={meetingTabs}
+      active={meetingTab}
+      onSelect={(id) => selectPanelSection('meeting', id)}
+      ariaLabel={c.meetingSection}
+    />
+    {#if meetingTab === 'corrections'}
+      <div class="sp-body"><CorrectionsSection /></div>
+    {:else if meetingTab === 'detection'}
+      <div class="sp-body"><ActionDetectionSection /></div>
+    {:else if meetingTab === 'aiHelp'}
+      <div class="sp-body"><AiHelpSection /></div>
+    {:else}
+      <div class="sp-body">
+        <p class="sp-intro">{c.audioIntro}</p>
 
-        {#if enumerating}
-          <div class="sp-skeleton" aria-hidden="true"></div>
-        {:else if audioInputs.length === 0}
-          <p class="sp-note sp-note-warn">{c.audioNoDevice}</p>
-        {:else}
-          <div class="sp-field">
-            <label class="sp-label" for="sp-audio-select">{c.audioDeviceLabel}</label>
-            <select
-              id="sp-audio-select"
-              class="sp-select"
-              bind:value={selectedDeviceId}
-              on:change={handleDeviceChange}
-            >
-              <option value="">{c.audioDefault}</option>
-              {#each audioInputs as device, i (device.deviceId)}
-                <option value={device.deviceId}>
-                  {device.label || `Microphone ${i + 1}`}
-                </option>
-              {/each}
-            </select>
-            <p class="sp-hint">{c.audioDeviceHint}</p>
-          </div>
-
-          {#if needsPermission}
-            <p class="sp-note">{c.audioPermissionHint}</p>
-            <div class="sp-actions">
-              <button type="button" class="sp-ghost" on:click={requestPermission}>
-                {c.audioPermissionBtn}
-              </button>
+        <section class="sp-card">
+          <header class="sp-card-head">
+            <span class="sp-card-icon" aria-hidden="true"><IconMic width="20" height="20" /></span>
+            <div class="sp-card-title">
+              <h4>{c.audioSection}</h4>
+              <p class="sp-hint">{c.audioLabel}</p>
             </div>
-          {/if}
-        {/if}
-      </section>
+            {#if audioSaved}
+              <span class="sp-ok"
+                ><IconCheck width="15" height="15" aria-hidden="true" /> {c.saved}</span
+              >
+            {/if}
+          </header>
 
-      {#if systemAudioOffered}
-        <SystemAudioCard
-          devices={audioInputs}
-          ready={!enumerating && audioInputs.length > 0 && !needsPermission}
+          {#if enumerating}
+            <div class="sp-skeleton" aria-hidden="true"></div>
+          {:else if audioInputs.length === 0}
+            <p class="sp-note sp-note-warn">{c.audioNoDevice}</p>
+          {:else}
+            <div class="sp-field">
+              <label class="sp-label" for="sp-audio-select">{c.audioDeviceLabel}</label>
+              <select
+                id="sp-audio-select"
+                class="sp-select"
+                bind:value={selectedDeviceId}
+                on:change={handleDeviceChange}
+              >
+                <option value="">{c.audioDefault}</option>
+                {#each audioInputs as device, i (device.deviceId)}
+                  <option value={device.deviceId}>
+                    {device.label || `Microphone ${i + 1}`}
+                  </option>
+                {/each}
+              </select>
+              <p class="sp-hint">{c.audioDeviceHint}</p>
+            </div>
+
+            {#if needsPermission}
+              <p class="sp-note">{c.audioPermissionHint}</p>
+              <div class="sp-actions">
+                <button type="button" class="sp-ghost" on:click={requestPermission}>
+                  {c.audioPermissionBtn}
+                </button>
+              </div>
+            {/if}
+          {/if}
+        </section>
+
+        {#if systemAudioOffered}
+          <SystemAudioCard
+            devices={audioInputs}
+            ready={!enumerating && audioInputs.length > 0 && !needsPermission}
+          />
+        {/if}
+      </div>
+    {/if}
+
+    <!-- ── Préférences IA : ce que l'IA sait de moi (« Mon contexte ») et,
+         pour un compte qui y a droit, comment elle se tient à mes côtés
+         (« Aide IA » — le même écran que sous « Pendant la réunion »). Sans
+         ce droit, un seul écran : pas de rangée d'onglets. -->
+  {:else if activeTab === 'ai'}
+    {#if aiTabs.length > 1}
+      <SubTabs
+        tabs={aiTabs}
+        active={aiTab}
+        onSelect={(id) => selectPanelSection('ai', id)}
+        ariaLabel={c.aiSection}
+      />
+    {/if}
+    {#if aiTab === 'aiHelp'}
+      <div class="sp-body"><AiHelpSection /></div>
+    {:else}
+      <div class="sp-body">
+        <p class="sp-intro">{c.contextIntro}</p>
+
+        <section class="sp-card">
+          <header class="sp-card-head">
+            <span class="sp-card-icon" aria-hidden="true"
+              ><IconUserId width="20" height="20" /></span
+            >
+            <div class="sp-card-title">
+              <h4>{c.contextSection}</h4>
+              <p class="sp-hint">{c.contextHint}</p>
+            </div>
+          </header>
+
+          <div class="sp-field">
+            <textarea
+              class="sp-textarea"
+              rows="12"
+              maxlength="4000"
+              bind:value={contextText}
+              placeholder={c.contextPlaceholder}
+            ></textarea>
+            <p class="sp-hint">{contextText.length} / 4000</p>
+          </div>
+
+          {#if saveState === 'error'}
+            <p class="sp-warn" role="alert">
+              <IconWarn width="15" height="15" aria-hidden="true" />
+              {c.error}
+            </p>
+          {/if}
+        </section>
+
+        <!-- Ce que l'IA fait EN réunion ne se règle pas ici : on le dit, on y
+             mène — c'est sous « Préférences IA » qu'on vient le chercher. -->
+        <p class="sp-note sp-elsewhere">
+          <span>{c.aiElsewhere}</span>
+          <button
+            type="button"
+            class="sp-inline-link"
+            on:click={() => selectPanelSection('meeting')}
+          >
+            {c.aiElsewhereLink}
+          </button>
+        </p>
+      </div>
+
+      <div class="sp-footer">
+        {#if saveState === 'saved'}
+          <span class="sp-ok"
+            ><IconCheck width="15" height="15" aria-hidden="true" /> {c.saved}</span
+          >
+        {/if}
+        <button
+          type="button"
+          class="sp-save"
+          on:click={handleSaveContext}
+          disabled={saveState === 'saving'}
+        >
+          {#if saveState === 'saving'}{c.saving}{:else}<IconSave
+              width="15"
+              height="15"
+              aria-hidden="true"
+            />
+            {c.save}{/if}
+        </button>
+      </div>
+    {/if}
+
+    <!-- ── Après la réunion : un ONGLET par action, réglages + test ── -->
+    <!-- L'état du compte relié est passé en props, pas redemandé : ce panneau
+         l'a déjà chargé pour la page « Comptes connectés », et deux appels à
+         /connect/status feraient deux vérités possibles à l'écran. -->
+  {:else if activeTab === 'actions'}
+    <SubTabs
+      tabs={actionTabs}
+      active={actionTab}
+      onSelect={(id) => selectPanelSection('actions', id)}
+      ariaLabel={c.actionsSection}
+    />
+    <div class="sp-body">
+      {#if actionTab === 'mybrain'}
+        <!-- MyBrain : envoyer ses réunions au cerveau partagé. -->
+        <MyBrainSection />
+      {:else}
+        <ActionsSettingsTab
+          section={actionTab}
+          connectStatus={mailSettings}
+          connectLoading={mailLoading}
+          onConnect={connectAccount}
         />
       {/if}
     </div>
 
-    <!-- ── Ma configuration ── -->
-  {:else if activeTab === 'context'}
-    <div class="sp-body">
-      <p class="sp-intro">{c.contextIntro}</p>
-
-      <section class="sp-card">
-        <header class="sp-card-head">
-          <span class="sp-card-icon" aria-hidden="true"><IconUserId width="20" height="20" /></span>
-          <div class="sp-card-title">
-            <h4>{c.contextSection}</h4>
-            <p class="sp-hint">{c.contextHint}</p>
-          </div>
-        </header>
-
-        <div class="sp-field">
-          <textarea
-            class="sp-textarea"
-            rows="12"
-            maxlength="4000"
-            bind:value={contextText}
-            placeholder={c.contextPlaceholder}
-          ></textarea>
-          <p class="sp-hint">{contextText.length} / 4000</p>
-        </div>
-
-        {#if saveState === 'error'}
-          <p class="sp-warn" role="alert">
-            <IconWarn width="15" height="15" aria-hidden="true" />
-            {c.error}
-          </p>
-        {/if}
-      </section>
-    </div>
-
-    <div class="sp-footer">
-      {#if saveState === 'saved'}
-        <span class="sp-ok"><IconCheck width="15" height="15" aria-hidden="true" /> {c.saved}</span>
-      {/if}
-      <button
-        type="button"
-        class="sp-save"
-        on:click={handleSaveContext}
-        disabled={saveState === 'saving'}
-      >
-        {#if saveState === 'saving'}{c.saving}{:else}<IconSave
-            width="15"
-            height="15"
-            aria-hidden="true"
-          />
-          {c.save}{/if}
-      </button>
-    </div>
-  {:else if activeTab === 'detection'}
-    <!-- ── Détection d'actions : ce que l'assistant repère PENDANT la réunion.
-         Réglages personnels — il n'y a pas de valeur d'organisation au-dessus,
-         contrairement aux deux pages d'actions ci-dessous. -->
-    <div class="sp-body"><ActionDetectionSection /></div>
-
-    <!-- ── Actions : une page par action, réglages + test ── -->
-    <!-- L'état du compte relié est passé en props, pas redemandé : ce panneau
-         l'a déjà chargé pour la page « Connexion », et deux appels à
-         /connect/status feraient deux vérités possibles à l'écran. -->
-  {:else if activeTab === 'action-mail' || activeTab === 'action-storage'}
-    <div class="sp-body">
-      <ActionsSettingsTab
-        section={activeTab === 'action-mail' ? 'mail' : 'storage'}
-        connectStatus={mailSettings}
-        connectLoading={mailLoading}
-        onConnect={connectAccount}
-      />
-    </div>
-
-    <!-- ── Envoi par mail ── -->
+    <!-- ── Comptes connectés ── -->
   {:else if activeTab === 'mail'}
     <div class="sp-body">
       <p class="sp-intro">{c.mailIntro}</p>
@@ -551,9 +683,10 @@
       {/if}
     </div>
 
-    <!-- ── MyBrain : envoyer ses réunions au cerveau partagé ── -->
-  {:else if activeTab === 'mybrain'}
-    <div class="sp-body"><MyBrainSection /></div>
+    <!-- ── Usage & crédits : SA consommation, et rien d'autre — administrateur
+         compris (le crédit de l'équipe est dans l'administration). ── -->
+  {:else if activeTab === 'usage'}
+    <div class="sp-body"><PersonalStats /></div>
 
     <!-- ── Mes templates ── -->
     <!-- Les sections suivantes étaient des panneaux plein écran à part. Elles
@@ -563,10 +696,18 @@
     <TemplatesSection />
   {:else if activeTab === 'tags'}
     <TagsPanel />
-  {:else if activeTab === 'import'}
-    <ImportSection texts={c} onImport={onImportAudio} />
-  {:else if activeTab === 'extension'}
-    <ExtensionSection texts={c} />
+    <!-- ── Outils : deux blocs titrés dans UNE page qui défile. Chacun était
+         une page, avec son défilement à lui : empilés dans une enveloppe qui
+         n'est pas un conteneur flex, ils reprennent leur hauteur naturelle.
+         L'extension se lie à l'onglet ouvert : elle n'a de sens que dans un
+         navigateur d'ordinateur, jamais dans l'app mobile. -->
+  {:else if activeTab === 'tools'}
+    <div class="sp-tools">
+      <ImportSection texts={c} onImport={onImportAudio} />
+      {#if !isNative}
+        <ExtensionSection texts={c} />
+      {/if}
+    </div>
   {/if}
 </PanelShell>
 
@@ -736,6 +877,47 @@
     font-size: 0.82rem;
     color: color-mix(in srgb, var(--brand-secondary) 11.2%, #5a5a5a);
     line-height: 1.5;
+  }
+  /* Renvoi vers une autre page : la phrase, puis le lien qui y mène. */
+  .sp-elsewhere {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 10px;
+  }
+  .sp-inline-link {
+    padding: 0;
+    border: none;
+    background: none;
+    font: inherit;
+    font-weight: 600;
+    color: var(--brand-text);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    cursor: pointer;
+  }
+  /* Au doigt, un lien dans une phrase reste une cible de 44 px. */
+  @media (pointer: coarse) {
+    .sp-inline-link {
+      display: inline-flex;
+      align-items: center;
+      min-height: 44px;
+    }
+  }
+  .sp-inline-link:focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  /* « Outils » : la page défile d'un bloc ; le second titre referme le premier
+     bloc d'un filet, comme une nouvelle page le ferait. */
+  .sp-tools {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+  }
+  .sp-tools :global(.es-head) {
+    border-top: 1px solid var(--line);
   }
   .sp-note-warn {
     background: var(--warn-bg);

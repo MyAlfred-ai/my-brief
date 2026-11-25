@@ -5,8 +5,9 @@ sidebar:
   order: 3
 ---
 
-**Administration → Crédit de temps**, juste après **Groupes**, où se règle le quota. Les utilisateurs ne
-voient pas cette liste : **Mes statistiques** ne leur montre que leur propre consommation.
+**Administration → Coûts → Crédit de temps.** Le quota, lui, se règle dans **Personnes → Groupes**. Les
+utilisateurs ne voient pas cette liste : **Réglages → Usage & crédits** ne leur montre que leur propre
+consommation.
 
 ## Les compteurs
 
@@ -36,8 +37,8 @@ les compteurs suivent.
 
 ## Les statistiques d'un compte
 
-Un clic sur un nom ouvre **Statistiques de …** : la page que la personne voit dans **Mes
-statistiques**, avec sa jauge, son rythme et ses chiffres. Les titres et le contenu des réunions n'y
+Un clic sur un nom ouvre **Statistiques de …** : la page que la personne voit dans **Usage &
+crédits**, avec sa jauge, son rythme et ses chiffres. Les titres et le contenu des réunions n'y
 figurent pas. **Tous les comptes**, en haut, ramène à la liste.
 
 Le crédit se règle groupe par groupe : [Gérer les groupes](../utilisateurs/gerer-les-groupes.md).

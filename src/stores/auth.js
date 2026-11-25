@@ -11,10 +11,12 @@ import { registerAuthFailureHandler } from '../utils/httpErrorHandler.js';
 import * as authApi from '../services/authApi.js';
 import { resetActionSettings } from './actionSettings.js';
 import { resetActionDetection } from './actionDetection.js';
+import { resetUserCorrections } from './transcriptCorrections.js';
 import { resetInfographic } from './infographic.js';
 import { resetMyBrain } from './myBrain.js';
 import { resetQuota } from './quota.js';
 import { resetConfigChecks } from './configChecks.js';
+import { resetCompanyLogo } from './companyLogo.js';
 
 const EMPTY_CAPABILITIES = {
   oidcEnabled: true,
@@ -57,9 +59,9 @@ export const auth = writable({
   /**
    * {email, name, role, mustChangePassword, authMode, authProvider, picture,
    * groups, rights} ou null. `picture` : adresse de la photo de profil, vide
-   * quand l'IdP n'en publie pas (l'avatar montre alors les initiales). `groups` : les groupes du compte résolus par le serveur
-   * ([{id, name, color}]), attribués par l'administration. `rights` : ce que
-   * ces groupes lui permettent ({infographic}), cumulatif côté serveur.
+   * quand l'IdP n'en publie pas (l'avatar montre alors les initiales). `groups` : le groupe du compte résolu par le serveur
+   * ([{id, name, color}], un seul élément), attribué par l'administration.
+   * `rights` : ce que ce groupe lui permet ({infographic}).
    */
   user: null,
   /** Ce que le serveur sait faire — cf. GET /api/auth/config */
@@ -100,6 +102,8 @@ export function signedOut() {
   setUser(null);
   resetActionSettings();
   resetActionDetection();
+  // Les mots remplacés du compte précédent réécriraient la réunion du suivant.
+  resetUserCorrections();
   // L'image d'une réunion du compte précédent ne doit pas rester affichable
   // (ni son polling actif) sous le compte suivant.
   resetInfographic();
@@ -109,6 +113,8 @@ export function signedOut() {
   resetQuota();
   // Les pastilles nomment les dossiers et les tags du compte précédent.
   resetConfigChecks();
+  // Une autre installation (application mobile) peut suivre : on relira.
+  resetCompanyLogo();
 }
 
 /**

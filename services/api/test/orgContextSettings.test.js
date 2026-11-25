@@ -1,5 +1,5 @@
 /**
- * Vocabulaire et contexte de l'organisation — réglé dans l'onglet Configuration
+ * Vocabulaire et contexte de l'organisation — réglé dans la rubrique Organisation
  * de l'administration, joint à chaque génération de résumé.
  *
  * Quatre garanties : écriture réservée aux administrateurs ; le texte descend

@@ -1,8 +1,12 @@
 /**
  * Corrections automatiques de la transcription : la liste « ce que la
- * transcription écrit → ce qu'il faut écrire », réglée par un administrateur
- * (Administration → Configuration) et appliquée aux réunions de TOUS les
- * comptes.
+ * transcription écrit → ce qu'il faut écrire ». Deux listes, un seul moteur :
+ * celle de l'organisation, réglée par un administrateur (Administration →
+ * Configuration) et appliquée aux réunions de TOUS les comptes ; et celle du
+ * compte, « Mots remplacés » (Réglages → Pendant la réunion), qui ne vaut que pour
+ * ses réunions et se remplit aussi depuis ses notes (utils/noteReplacements.js).
+ * Les deux sont compilées ensemble (stores/transcriptCorrections.js), celle du
+ * compte d'abord : sur une même écriture, c'est son mot juste qui gagne.
  *
  * Un remplacement déterministe, pas une consigne au modèle : le vocabulaire de
  * l'organisation guide déjà le résumé, la relecture par les notes
@@ -38,6 +42,16 @@ import { diffWordFlags, REFINE_FLASH_MS } from './transcriptRefine.js';
  * réécrire la langue. La modération est aussi une affaire de plafond.
  */
 export const CORRECTIONS_MAX = 50;
+/**
+ * Plafond de la liste d'un compte — plus haut, parce qu'elle se remplit
+ * d'elle-même et ne touche que son auteur. Ce n'est pas le moteur qui le
+ * fixe : les deux listes pleines (150 lignes) coûtent 0,03 ms par phrase
+ * bouclée, et il faut dépasser 500 lignes pour que corriger une transcription
+ * entière se sente (un dixième de seconde). C'est la liste qui ne se relirait
+ * plus, et chaque ligne réécrit un mot dans toutes les réunions à venir — y
+ * compris là où il était juste.
+ */
+export const USER_CORRECTIONS_MAX = 100;
 export const VARIANTS_MAX = 10;
 export const TERM_MAX = 60;
 export const REPLACEMENT_MAX = 80;
@@ -79,14 +93,15 @@ const letterCount = (key) => (key.match(/[\p{L}\p{N}]/gu) || []).length;
  * s'applique.
  *
  * @param {unknown} raw
+ * @param {number} [max] - plafond de lignes (celui de l'organisation par défaut)
  * @returns {Array<{from: string[], to: string}>}
  */
-export function normalizeRules(raw) {
+export function normalizeRules(raw, max = CORRECTIONS_MAX) {
   if (!Array.isArray(raw)) return [];
   const seen = new Set();
   const out = [];
   for (const rule of raw) {
-    if (out.length >= CORRECTIONS_MAX) break;
+    if (out.length >= max) break;
     const to = cleanTerm(rule?.to, REPLACEMENT_MAX);
     if (!to) continue;
     const from = [];
@@ -158,13 +173,14 @@ function matchCase(to, found, before) {
  * qu'on veut, sans recompiler.
  *
  * @param {unknown} rules - liste brute (normalisée ici)
+ * @param {{max?: number}} [opts] - plafond de lignes de la liste compilée
  * @returns {{size: number, apply: (text: string) => string,
  *   parts: (text: string) => Array<{text: string, changed: boolean}>}}
  *   `parts` découpe le texte corrigé en morceaux inchangés / remplacés — pour
  *   le banc d'essai de l'administration, qui surligne ce qui change.
  */
-export function compileCorrections(rules) {
-  const list = normalizeRules(rules);
+export function compileCorrections(rules, { max = CORRECTIONS_MAX } = {}) {
+  const list = normalizeRules(rules, max);
   const alts = list
     .flatMap((rule) => rule.from.map((term) => ({ term, to: rule.to })))
     .sort((a, b) => foldKey(b.term).length - foldKey(a.term).length);
@@ -227,6 +243,32 @@ export function compileCorrections(rules) {
   };
 }
 
+/**
+ * Remplace UN passage dans un texte, avec la lecture des corrections
+ * automatiques — mot entier, casse, accents, espaces et apostrophes
+ * indifférents, majuscule de début de phrase gardée — mais sans leur liste ni
+ * leurs plafonds : c'est l'Aide IA qui l'appelle, sur un passage qu'on vient de
+ * lui désigner (utils/transcriptReplace.js).
+ *
+ * @param {unknown} text
+ * @param {string} find - le passage, tel qu'on le lit dans la transcription
+ * @param {string} replacement - vide : le passage est retiré
+ * @returns {{text: string, count: number}} `count` nul : texte rendu tel quel
+ */
+export function replacePassage(text, find, replacement) {
+  const raw = String(text ?? '');
+  if (!foldKey(find)) return { text: raw, count: 0 };
+  const source = raw.normalize('NFC');
+  const finder = new RegExp(`${BEFORE}(${termPattern(find)})${AFTER}`, 'giu');
+  const to = String(replacement ?? '');
+  let count = 0;
+  const out = source.replace(finder, (match, before, found, offset) => {
+    count += 1;
+    return before + matchCase(to, found, source.slice(0, offset + before.length));
+  });
+  return count ? { text: out, count } : { text: raw, count: 0 };
+}
+
 // ── Écran d'administration : lignes éditables ────────────────────────────
 
 /**
@@ -253,6 +295,9 @@ const COMMON_WORDS = new Set(
 /** Terme court : au plus trois lettres — un vrai mot, ou un sigle, s'y cache vite. */
 const SHORT_LETTERS = 3;
 
+/** Un mot si courant qu'une correction le toucherait dans presque chaque phrase. */
+export const isCommonWord = (term) => COMMON_WORDS.has(foldKey(term));
+
 /** Variantes saisies dans un champ : séparées par des virgules. */
 export function splitVariants(value) {
   return String(value ?? '')
@@ -269,17 +314,22 @@ export function newRowId() {
 }
 
 /** Liste enregistrée → lignes de l'écran (variantes jointes par des virgules). */
-export function rulesToRows(rules) {
-  return normalizeRules(rules).map((r) => ({ id: newRowId(), from: r.from.join(', '), to: r.to }));
+export function rulesToRows(rules, max = CORRECTIONS_MAX) {
+  return normalizeRules(rules, max).map((r) => ({
+    id: newRowId(),
+    from: r.from.join(', '),
+    to: r.to,
+  }));
 }
 
 /** Lignes de l'écran → liste à enregistrer (lignes vides ignorées). */
-export function rowsToRules(rows) {
+export function rowsToRules(rows, max = CORRECTIONS_MAX) {
   return normalizeRules(
     (Array.isArray(rows) ? rows : []).map((row) => ({
       from: splitVariants(row?.from),
       to: row?.to,
     })),
+    max,
   );
 }
 

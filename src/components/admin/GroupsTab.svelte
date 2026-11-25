@@ -14,16 +14,19 @@
    * compte de la colonne sur la carte, ou on le sélectionne puis on choisit
    * la carte (clavier, écran tactile, où le glisser HTML ne marche pas).
    * Tant qu'un compte est en main, chaque carte dit ce qu'elle fera :
-   * « Déposer ici », ou « Déjà dans ce groupe ». L'ajout part sans
-   * confirmation : il se défait d'un geste depuis les membres du groupe.
+   * « Déposer ici », ou « Déjà dans ce groupe ». Un compte n'ayant qu'un
+   * groupe, déposer c'est DÉPLACER : il quitte sa carte d'avant. Le geste part
+   * sans confirmation : il se défait en reposant le compte sur son ancien
+   * groupe.
    *
    * La carte reste le point d'entrée des membres : c'est ce qu'on vient
    * regarder, « qui est dans quel groupe ». Modifier et supprimer sont des
    * gestes rares, en icônes.
    *
-   * Le groupe par défaut est une carte comme les autres, marquée « Par
-   * défaut » et sans corbeille : il se renomme, il ne se supprime pas (cf.
-   * services/api/lib/repositories/groups.js pour l'invariant qu'il porte).
+   * Les deux groupes fixes sont des cartes comme les autres, marquées « Par
+   * défaut » et « Administrateurs », sans corbeille : ils se renomment, ils ne
+   * se suppriment pas (cf. services/api/lib/repositories/groups.js pour ce
+   * qu'ils portent).
    */
   import { onDestroy, onMount, tick } from 'svelte';
   import IconPlus from '~icons/solar/add-circle-linear';
@@ -269,8 +272,9 @@
   }
 
   /**
-   * L'ajout lui-même. L'effectif renvoyé par le serveur remplace celui de la
-   * carte, et les groupes du compte suivent dans la colonne, sans relecture.
+   * Le déplacement lui-même. L'effectif renvoyé par le serveur remplace celui
+   * de la carte d'arrivée, celle de départ perd un membre, et le groupe du
+   * compte suit dans la colonne, sans relecture.
    */
   async function addToGroup(user, group) {
     if (!user || isMemberOf(user, group) || busy.has(group.id)) return;
@@ -288,15 +292,21 @@
       return;
     }
     const fresh = res.data.group;
-    if (fresh) groups = groups.map((g) => (g.id === fresh.id ? { ...g, ...fresh } : g));
-    const join = (u) =>
-      u.email === user.email
-        ? { ...u, groupIds: [...new Set([...(u.groupIds || []), group.id])] }
-        : u;
-    people = people.map(join);
-    if (searched) searched = { ...searched, users: searched.users.map(join) };
+    const left = user.groupIds?.[0] || defaultId;
+    groups = groups.map((g) => {
+      if (fresh && g.id === fresh.id) return { ...g, ...fresh };
+      if (g.id === left) return { ...g, memberCount: Math.max(0, (g.memberCount || 0) - 1) };
+      return g;
+    });
+    const move = (u) => (u.email === user.email ? { ...u, groupIds: [group.id] } : u);
+    people = people.map(move);
+    if (searched) searched = { ...searched, users: searched.users.map(move) };
     const before = (recent[group.id] || []).filter((email) => email !== user.email);
-    recent = { ...recent, [group.id]: [user.email, ...before] };
+    recent = {
+      ...recent,
+      [left]: (recent[left] || []).filter((email) => email !== user.email),
+      [group.id]: [user.email, ...before],
+    };
     flash(group.id);
     announce(fill(texts.addedTo, { name: displayName(user), group: group.name }));
   }
@@ -397,7 +407,7 @@
       selected = null;
       view = 'list';
     }
-    // Ses membres sans autre groupe sont revenus dans le groupe par défaut.
+    // Ses membres sont revenus dans le groupe par défaut.
     load();
     loadPeople();
   }

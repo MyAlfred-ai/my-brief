@@ -8,6 +8,10 @@ import { isSameOrigin } from '../../lib/auth/originCheck.js';
 import { normalizeEmail, toSessionUser } from '../../lib/repositories/users.js';
 import { fail } from '../../lib/errors.js';
 import { loginBody } from './schemas.js';
+import { AUTH_BODY_LIMIT, LOGOUT_BODY_LIMIT } from '../../lib/authPlugin.js';
+
+// Routes publiques : corps de quelques Ko (lib/authPlugin.js).
+const LOGIN_ROUTE = { schema: { body: loginBody }, bodyLimit: AUTH_BODY_LIMIT };
 
 export default function loginRoutes(app) {
   // Deux compteurs : par IP contre le balayage large, par compte contre le
@@ -21,7 +25,7 @@ export default function loginRoutes(app) {
     byAccount.stop();
   });
 
-  app.post('/login', { schema: { body: loginBody } }, async (req, reply) => {
+  app.post('/login', LOGIN_ROUTE, async (req, reply) => {
     if (!isSameOrigin(req)) return fail(reply, 403, 'forbidden');
     if (!app.config.passwordLoginEnabled) return fail(reply, 501, 'password_login_disabled');
     // Mode masqué depuis l'administration : la route refuse aussi. Le bouton a
@@ -81,7 +85,7 @@ export default function loginRoutes(app) {
   });
 
   /** Idempotent : toujours 204, même sans session — le frontend n'a rien à tester. */
-  app.post('/logout', async (req, reply) => {
+  app.post('/logout', { bodyLimit: LOGOUT_BODY_LIMIT }, async (req, reply) => {
     if (req.user?.sessionToken) await app.sessions.destroy(req.user.sessionToken);
     clearSessionCookie(reply, { secure: app.config.cookieSecure });
     return reply.code(204).send();

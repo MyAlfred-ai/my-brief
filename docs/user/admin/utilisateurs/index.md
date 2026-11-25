@@ -5,9 +5,11 @@ sidebar:
   order: 4
 ---
 
-L'onglet **Administration → Utilisateurs** liste les comptes qui accèdent à myBrief sur votre instance,
-et permet de les créer, de les modifier, de les suspendre et de les supprimer. L'onglet **Groupes**,
-juste après, range ces comptes en ensembles : services, équipes, profils.
+La page **Administration → Personnes → Comptes** liste les comptes qui accèdent à myBrief sur votre
+instance, et permet de les créer, de les modifier, de les suspendre et de les supprimer. La page
+**Groupes**, juste après, range ces comptes en ensembles : services, équipes, profils.
+
+![Administration, page Groupes, 3 groupes sur 50 : à gauche, les sept comptes de l'organisation, à glisser sur un groupe ; à droite, les cartes des groupes — Défaut, le groupe par défaut, 3 membres, 600 min par mois et Infographies ; Admin, celui des administrateurs, 1 membre, Illimité et Infographies ; Commerciaux, avec sa description, 3 membres et 300 min par mois —, chacune avec son crayon, et la corbeille pour Commerciaux ; en haut à droite, + Nouveau groupe.](../../images/admin-groupes.png)
 
 ## À quoi ça sert
 
@@ -20,9 +22,9 @@ de réunion, le droit de générer des infographies.
 **Deux rôles.** **Utilisateur** : myBrief, ses réunions, ses réglages. **Administrateur** : en plus,
 l'écran d'administration.
 
-**Des groupes.** Chaque compte est dans au moins un groupe ; le groupe **Défaut** accueille tout nouveau
-compte et tout compte qui n'en a plus d'autre. Dès qu'il existe un second groupe, la ligne d'un compte
-montre les siens en puces, et la liste se filtre par groupe. Voir [Gérer les groupes](gerer-les-groupes.md).
+**Des groupes.** Chaque compte est dans un seul groupe ; le groupe **Défaut** accueille tout nouveau
+compte, le groupe **Admin** tout compte qui devient administrateur. La ligne d'un compte montre son
+groupe en puce, et la liste se filtre par groupe. Voir [Gérer les groupes](gerer-les-groupes.md).
 
 **Deux façons d'avoir un compte.**
 
@@ -31,7 +33,7 @@ montre les siens en puces, et la liste se filtre par groupe. Voir [Gérer les gr
 | **Créé par vous** | **Nouvel utilisateur** | Provisoire, à changer à la première connexion |
 | **Créé à la première connexion** | Par Google ou Microsoft, si le domaine de l'adresse est autorisé — voir [Restreindre aux domaines autorisés](../connexion/restreindre-aux-domaines-autorises.md) | Aucun : **SSO uniquement**, dans la fiche du compte |
 
-**La liste** tient une ligne par compte : **Nom**, **Email**, **Groupes** s'il en existe plus d'un,
+**La liste** tient une ligne par compte : **Nom**, **Email**, **Groupe** s'il en existe plus d'un,
 **Dernière connexion** — en fait sa dernière ouverture de myBrief, dite « il y a 3 jours » — et
 l'interrupteur **Actif**. Seules les
 exceptions portent une pastille : **Admin**, **Désactivé**. Les comptes arrivent par ordre alphabétique
@@ -43,7 +45,7 @@ de **Dernière connexion**, la mention **SSO uniquement** pour un compte sans mo
 rares — **Réinitialiser le mot de passe**, **Supprimer le compte**. Sur ordinateur, ces deux gestes
 apparaissent aussi au survol de la ligne : la clé et la corbeille.
 
-**Tout agit immédiatement** : pas de bouton d'enregistrement pour l'onglet. Désactiver un compte, changer
+**Tout agit immédiatement** : pas de bouton d'enregistrement pour la page. Désactiver un compte, changer
 son rôle ou réinitialiser son mot de passe ferme ses sessions en cours.
 
 **Les garde-fous.** On ne peut ni désactiver ni supprimer son propre compte, ni retirer le dernier
@@ -56,9 +58,9 @@ accès.
 
 | Réglage | Où | Effet | Page |
 |---|---|---|---|
-| **Nouvel utilisateur**, **Rôle**, **Actif** | Utilisateurs | Qui entre, avec quels droits | [Gérer les comptes](gerer-les-comptes.md) |
-| **Réinitialiser le mot de passe** | Utilisateurs, fiche du compte | Un mot de passe provisoire, à changer à la connexion | [Réinitialiser un mot de passe](reinitialiser-un-mot-de-passe.md) |
-| **Supprimer le compte** | Utilisateurs, fiche du compte | Le compte et toutes ses données, définitivement | [Supprimer un compte](supprimer-un-compte.md) |
+| **Nouvel utilisateur**, **Rôle**, **Actif** | Comptes | Qui entre, avec quels droits | [Gérer les comptes](gerer-les-comptes.md) |
+| **Réinitialiser le mot de passe** | Comptes, fiche du compte | Un mot de passe provisoire, à changer à la connexion | [Réinitialiser un mot de passe](reinitialiser-un-mot-de-passe.md) |
+| **Supprimer le compte** | Comptes, fiche du compte | Le compte et toutes ses données, définitivement | [Supprimer un compte](supprimer-un-compte.md) |
 | **+ Nouveau groupe**, glisser un compte sur un groupe, **Retirer** | Groupes, et **Groupes** dans la fiche d'un compte | Qui est dans quel groupe | [Gérer les groupes](gerer-les-groupes.md) |
 | **Minutes de réunion par mois**, **Générer des infographies** | Groupes, formulaire du groupe | Le quota et les droits de ses membres | [Gérer les groupes](gerer-les-groupes.md) |
 

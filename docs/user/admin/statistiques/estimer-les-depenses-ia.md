@@ -5,9 +5,9 @@ sidebar:
   order: 2
 ---
 
-**Administration → Statistiques**, carte **Dépenses d'IA estimées**, sous le tableau **Utilisation par
-utilisateur**. Elle suit la période et les filtres de la page : choisissez un **Groupe** pour savoir ce
-que coûte une équipe.
+**Administration → Coûts → Consommation**, carte **Dépenses d'IA estimées**, sous le tableau
+**Utilisation par utilisateur**. Elle suit la période et les filtres de la page : choisissez un
+**Groupe** pour savoir ce que coûte une équipe.
 
 ## Les trois chiffres
 
@@ -23,7 +23,7 @@ que coûte une équipe.
 |---|---|
 | **Transcription** | La transcription en direct, facturée à la minute d'audio |
 | **Comptes rendus** | Chaque compte rendu généré, régénérations comprises |
-| **Infographies** | La maquette puis l'image de chaque infographie |
+| **Infographies** | Le contenu de chaque infographie, écrit par l'IA ; sa mise en page ne coûte rien |
 | **Assistants en réunion** | La détection d'actions pendant la réunion, et le titre de chaque réunion |
 
 Chaque ligne donne ses modèles, son coût unitaire (l'heure, le compte rendu ou l'infographie) et sa
@@ -31,7 +31,8 @@ part des dépenses. **Données** affiche les mêmes valeurs en tableau, avec les
 
 ## Comparer les modèles
 
-**Comparer les modèles** chiffre la même activité avec chacun des modèles proposés dans l'onglet **IA** :
+**Comparer les modèles** chiffre la même activité avec chacun des modèles proposés sur la page
+**Modèles** :
 **Tarif public**, **Coût unitaire**, dépense **Par mois** et **Écart par mois**. Le modèle **En
 service** est surligné. Sur téléphone — ou quand la carte est étroite —, chaque modèle se lit en fiche :
 la dépense par mois en tête, puis le tarif, le coût unitaire et l'écart.
@@ -39,9 +40,12 @@ la dépense par mois en tête, puis le tarif, le coût unitaire et l'écart.
 Seul le prix change : la qualité, elle, se juge à l'essai. Voir
 [Choisir le modèle de rédaction](../ia/choisir-le-modele-de-redaction.md).
 
-Les mêmes tarifs s'affichent dans l'onglet **IA**, au moment de choisir le modèle de transcription :
-chaque modèle y montre son niveau de prix en **€** et le coût d'une heure en euros. Voir
-[Choisir le modèle de transcription](../ia/choisir-le-modele-de-transcription.md).
+Les mêmes tarifs s'affichent sur la page **Modèles**, au moment de choisir un modèle : chaque
+modèle y
+montre son niveau de prix en **€** et ce qu'il coûte en euros — une heure de transcription, ou un compte
+rendu d'une réunion d'une heure, estimé avec les mêmes hypothèses qu'ici. Voir
+[Choisir le modèle de transcription](../ia/choisir-le-modele-de-transcription.md) et
+[Choisir le modèle de rédaction](../ia/choisir-le-modele-de-redaction.md).
 
 ## Actualiser les tarifs
 
@@ -62,9 +66,9 @@ ou ceux livrés avec myBrief. Un clic suffit à les rafraîchir, rien ne se fait
 - **Des volumes mesurés** : la durée des réunions, la longueur des transcriptions, les comptes rendus
   générés, les infographies. Les jetons réellement facturés, myBrief ne les connaît pas : la carte les
   estime, et le dit.
-- **La période** est celle choisie en haut de l'onglet. Une instance plus jeune que la période se
+- **La période** est celle choisie en haut de la page. Une instance plus jeune que la période se
   mensualise depuis sa première réunion.
-- **Les modèles** sont ceux en service dans l'onglet **IA**.
+- **Les modèles** sont ceux en service sur la page **Modèles**.
 
 ## Ce qu'il faut savoir
 
@@ -76,7 +80,8 @@ ou ceux livrés avec myBrief. Un clic suffit à les rafraîchir, rien ne se fait
 - **Les réunions d'avant août 2026 n'ont pas de durée enregistrée** : elle est déduite de la longueur du
   texte transcrit, et **Une heure de myBrief** le signale.
 - **Non comptés** : l'import de fichiers audio, la relecture de la transcription par les notes, les
-  essais de l'onglet **IA**.
+  essais des pages **Clés API** et **Modèles**. L'**Aide IA** en réunion n'est pas comptée non plus,
+  sans que la carte le dise : c'est un défaut de l'estimation.
 - **« Tarif inconnu »** : un modèle imposé par la configuration du serveur, que ni myBrief ni les
   sources en ligne ne connaissent. Sa dépense n'est pas comptée, et la carte le signale.
 
@@ -86,4 +91,4 @@ ou ceux livrés avec myBrief. Un clic suffit à les rafraîchir, rien ne se fait
 |---|---|
 | « Les sources de tarifs sont injoignables depuis le serveur : les derniers tarifs relevés restent appliqués. » | Le serveur ne sort pas sur Internet. Demandez à la personne qui l'administre d'ouvrir l'accès ; d'ici là, l'estimation reste calculée aux derniers tarifs |
 | « Tarifs actualisés. Le taux de change n'a pas pu être relevé : le dernier connu reste appliqué. » | Rien d'urgent : réessayez plus tard |
-| « L'estimation des dépenses n'a pas pu être calculée. Les autres statistiques restent justes. » | Cliquez **Actualiser**, en haut de l'onglet |
+| « L'estimation des dépenses n'a pas pu être calculée. Les autres statistiques restent justes. » | Cliquez **Actualiser**, en haut de la page |

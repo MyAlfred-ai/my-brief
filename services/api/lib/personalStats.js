@@ -1,5 +1,5 @@
 /**
- * « Mes statistiques » — l'usage d'UN compte et son crédit de temps du mois.
+ * « Usage & crédits » — l'usage d'UN compte et son crédit de temps du mois.
  *
  * La même page sert l'utilisateur (GET /api/stats/me) et l'administrateur qui
  * ouvre le compte d'un collègue depuis Administration → Crédit de temps

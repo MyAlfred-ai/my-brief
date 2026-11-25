@@ -2,8 +2,8 @@
  * Quota de minutes de réunion par groupe (lib/quota.js, routes/quota.js, et
  * les portes de routes/ai.js).
  *
- * Ce qui se vérifie ici et nulle part ailleurs : le plus généreux des groupes
- * l'emporte et « illimité » gagne ; seules les réunions du mois civil en cours,
+ * Ce qui se vérifie ici et nulle part ailleurs : le quota est celui du groupe
+ * du compte (sur une liste, le plus généreux, « illimité » gagnant) ; seules les réunions du mois civil en cours,
  * à l'heure de Paris, comptent, par leur durée au chronomètre ; « atteint » = moins d'une minute
  * pleine ; /tempkey et l'import refusent en 409 avec l'état, jamais les
  * segments hors ligne ; /init et GET /quota rendent la même forme ; une
@@ -70,7 +70,7 @@ describe('lib/quota — fonctions pures', () => {
     });
   });
 
-  it('le quota le plus généreux des groupes s applique, et « illimité » l emporte', () => {
+  it('sur une liste de groupes, le plus généreux s applique, et « illimité » l emporte', () => {
     const small = groupDoc('a', { meetingMinutesPerMonth: 60 });
     const big = groupDoc('b', { meetingMinutesPerMonth: 300 });
     const free = groupDoc('c', { meetingMinutesPerMonth: null });
@@ -341,7 +341,7 @@ describe('GET /api/quota et /api/init', () => {
   it('rendent le même état, avec le groupe qui donne le quota', async () => {
     const { app } = buildTestApp({
       seed: {
-        user: [userDoc(USER, { groupIds: ['default', SALES] })],
+        user: [userDoc(USER, { groupIds: [SALES] })],
         userGroups: [
           defaultGroupDoc({ meetingMinutesPerMonth: 30 }),
           groupDoc(SALES, { name: 'Commerciaux', color: 'blue', meetingMinutesPerMonth: 120 }),
@@ -384,6 +384,75 @@ describe('les portes de la transcription', () => {
     expect(ai.calls).toHaveLength(0);
   });
 
+  it('/tempkey ne refuse jamais la rotation de jeton d une réunion en cours', async () => {
+    const seed = exhaustedSeed();
+    const startedAt = new Date(Date.now() - 50 * 60 * 1000).toISOString();
+    seed.resume.push(
+      meeting(USER, startedAt, null, {
+        meetingId: 'm-live',
+        status: 'recording',
+        meetingStartTime: startedAt,
+      }),
+    );
+    const { app, ai } = buildTestApp({ seed });
+    expect((await getAs(app, '/api/tempkey?lang=fr&meetingId=m-live')).statusCode).toBe(200);
+    expect(ai.calls[0].method).toBe('realtimeClientSecret');
+  });
+
+  it('/tempkey refuse quand même : réunion arrêtée, d un autre compte, abandonnée, ou id illisible', async () => {
+    const seed = exhaustedSeed();
+    const recent = new Date(Date.now() - 50 * 60 * 1000).toISOString();
+    const stale = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
+    const live = (meetingId, email, startedAt, status = 'recording') =>
+      meeting(email, startedAt, null, { meetingId, status, meetingStartTime: startedAt });
+    seed.resume.push(
+      live('m-done', USER, recent, 'done'),
+      live('m-other', ADMIN, recent),
+      live('m-old', USER, stale),
+    );
+    const { app, ai } = buildTestApp({ seed });
+    for (const query of [
+      'meetingId=m-done',
+      'meetingId=m-other',
+      'meetingId=m-old',
+      'meetingId=m-unknown',
+      'meetingId=',
+      'meetingId=m-other&meetingId=m-other',
+    ]) {
+      expect((await getAs(app, `/api/tempkey?lang=fr&${query}`)).statusCode, query).toBe(409);
+    }
+    expect(ai.calls).toHaveLength(0);
+  });
+
+  it('/tempkey : reprendre une réunion TERMINÉE est un départ, ses rotations ensuite passent', async () => {
+    // Réunion de la semaine dernière, close : la reprendre consomme de
+    // nouvelles minutes, le quota s'applique. Une fois rouverte par
+    // /history/start, ses rotations de jeton ne sont plus refusées, malgré un
+    // début vieux de plus de 24 h : c'est `resumedAt` qui date la reprise.
+    const seed = exhaustedSeed();
+    const lastWeek = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    seed.resume.push(
+      meeting(USER, lastWeek, 20 * 60, {
+        meetingId: 'm-ended',
+        status: 'ended',
+        meetingStartTime: lastWeek,
+      }),
+    );
+    const { app, db } = buildTestApp({ seed });
+    const tempkey = () => getAs(app, '/api/tempkey?lang=fr&meetingId=m-ended');
+    expect((await tempkey()).statusCode).toBe(409);
+
+    await app.inject({
+      method: 'POST',
+      url: '/api/history/start',
+      headers: { ...identityHeaders(USER), 'content-type': 'application/json' },
+      payload: { meetingId: 'm-ended' },
+    });
+    const doc = await db.collection('resume').findOne({ meetingId: 'm-ended' });
+    expect(doc).toMatchObject({ status: 'recording', meetingDuration: 20 * 60 });
+    expect((await tempkey()).statusCode).toBe(200);
+  });
+
   it('/tempkey ouvre la session tant qu il reste au moins une minute', async () => {
     const seed = exhaustedSeed();
     seed.resume = [meeting(USER, new Date().toISOString(), 58 * 60)];
@@ -392,10 +461,10 @@ describe('les portes de la transcription', () => {
     expect(ai.calls[0].method).toBe('realtimeClientSecret');
   });
 
-  it('/tempkey laisse passer un compte illimité, et un compte sans quota posé', async () => {
+  it('/tempkey laisse passer un compte dont le groupe est illimité', async () => {
     const { app } = buildTestApp({
       seed: {
-        user: [userDoc(USER, { groupIds: [SALES, 'g-free'] })],
+        user: [userDoc(USER, { groupIds: ['g-free'] })],
         userGroups: [
           defaultGroupDoc(),
           groupDoc(SALES, { meetingMinutesPerMonth: 0 }),

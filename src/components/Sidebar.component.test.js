@@ -9,7 +9,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { tick } from 'svelte';
-import { render, screen } from '@testing-library/svelte';
+import { render, screen, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 
 // Le sélecteur de tag du menu contextuel écrit vraiment : on coupe le transport.
@@ -39,7 +39,7 @@ vi.mock('../services/configChecksApi.js', () => ({
   fetchOrganizationChecks: (...a) => fetchOrganizationChecks(...a),
 }));
 
-// « Ce mois-ci » (menu de compte) relit /stats/me à chaque ouverture.
+// Transport des statistiques : coupé, la colonne n'a rien à lire sur le réseau.
 const fetchMyStats = vi.fn(async () => ({
   ok: true,
   status: 200,
@@ -287,6 +287,33 @@ describe('Sidebar — filtre par tag', () => {
     { ...MEETINGS[1], tagId: 'tag-interne' },
     MEETINGS[2], // sans tag
   ];
+
+  it('dès sept tags, le menu cherche — dans le nom comme dans le contexte', async () => {
+    const seven = ['Achats', 'Budget', 'Direction', 'Équipe', 'Formation', 'Interne'].map(
+      (label, i) => ({ id: `t-${i}`, label, color: 'red' }),
+    );
+    tags.set([...seven, { ...TAG_CLIENT, context: 'Cliente : Claire Martin.' }]);
+    historyItems.set(taggedHistory());
+    setup();
+    await userEvent.click(document.querySelector('.sb-tagbar .sb-tagmenu-btn'));
+    const search = within(document.querySelector('.sb-tagmenu')).getByRole('searchbox', {
+      name: 'Rechercher un tag',
+    });
+    await userEvent.type(search, 'martin');
+    expect(tagFilterOption(TAG_CLIENT.label)).toBeTruthy();
+    expect(tagFilterOption('Achats')).toBeUndefined();
+    await userEvent.clear(search);
+    await userEvent.type(search, 'zzz');
+    expect(document.querySelector('.sb-tagmenu').textContent).toContain('Aucun tag ne correspond.');
+  });
+
+  it('sous sept tags, pas de recherche dans le menu', async () => {
+    tags.set([TAG_CLIENT, TAG_INTERNE]);
+    historyItems.set(taggedHistory());
+    setup();
+    await userEvent.click(document.querySelector('.sb-tagbar .sb-tagmenu-btn'));
+    expect(document.querySelector('.sb-tagmenu input')).toBeNull();
+  });
 
   it('la barre de filtre n’apparaît pas tant qu’aucun tag n’existe', () => {
     setup();
@@ -558,6 +585,55 @@ describe('Sidebar — mode réglages (panneau à sections ouvert)', () => {
     expect(screen.getByRole('tablist').contains(link)).toBe(false);
   });
 
+  it('une section sans groupe (« Outils ») descend en pied de colonne, sous le filet', async () => {
+    const { activePanel, registerPanelNav } = await import('../stores/panels.js');
+    activePanel.set('config');
+    registerPanelNav('config', {
+      title: 'Réglages',
+      items: [
+        { id: 'profile', label: 'Mon profil', icon: null, group: 'Mon compte' },
+        { id: 'tags', label: 'Mes tags', icon: null, group: 'Ma bibliothèque' },
+        { id: 'tools', label: 'Outils', icon: null },
+        { id: 'help', label: 'Aide', icon: null, href: 'https://docs.test/' },
+      ],
+      active: 'profile',
+    });
+    setup();
+
+    // « Outils » a un écran : il reste un onglet, le dernier.
+    expect(screen.getAllByRole('tab').map((t) => t.textContent.trim())).toEqual([
+      'Mon profil',
+      'Mes tags',
+      'Outils',
+    ]);
+    // Le filet passe au-dessus de lui ; les liens le suivent sans second filet.
+    const rule = document.querySelector('.sb-nav-rule');
+    expect(rule).toBeTruthy();
+    expect(rule.nextElementSibling.textContent.trim()).toBe('Outils');
+    expect(document.querySelector('.sb-nav-links').classList.contains('sb-nav-links-ruled')).toBe(
+      false,
+    );
+  });
+
+  it('sans section en pied, le filet reste celui des liens', async () => {
+    const { activePanel, registerPanelNav } = await import('../stores/panels.js');
+    activePanel.set('config');
+    registerPanelNav('config', {
+      title: 'Réglages',
+      items: [
+        { id: 'profile', label: 'Mon profil', icon: null, group: 'Mon compte' },
+        { id: 'help', label: 'Aide', icon: null, href: 'https://docs.test/' },
+      ],
+      active: 'profile',
+    });
+    setup();
+
+    expect(document.querySelector('.sb-nav-rule')).toBeNull();
+    expect(document.querySelector('.sb-nav-links').classList.contains('sb-nav-links-ruled')).toBe(
+      true,
+    );
+  });
+
   it('sans nav enregistrée (panneau sans sections), l’historique reste', async () => {
     const { activePanel, clearPanelNav, panelNav } = await import('../stores/panels.js');
     const { get } = await import('svelte/store');
@@ -598,78 +674,347 @@ describe('Sidebar — mode réglages (panneau à sections ouvert)', () => {
   });
 });
 
-describe('Sidebar — roue crantée et menu de compte', () => {
-  const clickGear = () => userEvent.click(screen.getByRole('button', { name: 'Configuration' }));
-  const openAccountMenu = () => userEvent.click(document.querySelector('.sb-user-details'));
-  const menuLabels = () =>
-    [...document.querySelectorAll('.sb-profile-menu .am-item')].map((b) => b.textContent.trim());
+describe('Sidebar — recherche dans les réglages', () => {
+  // Les pages affichées : la recherche ne propose que celles-là.
+  const NAV_ITEMS = [
+    { id: 'profile', label: 'Mon profil', icon: null },
+    { id: 'meeting', label: 'Pendant la réunion', icon: null },
+    { id: 'actions', label: 'Après la réunion', icon: null },
+  ];
 
-  it('la colonne ne porte plus que la capsule et la roue : ni drapeau, ni icône de statistiques', () => {
+  async function openConfigNav() {
+    const { activePanel, registerPanelNav } = await import('../stores/panels.js');
+    activePanel.set('config');
+    registerPanelNav('config', { title: 'Réglages', items: NAV_ITEMS, active: 'profile' });
+  }
+
+  const field = () => screen.getByRole('combobox', { name: 'Rechercher dans les réglages' });
+  const optionTitles = () =>
+    screen.getAllByRole('option').map((o) => o.querySelector('.ssr-title').textContent);
+
+  afterEach(async () => {
+    const { activePanel, clearPanelNav, panelNav } = await import('../stores/panels.js');
+    const { get } = await import('svelte/store');
+    activePanel.set(null);
+    // Une page visée dans l'AUTRE panneau reste en attente sur une nav sans
+    // propriétaire (openPanel) : la vider aussi.
+    clearPanelNav(get(panelNav).owner);
+  });
+
+  it('la pilule sous « Nouvelle réunion » cherche un réglage ; ses résultats remplacent les sections', async () => {
+    await openConfigNav();
     setup();
-    const buttons = [...document.querySelectorAll('.sb-user button')];
-    expect(buttons.map((b) => b.className.split(' ')[0])).toEqual([
-      'sb-user-details',
-      'sb-user-settings',
-    ]);
-    expect(screen.queryByRole('button', { name: 'Mes statistiques' })).toBeNull();
+    expect(field().getAttribute('aria-expanded')).toBe('false');
+
+    await userEvent.type(field(), 'micro');
+
+    expect(screen.queryByRole('tablist')).toBeNull();
+    expect(optionTitles()[0]).toBe('Micro et son');
+    // Le chemin dit où est le réglage : le groupe, la page, l'onglet.
+    expect(screen.getAllByRole('option')[1].textContent).toContain(
+      'Mes réunions › Pendant la réunion › Micro et son',
+    );
+    expect(field().getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('Entrée ouvre la page ET l’onglet du réglage, puis rend les sections', async () => {
+    await openConfigNav();
+    const { panelNav } = await import('../stores/panels.js');
+    const { get } = await import('svelte/store');
+    setup();
+
+    await userEvent.type(field(), 'dossier');
+    expect(optionTitles()[0]).toBe('Entreposer');
+    await userEvent.keyboard('{Enter}');
+
+    expect(get(panelNav)).toMatchObject({ active: 'actions', sub: 'storage' });
+    expect(field().value).toBe('');
+    expect(screen.getByRole('tablist')).toBeTruthy();
+  });
+
+  it('↓ choisit la ligne suivante, annoncée au lecteur d’écran', async () => {
+    await openConfigNav();
+    setup();
+    await userEvent.type(field(), 'micro');
+    await userEvent.keyboard('{ArrowDown}');
+
+    const active = field().getAttribute('aria-activedescendant');
+    expect(document.getElementById(active).getAttribute('aria-selected')).toBe('true');
+    expect(document.getElementById(active).querySelector('.ssr-title').textContent).toBe(
+      'Microphone',
+    );
+  });
+
+  it('rien ne correspond : une phrase le dit, avec une piste', async () => {
+    await openConfigNav();
+    setup();
+    await userEvent.type(field(), 'zzzz');
+    expect(screen.getByRole('status').textContent).toContain('Aucun réglage ne correspond');
+    expect(screen.queryByRole('listbox')).toBeNull();
+  });
+
+  it('Échap vide la recherche, et les sections reviennent', async () => {
+    await openConfigNav();
+    setup();
+    await userEvent.type(field(), 'micro');
+    await userEvent.keyboard('{Escape}');
+    expect(field().value).toBe('');
+    expect(screen.getByRole('tablist')).toBeTruthy();
+  });
+
+  it('un compte sans rôle administrateur ne trouve rien de l’administration', async () => {
+    await openConfigNav();
+    setup();
+    await userEvent.type(field(), 'logo');
+    expect(screen.queryByRole('listbox')).toBeNull();
+  });
+
+  it('un administrateur trouve l’administration depuis « Réglages », et y va', async () => {
+    auth.set({
+      user: { name: 'Dev Local', email: 'dev@myalfred.ai', role: 'admin' },
+      capabilities: {},
+    });
+    await openConfigNav();
+    const { activePanel, panelNav } = await import('../stores/panels.js');
+    const { get } = await import('svelte/store');
+    setup();
+
+    await userEvent.type(field(), 'logo');
+    const first = screen.getAllByRole('option')[0];
+    expect(first.textContent).toContain('Administration › Organisation › Marque & apparence');
+    await userEvent.click(first);
+
+    expect(get(activePanel)).toBe('admin');
+    expect(get(panelNav)).toMatchObject({ active: 'branding' });
+  });
+
+  it('Ctrl K donne le focus au champ ; sans panneau ouvert, il ouvre « Réglages »', async () => {
+    const { onMenuAction } = setup();
+    await userEvent.keyboard('{Control>}k{/Control}');
+    expect(onMenuAction).toHaveBeenCalledWith('config');
+
+    await openConfigNav();
+    await tick();
+    await userEvent.keyboard('{Control>}k{/Control}');
+    await tick();
+    await tick();
+    expect(document.activeElement).toBe(field());
+  });
+
+  it('rail replié : la loupe déplie la colonne', async () => {
+    await openConfigNav();
+    const onToggle = vi.fn();
+    setup({ isOpen: false, onToggle });
+    await userEvent.click(screen.getByRole('button', { name: 'Rechercher un réglage' }));
+    expect(onToggle).toHaveBeenCalled();
+  });
+});
+
+/**
+ * Administration : des RUBRIQUES qu'on replie (nav `collapsible`), et les
+ * entrées qui ne sont ni des sections ni des liens — les GESTES.
+ */
+describe('Sidebar — rubriques repliables et gestes', () => {
+  const ALERT = { level: 'error', items: [{ level: 'error', text: 'Aucune clé OpenAI.' }] };
+  const people = { groupId: 'people', group: 'Personnes', groupIcon: null };
+  const models = { groupId: 'models', group: 'Modèles IA', groupIcon: null };
+  const ADMIN_ITEMS = [
+    { id: 'users', label: 'Comptes', icon: null, ...people },
+    { id: 'groups', label: 'Groupes', icon: null, ...people },
+    { id: 'ai', label: 'Clés API', icon: null, ...models, alert: ALERT },
+  ];
+  const FOLDS_KEY = 'mybrief_nav_folds';
+
+  async function openAdminNav() {
+    const { activePanel, registerPanelNav } = await import('../stores/panels.js');
+    activePanel.set('admin');
+    registerPanelNav('admin', {
+      title: 'Administration',
+      items: ADMIN_ITEMS,
+      active: 'users',
+      collapsible: true,
+    });
+  }
+
+  afterEach(async () => {
+    const { activePanel, clearPanelNav } = await import('../stores/panels.js');
+    activePanel.set(null);
+    clearPanelNav('admin');
+    clearPanelNav('config');
+  });
+
+  it('chaque rubrique est un bouton qui se replie, ses pages rangées dessous', async () => {
+    await openAdminNav();
+    setup();
+
+    // Plus une liste d'onglets : des rubriques, et la page ouverte se dit
+    // par `aria-current`.
+    expect(screen.queryByRole('tablist')).toBeNull();
+    const rubric = screen.getByRole('button', { name: 'Personnes' });
+    expect(rubric.getAttribute('aria-expanded')).toBe('true');
+    const pages = screen.getByRole('group', { name: 'Personnes' });
+    expect(rubric.getAttribute('aria-controls')).toBe(pages.id);
+    expect(
+      within(pages)
+        .getAllByRole('button')
+        .map((b) => b.textContent.trim()),
+    ).toEqual(['Comptes', 'Groupes']);
+    expect(screen.getByRole('button', { name: 'Comptes' }).getAttribute('aria-current')).toBe(
+      'page',
+    );
+    expect(screen.getByRole('button', { name: 'Groupes' }).hasAttribute('aria-current')).toBe(
+      false,
+    );
+
+    // Replier reste permis sur la rubrique de la page ouverte.
+    await userEvent.click(rubric);
+    expect(rubric.getAttribute('aria-expanded')).toBe('false');
+    expect(pages.classList.contains('sb-nav-sub-folded')).toBe(true);
+    expect(JSON.parse(localStorage.getItem(FOLDS_KEY))).toEqual(['people']);
+  });
+
+  it('une entrée SANS rubrique (le tableau de bord) reste une entrée simple, en tête', async () => {
+    const { activePanel, registerPanelNav } = await import('../stores/panels.js');
+    activePanel.set('admin');
+    registerPanelNav('admin', {
+      title: 'Administration',
+      items: [
+        { id: 'dashboard', label: 'Tableau de bord', icon: null, groupId: '', group: '' },
+        ...ADMIN_ITEMS,
+      ],
+      active: 'dashboard',
+      collapsible: true,
+    });
+    setup();
+
+    const dashboard = screen.getByRole('button', { name: 'Tableau de bord' });
+    expect(dashboard.getAttribute('aria-current')).toBe('page');
+    // Ni bouton de rubrique, ni retrait : elle n'appartient à aucune.
+    expect(dashboard.hasAttribute('aria-expanded')).toBe(false);
+    expect(dashboard.closest('.sb-nav-sub').classList.contains('sb-nav-sub-rubric')).toBe(false);
+    expect(
+      [...document.querySelectorAll('.sb-nav-rubric')].map((b) => b.textContent.trim()),
+    ).toEqual(['Personnes', 'Modèles IA']);
+  });
+
+  it('le pli est mémorisé, et une rubrique repliée porte la pastille de ses pages', async () => {
+    localStorage.setItem(FOLDS_KEY, JSON.stringify(['models']));
+    await openAdminNav();
+    setup();
+
+    const rubric = screen.getByRole('button', { name: /^Modèles IA/ });
+    expect(rubric.getAttribute('aria-expanded')).toBe('false');
+    expect(rubric.querySelector('.cad-error')).toBeTruthy();
+
+    // Dépliée, la page porte sa pastille : la rubrique ne la double pas.
+    await userEvent.click(rubric);
+    expect(rubric.getAttribute('aria-expanded')).toBe('true');
+    expect(rubric.querySelector('.cad')).toBeNull();
+    expect(JSON.parse(localStorage.getItem(FOLDS_KEY))).toEqual([]);
+  });
+
+  it('arriver sur une page déplie sa rubrique', async () => {
+    localStorage.setItem(FOLDS_KEY, JSON.stringify(['models']));
+    await openAdminNav();
+    const { selectPanelSection } = await import('../stores/panels.js');
+    setup();
+
+    selectPanelSection('ai');
+    await tick();
+    expect(screen.getByRole('button', { name: /^Modèles IA/ }).getAttribute('aria-expanded')).toBe(
+      'true',
+    );
+  });
+
+  it('un GESTE (« Se déconnecter ») est un bouton hors des onglets, qui remonte son identifiant', async () => {
+    const { activePanel, registerPanelNav, panelNav } = await import('../stores/panels.js');
+    const { get } = await import('svelte/store');
+    activePanel.set('config');
+    registerPanelNav('config', {
+      title: 'Réglages',
+      items: [
+        { id: 'profile', label: 'Mon profil', icon: null, group: 'Mon compte' },
+        { id: 'logout', label: 'Se déconnecter', icon: null, action: 'logout', danger: true },
+      ],
+      active: 'profile',
+    });
+    const { onMenuAction } = setup();
+
+    expect(screen.getAllByRole('tab').map((t) => t.textContent.trim())).toEqual(['Mon profil']);
+    const logout = screen.getByRole('button', { name: 'Se déconnecter' });
+    expect(screen.getByRole('tablist').contains(logout)).toBe(false);
+    // Sans groupe : un filet le détache des sections.
+    expect(logout.closest('.sb-nav-links').classList.contains('sb-nav-links-ruled')).toBe(true);
+
+    await userEvent.click(logout);
+    expect(onMenuAction).toHaveBeenCalledWith('logout');
+    // Un geste n'ouvre pas d'écran : la section affichée ne bouge pas.
+    expect(get(panelNav).active).toBe('profile');
+  });
+});
+
+/**
+ * La carte du compte, en bas de la colonne : l'identité se LIT, deux boutons
+ * mènent aux deux espaces — « Réglages » (mon compte) et « Admin »
+ * (l'organisation, administrateurs seulement). Plus de menu derrière le nom :
+ * ce qu'il portait est la page « Mon profil » des réglages.
+ */
+describe('Sidebar — carte du compte : deux boutons, deux espaces', () => {
+  const ADMIN = {
+    user: { name: 'Dev Local', email: 'dev@myalfred.ai', role: 'admin' },
+    capabilities: {},
+  };
+  const cardButtons = () => [...document.querySelectorAll('.sb-user button')];
+
+  it('un compte ordinaire n’a qu’un bouton, « Réglages » ; l’identité ne se clique pas', () => {
+    setup();
+    expect(cardButtons().map((b) => b.getAttribute('aria-label'))).toEqual(['Réglages']);
+    expect(document.querySelector('.sb-user-details').tagName).toBe('DIV');
+    expect(screen.queryByRole('button', { name: 'Administration' })).toBeNull();
+    // Ni drapeau, ni icône de statistiques, ni menu déroulant derrière le nom.
     expect(
       screen.queryByRole('button', { name: /Switch to English|Passer en français/ }),
     ).toBeNull();
+    expect(screen.queryByRole('menu')).toBeNull();
   });
 
-  it('la roue crantée ouvre le panneau — plus de menu déroulant à traverser', async () => {
-    auth.set({ user: { name: 'Dev Local', email: 'dev@myalfred.ai' }, capabilities: {} });
+  it('« Réglages » ouvre les réglages', async () => {
     const { onMenuAction } = setup();
-
-    await clickGear();
+    await userEvent.click(screen.getByRole('button', { name: 'Réglages' }));
     expect(onMenuAction).toHaveBeenCalledWith('config');
-    // Rien ne s'ouvre par-dessus : la colonne de gauche liste déjà les écrans.
-    expect(document.querySelector('.sb-profile-menu')).toBeNull();
   });
 
-  it('le menu du nom porte l’identité, « Ce mois-ci », la langue et la sortie, pas les réglages', async () => {
+  it('administrateur : « Admin » à côté de « Réglages », nommé « Administration »', async () => {
+    auth.set(ADMIN);
     const { onMenuAction } = setup();
-    await openAccountMenu();
-
-    expect(menuLabels()).toEqual(['Se déconnecter']);
-    expect(document.querySelector('.am-email').textContent).toBe('dev@myalfred.ai');
-    expect(screen.getByRole('region', { name: 'Ce mois-ci' })).toBeTruthy();
-    expect(await screen.findByText('3 h 03')).toBeTruthy();
-    // La roue crantée est à côté : pas de doublon dans le menu.
-    expect(screen.queryByRole('menuitem', { name: 'Configuration' })).toBeNull();
-
-    await userEvent.click(screen.getByRole('menuitem', { name: 'Voir mes statistiques' }));
-    expect(onMenuAction).toHaveBeenCalledWith('stats');
-    expect(document.querySelector('.sb-profile-menu')).toBeNull();
+    expect(cardButtons().map((b) => b.textContent.trim())).toEqual(['Réglages', 'Admin']);
+    await userEvent.click(screen.getByRole('button', { name: 'Administration' }));
+    expect(onMenuAction).toHaveBeenCalledWith('admin');
   });
 
-  it('la langue se choisit dans le menu, en FR | EN nommés dans leur langue', async () => {
-    const onSetLanguage = vi.fn();
-    setup({ onSetLanguage });
-    await openAccountMenu();
-
-    const fr = screen.getByRole('menuitemradio', { name: 'Français' });
-    const en = screen.getByRole('menuitemradio', { name: 'English' });
-    expect(fr.getAttribute('aria-checked')).toBe('true');
-    expect(en.getAttribute('lang')).toBe('en');
-    await userEvent.click(fr);
-    expect(onSetLanguage).not.toHaveBeenCalled();
-    await userEvent.click(en);
-    expect(onSetLanguage).toHaveBeenCalledWith('en');
-  });
-
-  it('« Changer de mot de passe » : menu de compte, et seulement en mode mot de passe', async () => {
+  it('le bouton de l’espace ouvert le dit', async () => {
+    const { activePanel } = await import('../stores/panels.js');
+    auth.set(ADMIN);
     setup();
-    await openAccountMenu();
-    expect(menuLabels()).not.toContain('Changer de mot de passe');
-    await userEvent.keyboard('{Escape}');
+    activePanel.set('admin');
+    await tick();
+    expect(
+      screen.getByRole('button', { name: 'Administration' }).getAttribute('aria-current'),
+    ).toBe('page');
+    expect(screen.getByRole('button', { name: 'Réglages' }).hasAttribute('aria-current')).toBe(
+      false,
+    );
+    activePanel.set(null);
+  });
 
-    auth.set({
-      user: { name: 'Dev Local', email: 'dev@myalfred.ai', authMode: 'password' },
-      capabilities: {},
-    });
-    await openAccountMenu();
-    expect(menuLabels()).toContain('Changer de mot de passe');
+  it('rail replié : les deux boutons restent, en icônes nommées', () => {
+    auth.set(ADMIN);
+    setup({ isOpen: false });
+    expect(document.querySelector('.sb-user .aa-compact')).toBeTruthy();
+    expect(cardButtons().map((b) => b.getAttribute('aria-label'))).toEqual([
+      'Réglages',
+      'Administration',
+    ]);
   });
 
   it('l’avatar dit par quoi la session a été ouverte, sans perdre les initiales', async () => {
@@ -730,57 +1075,6 @@ describe('Sidebar — roue crantée et menu de compte', () => {
     expect(document.querySelector('.ua')).toBeTruthy();
     expect(document.querySelector('.ua-badge')).toBeNull();
   });
-
-  it('le menu de compte nomme les groupes attribués par l’administration', async () => {
-    auth.set({
-      user: {
-        name: 'Dev Local',
-        email: 'dev@myalfred.ai',
-        groups: [
-          { id: 'default', name: 'Défaut', color: 'slate' },
-          { id: 'g-sales', name: 'Commerciaux', color: 'blue' },
-        ],
-      },
-      capabilities: {},
-    });
-    setup();
-    await openAccountMenu();
-
-    expect(screen.getByText('Vos groupes')).toBeTruthy();
-    expect(
-      [...document.querySelectorAll('.am-groups .gc-name')].map((el) => el.textContent),
-    ).toEqual(['Défaut', 'Commerciaux']);
-    // Lecture seule : aucune entrée de menu n'est venue s'ajouter.
-    expect(menuLabels()).toEqual(['Se déconnecter']);
-  });
-
-  it('sans groupes connus (ancienne réponse de session), le bloc n’apparaît pas', async () => {
-    setup();
-    await openAccountMenu();
-    expect(screen.queryByText('Vos groupes')).toBeNull();
-    expect(document.querySelector('.am-groups')).toBeNull();
-  });
-
-  it('l’administration est une ligne du menu de compte, réservée aux admins', async () => {
-    const { onMenuAction } = setup();
-    await openAccountMenu();
-    expect(screen.queryByRole('menuitem', { name: 'Administration' })).toBeNull();
-    await userEvent.keyboard('{Escape}');
-
-    auth.set({
-      user: { name: 'Dev Local', email: 'dev@myalfred.ai', role: 'admin' },
-      capabilities: {},
-    });
-    await tick();
-    // Plus de bouclier dans la colonne : l'administration se cherche dans le menu.
-    expect(screen.queryByRole('button', { name: 'Administration' })).toBeNull();
-    await openAccountMenu();
-    expect(menuLabels()).toEqual(['Administration', 'Se déconnecter']);
-    await userEvent.click(screen.getByRole('menuitem', { name: 'Administration' }));
-    expect(onMenuAction).toHaveBeenCalledWith('admin');
-    // La roue crantée, elle, reste ouverte à tous et vise un autre panneau.
-    expect(screen.getByRole('button', { name: 'Configuration' })).toBeTruthy();
-  });
 });
 
 /**
@@ -828,7 +1122,7 @@ describe('Sidebar — pastilles de configuration', () => {
     ).toBe(false);
   });
 
-  it('roue crantée et administration : le récapitulatif de ce que chacun ouvre', async () => {
+  it('« Réglages » et « Admin » : le récapitulatif de ce que chacun ouvre', async () => {
     configCheckResponses.account = [TAG_FOLDER];
     configCheckResponses.organization = [KEY_MISSING];
     auth.set({
@@ -837,21 +1131,17 @@ describe('Sidebar — pastilles de configuration', () => {
     });
     setup();
 
-    const gear = screen.getByRole('button', { name: 'Configuration' });
-    const capsule = document.querySelector('.sb-user-details');
-    // L'administration est dans le menu : sa pastille se voit sur la capsule,
-    // menu fermé — sans infobulle native par-dessus la bulle.
-    await vi.waitFor(() => expect(capsule.querySelector('.cad-error')).toBeTruthy());
-    expect(capsule.hasAttribute('title')).toBe(false);
-    expect(gear.querySelector('.cad-warning')).toBeTruthy();
-    expect(
-      screen.getByRole('button', { name: 'Configuration', description: /Clients\/Acme/ }),
-    ).toBe(gear);
-
-    await userEvent.click(capsule);
-    const admin = screen.getByRole('menuitem', { name: /^Administration/ });
-    expect(admin.querySelector('.cad-error')).toBeTruthy();
-    expect(screen.getByRole('menuitem', { name: /^Administration/, description: /OpenAI/ })).toBe(
+    const settings = screen.getByRole('button', { name: 'Réglages' });
+    const admin = screen.getByRole('button', { name: 'Administration' });
+    await vi.waitFor(() => expect(admin.querySelector('.cad-error')).toBeTruthy());
+    expect(settings.querySelector('.cad-warning')).toBeTruthy();
+    // Pas d'infobulle native par-dessus la bulle de la pastille.
+    expect(admin.hasAttribute('title')).toBe(false);
+    expect(settings.hasAttribute('title')).toBe(false);
+    expect(screen.getByRole('button', { name: 'Réglages', description: /Clients\/Acme/ })).toBe(
+      settings,
+    );
+    expect(screen.getByRole('button', { name: 'Administration', description: /OpenAI/ })).toBe(
       admin,
     );
   });
@@ -861,7 +1151,7 @@ describe('Sidebar — pastilles de configuration', () => {
     setup();
     await vi.waitFor(() => expect(fetchAccountChecks).toHaveBeenCalled());
     expect(fetchOrganizationChecks).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: 'Configuration' }).querySelector('.cad')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Réglages' }).querySelector('.cad')).toBeNull();
   });
 
   it('ouvrir un panneau relit les constats', async () => {

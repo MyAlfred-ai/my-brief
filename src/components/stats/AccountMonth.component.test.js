@@ -192,10 +192,10 @@ describe('AccountMonth — sans quota, et quand le réseau manque', () => {
     expect(kpiValues()).toEqual(['—', '—', '—']);
   });
 
-  it('« Voir mes statistiques » ouvre la page', async () => {
+  it('« Voir le détail » ouvre la page', async () => {
     const onOpen = vi.fn();
     render(AccountMonth, { props: { onOpen } });
-    await userEvent.click(screen.getByRole('menuitem', { name: 'Voir mes statistiques' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Voir le détail' }));
     expect(onOpen).toHaveBeenCalledTimes(1);
   });
 });

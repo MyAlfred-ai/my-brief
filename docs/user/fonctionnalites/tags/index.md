@@ -9,19 +9,25 @@ Un **tag** est un classeur nommé et coloré — « Client Dupont », « Comité
 vous rangez vos réunions. Il sert à les retrouver, et il peut porter ses propres **destinataires** et son
 propre **dossier de dépôt** : le compte rendu d'une réunion taguée part alors là où le tag l'indique.
 
+![Réglages, page Mes tags, 3 tags sur 30 : à gauche Client Durand, Interne et Projet Atlas, chacun avec son nombre de conversations, puis Réglages communs ; à droite, la fiche du tag Projet Atlas — Nom et apparence, la corbeille — et Où ranger ses comptes rendus ?, avec les autres comptes rendus ou dans un dossier choisi.](../../images/mes-tags.png)
+
 ## À quoi ça sert
 
 - **Retrouver** toutes les réunions d'un client, d'un projet, d'une instance, d'un clic dans
   l'historique.
 - **Router** les comptes rendus : ceux du client Dupont partent à ses interlocuteurs et se rangent dans
   son dossier, sans rien régler à chaque réunion.
+- **Renseigner l'IA** : décrivez le projet du tag, ses acteurs et ses sigles, et ses comptes rendus
+  écrivent juste les noms et comprennent de quoi on parle.
+- **Signer les documents** : le logo du client ou du projet se pose en médaillon sur l'infographie et
+  en tête du compte rendu PDF.
 
 ## Comment ça marche
 
 **Un tag par réunion, au plus.** C'est un classeur, pas une étiquette libre : un tag porte des règles
 d'envoi, et deux tags sur une même réunion donneraient deux destinations contradictoires.
 
-**Vos tags sont à vous.** Chacun crée les siens, jusqu'à **20**, avec un nom de 32 caractères au plus et
+**Vos tags sont à vous.** Chacun crée les siens, jusqu'à **30**, avec un nom de 32 caractères au plus et
 une pastille à son goût : l'une des vingt et une couleurs proposées, unies ou à motif, ou une couleur
 de son choix (teinte et clarté), et une forme — rond, carré, losange, triangle, hexagone, étoile ou
 cœur. Deux tags ne peuvent pas porter le même nom, majuscules et espaces mis à part.
@@ -52,16 +58,17 @@ rendu déjà parti.
 
 | Vous voulez… | Page |
 |---|---|
-| Créer, renommer, changer la pastille ou supprimer vos tags | [Créer et gérer ses tags](creer-et-gerer-ses-tags.md) |
-| Ranger une réunion dans un tag, filtrer l'historique | [Ranger et filtrer ses réunions](ranger-et-filtrer-ses-reunions.md) |
+| Créer, renommer, changer la pastille, ajouter un logo ou supprimer vos tags | [Créer et gérer ses tags](creer-et-gerer-ses-tags.md) |
+| Ranger une réunion dans un tag, en trouver ou en créer un d'un geste, filtrer l'historique | [Ranger et filtrer ses réunions](ranger-et-filtrer-ses-reunions.md) |
 | Donner à un tag ses destinataires et son dossier | [Donner une destination à un tag](donner-une-destination-a-un-tag.md) |
+| Décrire le projet du tag, ses acteurs et ses sigles pour l'IA | [Dire à l'IA de quoi parle un tag](dire-a-l-ia-de-quoi-parle-un-tag.md) |
 | Ranger la réunion dès son premier résumé, et l'envoyer dans la foulée | [Ranger et partager après le premier résumé](../actions/ranger-et-partager-apres-le-resume.md) |
 
 ## Ce que vous pouvez régler
 
-Tout : vos tags, leurs pastilles, leurs destinataires, leurs dossiers, depuis **Ma configuration → Mes
-tags**. Votre administrateur décide seulement si l'envoi par mail et le dépôt existent, et combien de
-destinataires une liste peut compter.
+Tout : vos tags, leurs pastilles, leurs logos, ce que l'IA doit en savoir, leurs destinataires, leurs dossiers,
+depuis **Réglages → Mes tags**. Votre administrateur décide seulement si l'envoi par mail et le dépôt
+existent, et combien de destinataires une liste peut compter.
 
 ## Exemples
 

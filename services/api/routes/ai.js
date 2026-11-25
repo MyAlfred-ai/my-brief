@@ -22,6 +22,9 @@ import { refineTranscriptPrompt, parseRefineOutput } from '../lib/prompts.js';
 import { fail } from '../lib/errors.js';
 import { normalizeLang } from '../lib/text.js';
 import { requireUser } from '../lib/rbac.js';
+import { ownerFilter } from '../lib/ownerScope.js';
+import { readTagContext, tagContextReference } from '../lib/tagContext.js';
+import { fileTranscriptionModel, transcriptionProvider } from '../lib/transcriptionModels.js';
 
 /**
  * Tranches d'un même import transcrites en même temps. Borné : chacune est un
@@ -29,6 +32,13 @@ import { requireUser } from '../lib/rbac.js';
  * l'attente sans rafale sur la clé de l'installation.
  */
 const RECORD_CHUNK_CONCURRENCY = 3;
+
+/**
+ * Âge au-delà duquel une réunion encore marquée `recording` n'est plus tenue
+ * pour en cours : un onglet fermé sans arrêt la laisse dans cet état pour
+ * toujours. Le plafond d'une durée de réunion (lib/meetingDuration.js).
+ */
+const LIVE_MEETING_MAX_MS = 24 * 60 * 60 * 1000;
 
 /**
  * `fn` sur chaque élément, `limit` à la fois, résultats dans l'ordre. Au
@@ -61,30 +71,66 @@ export default function aiRoutes(app) {
    * réponses de /tempkey pour y reconnaître un « crédit IA épuisé » relayé
    * d'OpenAI (429), et le quota de l'organisation n'est pas une panne du
    * service. Le corps porte l'état pour que l'écran l'affiche sans relecture.
+   * `isExempt` n'est consulté qu'une fois le quota atteint : rien à relire de
+   * plus pour le cas courant.
+   * @param {() => Promise<boolean>} [isExempt]
    * @returns {Promise<boolean>} vrai si le refus est parti
    */
-  async function refuseIfQuotaExhausted(req, reply) {
+  async function refuseIfQuotaExhausted(req, reply, isExempt = async () => false) {
     const quota = await app.quota.statusFor(req.user);
-    if (!quota.exhausted) return false;
+    if (!quota.exhausted || (await isExempt())) return false;
     fail(reply, 409, 'quota_exhausted', { quota });
     return true;
   }
 
   /**
-   * Jeton éphémère OpenAI Realtime pour la transcription live : le navigateur
-   * ouvre ensuite un WebSocket/WebRTC DIRECT vers OpenAI avec ce jeton —
-   * l'audio ne transite pas par ce service.
+   * `?meetingId=` désigne-t-il une réunion du compte EN COURS d'enregistrement ?
+   * C'est la rotation de jeton d'une réunion déjà démarrée — le quota a été
+   * vérifié à son démarrage — et non un démarrage. Une chaîne seulement : un
+   * paramètre répété arrive en tableau.
+   *
+   * Réunion TERMINÉE qu'on reprend : elle est `ended` au moment de ce premier
+   * appel, le quota s'applique — c'est un nouveau départ. /history/start la
+   * repasse ensuite `recording` avec `resumedAt`, qui fait foi pour l'âge : son
+   * `meetingStartTime` peut dater de la semaine dernière.
+   */
+  async function isLiveMeeting(req) {
+    const meetingId = req.query?.meetingId;
+    if (typeof meetingId !== 'string' || !meetingId || meetingId.length > 64) return false;
+    const since = new Date(Date.now() - LIVE_MEETING_MAX_MS).toISOString();
+    const doc = await app.db.collection('resume').findOne(
+      {
+        $and: [
+          ownerFilter(req.user.email, { meetingId, status: 'recording' }),
+          { $or: [{ meetingStartTime: { $gte: since } }, { resumedAt: { $gte: since } }] },
+        ],
+      },
+      { projection: { _id: 1 } },
+    );
+    return !!doc;
+  }
+
+  /**
+   * Jeton éphémère Realtime pour la transcription live : le navigateur ouvre
+   * ensuite un WebSocket DIRECT vers le fournisseur du modèle — OpenAI, ou
+   * Mistral pour Voxtral — avec ce jeton : l'audio ne transite pas par ce
+   * service. Le client déduit du modèle renvoyé à quel socket parler.
    * Fix vs n8n : la langue vient de ?lang= (le frontend l'envoyait déjà,
    * n8n codait "fr" en dur).
    *
    * C'est ici que le quota s'applique au démarrage d'une réunion. Les
-   * rotations de jeton EN COURS de réunion passent aussi par là, sans risque :
-   * une réunion ne compte qu'à son arrêt, l'état ne change donc pas pendant
-   * qu'elle tourne.
+   * rotations de jeton EN COURS de réunion passent aussi par là, avec
+   * `?meetingId=` (lib/realtime/stack.js) : elles ne sont JAMAIS refusées
+   * pour le quota, qui ne coupe pas une réunion entamée (cf. lib/quota.js).
+   * L'état peut pourtant changer pendant qu'elle tourne — une autre réunion
+   * arrêtée sur un autre appareil, un quota baissé par l'administration —, et
+   * un refus ici laissait la réunion sans transcription au premier socket à
+   * rouvrir. Prix accepté, comme pour les segments hors ligne de /record : un
+   * client fabriqué qui ouvre une réunion puis la cite contourne le quota.
    */
   app.get('/tempkey', async (req, reply) => {
     if (!requireUser(req, reply)) return;
-    if (await refuseIfQuotaExhausted(req, reply)) return;
+    if (await refuseIfQuotaExhausted(req, reply, () => isLiveMeeting(req))) return;
     const lang = normalizeLang(req.query?.lang);
     // Le modèle est choisi dans Administration → IA. Il est renvoyé au client :
     // le navigateur envoie un `session.update` sur son WebSocket et DOIT y
@@ -94,7 +140,14 @@ export default function aiRoutes(app) {
       app.config.openai?.models?.transcription || '',
     );
     try {
-      const data = await app.openai.realtimeClientSecret(lang, model);
+      // Fournisseur tiers (lib/speechProviders.js) : son jeton, sans langue
+      // (le navigateur la passe à l'ouverture du socket), sous la même
+      // enveloppe `client_secret.value` qu'OpenAI.
+      const provider = transcriptionProvider(model);
+      const data =
+        provider === 'openai'
+          ? await app.openai.realtimeClientSecret(lang, model)
+          : await app.speech[provider].realtimeClientSecret(model);
       // Deux parseurs coexistent côté client : App.svelte lit `.value`,
       // utils/peerConnection.js lit `.client_secret.value`. On garantit les
       // deux formes quel que soit le format renvoyé par OpenAI.
@@ -108,7 +161,7 @@ export default function aiRoutes(app) {
       }
       return data;
     } catch (err) {
-      req.log.warn({ err: err.message }, '/tempkey : échec amont OpenAI');
+      req.log.warn({ err: err.message, model }, '/tempkey : échec amont');
       return replyUpstreamError(reply, err);
     }
   });
@@ -154,6 +207,11 @@ export default function aiRoutes(app) {
    * segments hors ligne retentent seuls (src/platform/offlineRecording.js) ;
    * l'import manuel affiche l'erreur et se relance à la main.
    *
+   * Le fichier part chez le fournisseur du modèle du direct, avec le modèle de
+   * fichier de la même famille (lib/transcriptionModels.js) : une installation
+   * passée à un tiers n'envoie plus d'audio à OpenAI, imports compris.
+   * `?lang=` porte la langue de l'interface (Speechmatics l'exige).
+   *
    * Au-delà de 5 min, l'audio est coupé en tranches égales (lib/audioChunks.js)
    * transcrites séparément puis remises bout à bout : gpt-transcribe a hérité
    * de sa famille un plafond de durée et une sortie tronquée en silence vers
@@ -186,11 +244,22 @@ export default function aiRoutes(app) {
       // Au-delà de FILE_LIMIT, busboy tronque le flux sans le faire échouer :
       // un fichier tronqué n'est pas transcrit.
       if (part.file.truncated) return fail(reply, 413, 'file_too_large');
+      const liveModel = await app.settings.resolveTranscriptionModel(
+        app.config.openai?.models?.transcription || '',
+      );
+      const provider = transcriptionProvider(liveModel);
+      const transcriber = provider === 'openai' ? app.openai : app.speech[provider];
+      const model = fileTranscriptionModel(liveModel);
+      // Langue de l'interface, celle du direct : Speechmatics la demande pour
+      // un fichier ; les autres fournisseurs la détectent et l'ignorent.
+      const lang = normalizeLang(req.query?.lang);
       const chunks = await app.audioChunker.split(tmpPath);
       try {
         const results = await mapWithLimit(chunks.paths, RECORD_CHUNK_CONCURRENCY, (path) =>
-          app.openai.transcribe({
+          transcriber.transcribe({
             path,
+            model,
+            lang,
             // Une tranche porte son extension (part000.m4a) : OpenAI en déduit
             // le format, comme du nom du fichier envoyé.
             filename: path === tmpPath ? part.filename || 'audio.webm' : basename(path),
@@ -205,7 +274,7 @@ export default function aiRoutes(app) {
           .join(' ');
         return { text };
       } catch (err) {
-        req.log.warn({ err: err.message }, '/record : échec amont OpenAI');
+        req.log.warn({ err: err.message, model }, '/record : échec amont');
         if (isAudioTooLong(err)) return fail(reply, 413, 'audio_too_long');
         return replyUpstreamError(reply, err);
       } finally {
@@ -275,7 +344,8 @@ export default function aiRoutes(app) {
    * Sortie du modèle illisible ou mal alignée -> phrases d'origine, inchangées.
    */
   app.post('/refine-transcript', async (req, reply) => {
-    if (!requireUser(req, reply)) return;
+    const user = requireUser(req, reply);
+    if (!user) return;
     const body = req.body || {};
     const notes = String(body.notes || '')
       .trim()
@@ -284,14 +354,23 @@ export default function aiRoutes(app) {
       .filter((s) => typeof s === 'string' && s.trim())
       .slice(0, 4)
       .map((s) => s.trim().slice(0, 1200));
-    if (!notes || !sentences.length) return { sentences };
+    if (!sentences.length || (!notes && !body.tagId)) return { sentences };
+    // Le contexte du tag de la réunion — relu EN BASE par son id, sous le
+    // compte du demandeur (lib/tagContext.js) — s'ajoute aux notes comme
+    // référence de graphie : les noms et sigles écrits à l'avance se
+    // rétablissent dans la transcription comme ceux tapés en réunion.
+    const dossier = await readTagContext(app, user.email, body.tagId);
+    const reference = [notes, tagContextReference(dossier)].filter(Boolean).join('\n\n');
+    if (!reference) return { sentences };
     try {
       const raw = await app.openai.chat({
         model: app.config.openai.models.refine,
         // Appelé en continu pendant la réunion : la latence prime, et
         // gpt-6-luna raisonne en « medium » si on ne lui dit rien.
         reasoningEffort: 'none',
-        messages: [{ role: 'user', content: refineTranscriptPrompt({ sentences, notes }) }],
+        messages: [
+          { role: 'user', content: refineTranscriptPrompt({ sentences, notes: reference }) },
+        ],
       });
       return { sentences: parseRefineOutput(raw, sentences.length) || sentences };
     } catch (err) {

@@ -4,7 +4,7 @@
    * et les RÈGLES D'ACTION de chaque tag : où ranger ses comptes rendus, à qui
    * les envoyer.
    *
-   * SECTION de « Ma configuration » : le composant n'a pas de coquille, il rend
+   * SECTION de « Réglages » : le composant n'a pas de coquille, il rend
    * son contenu dans le volet de droite du panneau.
    *
    * ── Une liste, et la fiche du tag choisi ─────────────────────────────────
@@ -45,9 +45,25 @@
    *
    * Les destinataires d'un tag REMPLACENT la liste par défaut du compte (cf.
    * lib/actions/recipients.js) ; la fiche et la fenêtre de saisie le disent.
+   *
+   * ── Contexte du tag ───────────────────────────────────────────────────────
+   * Ce que l'IA doit savoir du dossier : la fiche tient le brouillon, ce
+   * panneau l'enregistre (`saveTagContext`) et dit où en est l'écriture, POUR
+   * QUEL TAG — un enregistrement qui finit après qu'on a changé de fiche ne
+   * s'affiche pas sur la suivante. « Lu par » ne nomme que ce que le compte
+   * utilise : l'infographie et l'Aide IA dépendent de ses droits.
+   *
+   * ── Nom, pastille, logo : enregistrés aussitôt ────────────────────────────
+   * La fiche dit le geste (nouveau nom, nouvelle pastille, fichier de logo),
+   * ce panneau écrit : `upsertTag` avec le corps COMPLET (nom, couleur,
+   * forme — /tags/save n'est pas un patch), `saveTagLogo` après réduction de
+   * l'image (utils/tagLogo.js). Les logos des tags qui en ont se lisent à
+   * l'ouverture, pour la liste : ils ne viennent pas avec GET /tags.
    */
   import { onMount } from 'svelte';
   import { uiText } from '../store.js';
+  import { canGenerateInfographic } from '../stores/auth.js';
+  import { aiHelp } from '../stores/aiHelp.js';
   import { refreshConfigChecks } from '../stores/configChecks.js';
   import { historyItems } from '../stores/history.js';
   import {
@@ -62,6 +78,13 @@
     removeTag,
     tagColorVars,
     tagShapeClip,
+    tagContextMax,
+    saveTagContext,
+    tagLogos,
+    ensureTagLogo,
+    saveTagLogo,
+    removeTagLogo,
+    logoOf,
     TAG_COLOR_FALLBACK,
     TAG_SHAPE_FALLBACK,
   } from '../stores/tags.js';
@@ -81,6 +104,8 @@
   import TagRecipientsDialog from './settings/TagRecipientsDialog.svelte';
   import StorageLogo from './icons/StorageLogo.svelte';
   import { formatText } from '../utils/i18nFormat.js';
+  import { searchTags } from '../utils/tagSearch.js';
+  import { prepareTagLogo } from '../utils/tagLogo.js';
   import { libraryKind } from '../utils/storageVocabulary.js';
   import IconTag from '~icons/solar/tag-linear';
   import IconPlus from '~icons/solar/add-circle-linear';
@@ -92,7 +117,11 @@
 
   /** Identifiant de la fiche « Réglages communs » dans `selectedId`. */
   const COMMON = 'common';
-  /** La recherche n'apparaît qu'au-delà : sous ce nombre, la liste se lit d'un coup d'œil. */
+  /**
+   * La recherche n'apparaît qu'au-delà : sous ce nombre, la liste se lit d'un
+   * coup d'œil — sauf dès qu'un tag a un contexte : ce qu'il cite (une
+   * personne, un sigle) ne se lit pas dans la liste, et la recherche le trouve.
+   */
   const SEARCH_FROM = 7;
 
   /** null = formulaire fermé · {} = création · {id,…} = modification. */
@@ -126,10 +155,12 @@
     selectedId === COMMON ? null : $tags.find((tag) => tag.id === selectedId) || $tags[0] || null;
   $: currentId = selectedId === COMMON ? COMMON : selectedTag?.id || null;
 
-  $: needle = query.trim().toLocaleLowerCase();
-  $: visibleTags = needle
-    ? $tags.filter((tag) => tag.label.toLocaleLowerCase().includes(needle))
-    : $tags;
+  // Par le nom, puis par le contexte, extrait à l'appui (utils/tagSearch.js) :
+  // la même règle que le sélecteur de tag.
+  $: found = query.trim() ? searchTags($tags, query) : null;
+  $: visibleTags = found ? found.map((r) => r.tag) : $tags;
+  $: snippets = new Map((found || []).filter((r) => r.snippet).map((r) => [r.tag.id, r.snippet]));
+  $: showSearch = $tags.length >= SEARCH_FROM || $tags.some((tag) => !!tag.context);
 
   // ── Dépôt par tag ──────────────────────────────────────────────────────────
   /** Payload de GET /connect/status — chargé ici, le panneau vit sans parent. */
@@ -162,6 +193,79 @@
   let recipientsError = '';
   /** Échec du retour aux destinataires habituels (hors fenêtre). */
   let mailError = false;
+
+  // ── Contexte du tag ────────────────────────────────────────────────────────
+  /** Dernière écriture : son tag, son état (`saving`, `saved`, `error`), son message. */
+  let contextSave = { id: null, state: '', error: '' };
+  /** Numéro de la dernière écriture : seule la plus récente parle. */
+  let contextSeq = 0;
+  $: contextReaders = [
+    t.contextReaders.summary,
+    t.contextReaders.transcript,
+    ...($canGenerateInfographic ? [t.contextReaders.infographic] : []),
+    ...($aiHelp.available ? [t.contextReaders.aiHelp] : []),
+  ];
+
+  // ── Nom et pastille depuis la fiche ────────────────────────────────────────
+  /** Refus de la dernière écriture de nom ou de pastille, pour SON tag. */
+  let appearance = { id: null, error: '' };
+  $: solidColors = palette.filter((slug) => !slug.includes('-'));
+
+  async function saveAppearance(tag, patch) {
+    appearance = { id: tag.id, error: '' };
+    const res = await upsertTag({
+      id: tag.id,
+      label: tag.label,
+      color: tag.color,
+      shape: tag.shape || TAG_SHAPE_FALLBACK,
+      ...patch,
+    });
+    if (!res.ok) appearance = { id: tag.id, error: errorText(res.error) };
+  }
+
+  // ── Logo ───────────────────────────────────────────────────────────────────
+  let logoState = { id: null, busy: false, error: '' };
+  // Les logos annoncés se lisent pour la liste et la fiche (une fois par version).
+  $: for (const tag of $tags) ensureTagLogo(tag);
+
+  async function setLogo(tag, file) {
+    logoState = { id: tag.id, busy: true, error: '' };
+    let res;
+    try {
+      res = await saveTagLogo(tag.id, await prepareTagLogo(file));
+    } catch (err) {
+      res = { ok: false, error: err?.code || 'logo_unreadable' };
+    }
+    logoState = { id: tag.id, busy: false, error: res.ok ? '' : logoErrorText(res.error) };
+  }
+
+  async function dropLogo(tag) {
+    logoState = { id: tag.id, busy: true, error: '' };
+    const res = await removeTagLogo(tag.id);
+    logoState = { id: tag.id, busy: false, error: res.ok ? '' : t.logoSaveError };
+  }
+
+  function logoErrorText(slug) {
+    return t.errors?.[slug] || t.logoSaveError;
+  }
+
+  async function saveContext(id, text) {
+    const seq = ++contextSeq;
+    contextSave = { id, state: 'saving', error: '' };
+    const res = await saveTagContext(id, text);
+    // Une écriture plus récente (un autre tag, ou une autre pause) a pris la main.
+    if (seq !== contextSeq) return;
+    contextSave = res.ok
+      ? { id, state: 'saved', error: '' }
+      : {
+          id,
+          state: 'error',
+          error:
+            res.error === 'context_too_long'
+              ? t.errors.context_too_long.replace('{max}', String($tagContextMax))
+              : t.contextSaveError,
+        };
+  }
   $: provider = connect?.provider || null;
   $: connected = !!provider?.connected;
   $: driveReady = connected && !!provider?.driveReady;
@@ -217,6 +321,8 @@
       return {
         tag,
         count: taggedCounts.get(tag.id) || 0,
+        snippet: snippets.get(tag.id) || null,
+        logo: logoOf($tagLogos, tag),
         folderCustom,
         // Le logo de la bibliothèque visée (SharePoint, OneDrive, Google Drive)
         // dit d'un coup d'œil OÙ ce tag range ses comptes rendus.
@@ -511,13 +617,13 @@
   {:else}
     <div class="tgp-layout" class:tgp-detail-open={detailOpen}>
       <nav class="tgp-list" aria-label={t.title}>
-        {#if $tags.length >= SEARCH_FROM}
+        {#if showSearch}
           <label class="tgp-search">
             <IconSearch width="17" height="17" aria-hidden="true" />
             <input
               type="search"
               bind:value={query}
-              placeholder={t.searchLabel}
+              placeholder={t.searchPlaceholder}
               aria-label={t.searchLabel}
               autocomplete="off"
             />
@@ -549,12 +655,24 @@
                 style={row.style}
                 on:click={() => show(row.tag.id)}
               >
-                <span class="tgp-row-badge" aria-hidden="true"
-                  ><span class="tgp-row-shape"></span></span
-                >
+                {#if row.logo}
+                  <span class="tgp-row-badge tgp-row-logo" aria-hidden="true"
+                    ><img src={row.logo} alt="" /><span class="tgp-row-mini"></span></span
+                  >
+                {:else}
+                  <span class="tgp-row-badge" aria-hidden="true"
+                    ><span class="tgp-row-shape"></span></span
+                  >
+                {/if}
                 <span class="tgp-row-text">
                   <span class="tgp-row-name">{row.tag.label}</span>
-                  <span class="tgp-row-sub">{taggedLabel(row.count, t)}</span>
+                  {#if row.snippet}
+                    <span class="tgp-row-sub tgp-row-snippet"
+                      >{row.snippet.before}<mark>{row.snippet.match}</mark>{row.snippet.after}</span
+                    >
+                  {:else}
+                    <span class="tgp-row-sub">{taggedLabel(row.count, t)}</span>
+                  {/if}
                 </span>
                 <span class="tgp-rules" aria-hidden="true">
                   <span class="tgp-rule" class:tgp-rule-on={row.folderCustom}>
@@ -634,8 +752,8 @@
             {mailNote}
             onToggleSubfolders={toggleSubfolders}
             onBack={backToList}
-            onOpenStorage={() => selectPanelSection('action-storage')}
-            onOpenMail={() => selectPanelSection('action-mail')}
+            onOpenStorage={() => selectPanelSection('actions', 'storage')}
+            onOpenMail={() => selectPanelSection('actions', 'mail')}
           />
         {:else if selectedTag}
           <TagFiche
@@ -658,6 +776,21 @@
             mailBusy={!!recipientsBusy}
             {mailNote}
             mailError={mailError ? a.saveError : ''}
+            contextMax={$tagContextMax}
+            {contextReaders}
+            contextState={contextSave.id === selectedTag.id ? contextSave.state : ''}
+            contextError={contextSave.id === selectedTag.id ? contextSave.error : ''}
+            onContextSave={saveContext}
+            {solidColors}
+            shapeSlugs={shapes}
+            appearanceError={appearance.id === selectedTag.id ? appearance.error : ''}
+            onRename={(label) => saveAppearance(selectedTag, { label })}
+            onPastille={(choice) => saveAppearance(selectedTag, choice)}
+            logo={logoOf($tagLogos, selectedTag)}
+            logoBusy={logoState.id === selectedTag.id && logoState.busy}
+            logoError={logoState.id === selectedTag.id ? logoState.error : ''}
+            onLogoFile={(file) => setLogo(selectedTag, file)}
+            onLogoRemove={() => dropLogo(selectedTag)}
             onBack={backToList}
             onEdit={() => startEdit(selectedTag)}
             onDelete={() => (pendingDelete = selectedTag)}
@@ -716,7 +849,7 @@
 
 <style>
   /* ── Tête de section ───────────────────────────────────────────────────────
-     Le header du panneau porte « Ma configuration » et ne peut pas nommer
+     Le header du panneau porte « Réglages » et ne peut pas nommer
      l'écran, il y en a huit. Le bouton de création vit ici : un seul point
      d'entrée, toujours visible, quelle que soit la longueur de la liste. */
   .tgp-head {
@@ -879,6 +1012,11 @@
     font-size: 13.5px;
     color: var(--ink);
   }
+  /* La croix native de WebKit, bleue, jure avec la palette. */
+  .tgp-search input::-webkit-search-cancel-button {
+    -webkit-appearance: none;
+    appearance: none;
+  }
   .tgp-rows {
     list-style: none;
     margin: 0;
@@ -945,6 +1083,28 @@
     background: var(--row-soft);
     flex-shrink: 0;
   }
+  /* Un tag à logo : le logo sur fond blanc, entier, et sa pastille en
+     petit dans le coin — la couleur reste ce qui le relie à l'historique. */
+  .tgp-row-logo {
+    position: relative;
+    border-radius: 11px;
+    background: var(--surface);
+    box-shadow: 0 0 0 1px var(--line);
+  }
+  .tgp-row-logo img {
+    max-width: 28px;
+    max-height: 28px;
+    object-fit: contain;
+  }
+  .tgp-row-mini {
+    position: absolute;
+    right: -3px;
+    bottom: -3px;
+    width: 11px;
+    height: 11px;
+    background: var(--row-fill);
+    clip-path: var(--row-shape);
+  }
   .tgp-row-shape {
     width: 15px;
     height: 15px;
@@ -970,6 +1130,21 @@
     font-size: 12px;
     color: var(--ink-muted);
     font-variant-numeric: tabular-nums;
+  }
+  /* Trouvé par son contexte : l'extrait remplace le compteur, sur deux lignes au plus. */
+  .tgp-row-snippet {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+    line-height: 1.4;
+  }
+  .tgp-row-snippet mark {
+    padding: 0 2px;
+    border-radius: 3px;
+    background: var(--brand-soft-18);
+    color: var(--ink);
   }
   .tgp-row-sub-draft {
     color: var(--brand-text);

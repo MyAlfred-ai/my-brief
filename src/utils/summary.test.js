@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeSummaryHtml, afterFailedGeneration, pendingVersionFrom } from './summary.js';
+import {
+  normalizeSummaryHtml,
+  afterFailedGeneration,
+  pendingVersionFrom,
+  meetingStartIso,
+} from './summary.js';
 
 describe('normalizeSummaryHtml — marqueurs de blocs IA résiduels', () => {
   it('purge les marqueurs [[AI_…]] laissés en préfixe par le LLM', () => {
@@ -90,5 +95,23 @@ describe('pendingVersionFrom — la version en attente d’une rédaction', () =
 
   it('deux versions en attente ont deux identifiants', () => {
     expect(pendingVersionFrom(null, 's').id).not.toBe(pendingVersionFrom(null, 's').id);
+  });
+});
+
+describe('meetingStartIso — heure de début envoyée à /resume', () => {
+  const NOW = Date.parse('2026-10-29T10:00:00.000Z');
+
+  it('enregistrement en cours : son heure de début', () => {
+    const start = Date.parse('2026-10-29T09:15:00.000Z');
+    expect(meetingStartIso(start, true, 600, NOW)).toBe('2026-10-29T09:15:00.000Z');
+  });
+
+  it('sans enregistrement : maintenant moins la durée', () => {
+    expect(meetingStartIso(null, true, 1800, NOW)).toBe('2026-10-29T09:30:00.000Z');
+  });
+
+  it('ni transcription ni durée : inconnue', () => {
+    expect(meetingStartIso(null, false, 1800, NOW)).toBeNull();
+    expect(meetingStartIso(null, true, 0, NOW)).toBeNull();
   });
 });

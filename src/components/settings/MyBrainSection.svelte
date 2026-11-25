@@ -1,6 +1,6 @@
 <script>
   /**
-   * Section « MyBrain » de « Ma configuration » : envoyer ses réunions au
+   * Section « MyBrain » de « Réglages » : envoyer ses réunions au
    * cerveau partagé de l'organisation — ou non — et voir ce qui est parti.
    *
    * Le choix n'appartient à l'utilisateur que si l'administration le lui

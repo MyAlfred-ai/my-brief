@@ -10,6 +10,7 @@ import {
   spanDaysOf,
 } from '../lib/costs/estimate.js';
 import { TRANSCRIPTION_MODELS } from '../lib/transcriptionModels.js';
+import { SUMMARY_MODELS } from '../lib/summaryModels.js';
 import { effectivePricing, sanitizePrice, pricingProvenance } from '../lib/costs/pricing.js';
 import { refreshPricing } from '../lib/costs/refresh.js';
 import { CATALOG_CHECKED_AT, FX_FALLBACK, PRICE_CATALOG } from '../lib/costs/catalog.js';
@@ -153,7 +154,7 @@ describe('tarifs appliqués — le plus récent gagne', () => {
   it('une actualisation plus récente recouvre le catalogue, caractéristiques comprises', () => {
     const pricing = effectivePricing({
       models: {
-        'gpt-image-2': {
+        'gpt-image-2.5-flare': {
           imageOutputMTok: 40,
           checkedAt: '2026-10-01T08:00:00.000Z',
           source: 'litellm',
@@ -168,7 +169,10 @@ describe('tarifs appliqués — le plus récent gagne', () => {
       },
     });
     // Prix relevé, mais le nombre de jetons par image — que nulle grille ne publie — survit.
-    expect(pricing.models['gpt-image-2']).toMatchObject({ imageOutputMTok: 40, imageTokens: 5500 });
+    expect(pricing.models['gpt-image-2.5-flare']).toMatchObject({
+      imageOutputMTok: 40,
+      imageTokens: 5500,
+    });
     expect(pricing.models['gpt-modele-futur']).toMatchObject({ inputMTok: 1 });
     expect(pricing.fx).toMatchObject({ usdToEur: 0.9, source: 'ecb' });
   });
@@ -316,12 +320,9 @@ describe('estimation des dépenses', () => {
   it('compare chaque modèle proposé, à consommation égale — le modèle imposé en tête', () => {
     const costs = estimate([meeting()], { models: { ...MODELS, summary: 'gpt-5.6-terra' } });
     const { alternatives } = costs.lines.find((line) => line.id === 'summary');
-    expect(alternatives.map((alt) => alt.model)).toEqual([
-      'gpt-5.6-terra',
-      'gpt-5.6-sol',
-      'gpt-5.4',
-      'gpt-5.4-mini',
-    ]);
+    expect(alternatives.map((alt) => alt.model)).toEqual(['gpt-5.6-terra', ...SUMMARY_MODELS]);
+    // Tous tarifés : un modèle proposé sans prix sortirait de la comparaison.
+    expect(alternatives.every((alt) => alt.priced)).toBe(true);
     expect(alternatives[0].current).toBe(true);
     const mini = alternatives.find((alt) => alt.model === 'gpt-5.4-mini');
     const sol = alternatives.find((alt) => alt.model === 'gpt-5.6-sol');
@@ -331,26 +332,18 @@ describe('estimation des dépenses', () => {
     expect(costs.lines.find((line) => line.id === 'assistants').alternatives).toEqual([]);
   });
 
-  it('une image tarifée à l’image ne se paie pas au jeton', () => {
-    const flat = {
-      ...PRICING,
-      models: { ...PRICING.models, 'gpt-image-2.5-flare': { kind: 'image', image: 0.2 } },
-    };
-    const costs = estimate([meeting({ infographic: { status: 'ready', updatedAt: ago(1) } })], {
-      pricing: flat,
-    });
-    const draws = priceDraw({ model: 'x', units: { images: 1 } }, { image: 0.2 });
-    expect(draws).toBe(0.2);
+  it('une infographie ne se paie plus qu’à son contenu : un appel texte, sans dessin', () => {
+    // Depuis les gabarits (2026-11-17), le navigateur met en page : plus de
+    // modèle d'image à tarifer ni à comparer.
+    const costs = estimate([meeting({ infographic: { status: 'ready', updatedAt: ago(1) } })]);
     const infographic = costs.lines.find((line) => line.id === 'infographic');
+    expect(infographic.models).toEqual(['gpt-5.4']);
+    expect(infographic.alternatives).toEqual([]);
     expect(infographic.unpriced).toEqual([]);
-    expect(infographic.alternatives.find((alt) => alt.current).tariff).toMatchObject({
-      image: 0.2,
-    });
-    // Au jeton, le prix d'UNE image se déduit : 5 500 jetons à 30 $ le million.
-    expect(
-      estimate([]).lines.find((line) => line.id === 'infographic').alternatives[0].tariff,
-    ).toMatchObject({ imageOutputMTok: 30, imageUsd: 0.165 });
-    expect(infographic.periodEur).toBeGreaterThan(0.2 * FX);
+    expect(infographic.periodEur).toBeGreaterThan(0);
+    expect(costs.assumptions.infographicOutputTokens).toBeGreaterThan(0);
+    // Le compteur à l'image reste disponible pour un poste à venir.
+    expect(priceDraw({ model: 'x', units: { images: 1 } }, { image: 0.2 })).toBe(0.2);
   });
 
   it('borne la mensualisation à la vie de l’installation', () => {
@@ -366,13 +359,18 @@ describe('estimation des dépenses', () => {
   it('demande à l’actualisation le catalogue, les modèles en service et ceux proposés', () => {
     const ids = modelsToPrice({ ...MODELS, summary: 'gpt-5.6-terra' }).map((request) => request.id);
     expect(ids).toEqual(
-      expect.arrayContaining(['gpt-5.6-terra', 'gpt-transcribe', 'gpt-image-2', 'gpt-6-luna']),
+      expect.arrayContaining([
+        'gpt-5.6-terra',
+        'gpt-transcribe',
+        'gpt-image-2.5-flare',
+        'gpt-6-luna',
+      ]),
     );
     expect(new Set(ids).size).toBe(ids.length);
   });
 });
 
-describe('prix de chaque modèle proposé, pour l’onglet IA', () => {
+describe('prix de chaque modèle proposé, pour la rubrique Modèles IA', () => {
   it('transcription : une heure d’audio au tarif à la minute, au taux de change', () => {
     const prices = referencePrices('transcription', { models: MODELS, pricing: PRICING });
     expect(prices.map((entry) => entry.model)).toEqual(TRANSCRIPTION_MODELS);

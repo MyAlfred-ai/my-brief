@@ -6,7 +6,7 @@
    * n'y enregistre que le micro, et la voix des interlocuteurs d'une visio ou
    * le son d'une application sont perdus. La fenêtre le dit à l'ouverture, et
    * donne les deux issues : Chrome ou Edge, ou un périphérique audio virtuel
-   * choisi dans Ma configuration → Réglages audio (lib/audio/systemAudio.js).
+   * choisi dans Réglages → Pendant la réunion → Micro et son (lib/audio/systemAudio.js).
    * Elle ne s'affiche plus une fois ce périphérique choisi (App.svelte).
    *
    * Sortie d'App.svelte, où elle était écrite en dur et en français seulement ;
@@ -16,7 +16,7 @@
 
   /** Ferme la fenêtre. */
   export let onClose = () => {};
-  /** Ouvre Ma configuration → Réglages audio. */
+  /** Ouvre Réglages → Pendant la réunion → Micro et son. */
   export let onConfigure = () => {};
 
   $: t = $uiText.browserAudioNotice;

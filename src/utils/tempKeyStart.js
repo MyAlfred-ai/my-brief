@@ -19,15 +19,19 @@
 import { isOpaqueAuthRedirect, inspectAiServiceError } from './httpErrorHandler.js';
 
 /**
- * @param {{lang: string, fetchRaw: (path: string) => Promise<Response|null>}} deps -
+ * @param {{lang: string, meetingId?: string|null,
+ *   fetchRaw: (path: string) => Promise<Response|null>}} deps -
  *   `fetchRaw` : la réponse BRUTE (services/apiClient.js, `raw`) — le corps est
- *   inspecté verbatim, ce que le contrat {ok,status,data} ne rend pas
+ *   inspecté verbatim, ce que le contrat {ok,status,data} ne rend pas.
+ *   `meetingId` : reprise d'une réunion interrompue — nommée, elle n'est pas
+ *   refusée pour un quota atteint depuis son démarrage (même règle que la
+ *   rotation d'une réunion en cours, services/api/routes/ai.js)
  * @returns {Promise<{kind: 'ok', secret: string, model: string}
  *   | {kind: 'auth'} | {kind: 'quota', quota: object|null}
  *   | {kind: 'ai_error', info: object|null} | {kind: 'unreachable', error: Error}>}
  */
-export async function acquireStartTempKey({ lang, fetchRaw }) {
-  const params = new URLSearchParams({ lang });
+export async function acquireStartTempKey({ lang, meetingId = null, fetchRaw }) {
+  const params = new URLSearchParams({ lang, ...(meetingId ? { meetingId } : {}) });
   let res;
   try {
     res = await fetchRaw(`/tempkey?${params}`);

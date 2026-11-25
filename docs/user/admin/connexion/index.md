@@ -5,10 +5,10 @@ sidebar:
   order: 5
 ---
 
-L'onglet **Administration → Authentification** décide de ce que propose la page de connexion : **Email
-et mot de passe**, **Continuer avec Google**, **Continuer avec Microsoft**, et le **SSO historique**
-s'il existe encore. Il porte aussi les identifiants Google et Microsoft, et la liste des **domaines
-autorisés**.
+La page **Administration → Organisation → Authentification** décide de ce que propose la page de
+connexion de myBrief : **Email et mot de passe**, **Continuer avec Google**, **Continuer avec
+Microsoft**, et le **SSO historique** s'il existe encore. Elle porte aussi les identifiants Google et
+Microsoft, et la liste des **domaines autorisés**.
 
 ## À quoi ça sert
 
@@ -17,10 +17,15 @@ réserver l'accès à votre organisation.
 
 ## Comment ça marche
 
-**La carte Page de connexion** montre chaque mode tel que vos utilisateurs le verront, **Affiché** ou
-**Masqué**. Le mot de passe et le SSO historique s'affichent par leur interrupteur ; Google et Microsoft,
-en les activant dans leur carte, identifiants complets. **Au moins un mode doit rester affiché**, sinon
-plus personne ne peut se connecter — vous compris.
+**La carte Page de connexion** porte une pastille par mode — **Email et mot de passe**, **Google**,
+**Microsoft**, **SSO historique** — telle que vos utilisateurs le verront : un point vert quand le mode est
+**Affiché**, un point creux, en pointillés, quand il est **Masqué** ; la carte les compte, par exemple
+« 3 sur 4 affichés ». Un clic sur une pastille déplie tout ce qui concerne ce mode : l'interrupteur
+**Proposer sur la page de connexion**, ses identifiants, ses URI de redirection et **Tester**. Un seul
+mode est déplié à la fois ; un fournisseur activé que la page de connexion ne montre pas encore —
+identifiants incomplets — s'ouvre de lui-même. Google et Microsoft ne s'affichent qu'identifiants
+complets. **Au moins un mode doit rester affiché**, sinon plus personne ne peut se connecter — vous
+compris.
 
 **Les identifiants servent à deux choses.** Ceux de Google et de Microsoft ouvrent la connexion, mais
 permettent aussi aux utilisateurs de **relier leur compte** pour l'envoi des mails et le dépôt des
@@ -47,15 +52,16 @@ flowchart TB
 identifiants Microsoft Entra fournis au déploiement, le SSO historique, et l'envoi de mails — sans lui,
 pas de lien **Mot de passe oublié ?**.
 
-**Un seul bouton Enregistrer**, en bas de l'onglet.
+**Un seul bouton Enregistrer**, en bas de la page. Une pastille qui porte **Modifié** a un changement
+pas encore enregistré ; **Annuler** rend les réglages enregistrés.
 
 ## Configurer
 
 | Réglage | Où | Effet | Page |
 |---|---|---|---|
-| **Affiché** / **Masqué**, **Tester** | Authentification → Page de connexion | Les modes proposés sur la page de connexion | [Choisir les modes de connexion](choisir-les-modes-de-connexion.md) |
-| **Connexion avec Google** : ID client, secret, URI de redirection | Authentification, et la console Google Cloud | Continuer avec Google, et les comptes Google reliés | [Activer la connexion Google](activer-la-connexion-google.md) |
-| **Connexion avec Microsoft Entra ID** | Authentification, et votre annuaire Entra | Continuer avec Microsoft, et les comptes Microsoft reliés | [Activer Microsoft Entra ID](activer-microsoft-entra-id.md) |
+| Pastilles **Affiché** / **Masqué**, **Proposer sur la page de connexion**, **Tester** | Authentification → Page de connexion | Les modes proposés sur la page de connexion | [Choisir les modes de connexion](choisir-les-modes-de-connexion.md) |
+| Pastille **Google** : ID client, secret, URI de redirection | Authentification, et la console Google Cloud | Continuer avec Google, et les comptes Google reliés | [Activer la connexion Google](activer-la-connexion-google.md) |
+| Pastille **Microsoft** : secret, annuaire, URI de redirection | Authentification, et votre annuaire Entra | Continuer avec Microsoft, et les comptes Microsoft reliés | [Activer Microsoft Entra ID](activer-microsoft-entra-id.md) |
 | Projet, API, scopes, audience, commandes des API | Console Google Cloud, console d'administration Google | Les droits exacts de myBrief chez Google, et ce qui peut les bloquer | [Autoriser myBrief dans Google Workspace](autoriser-mybrief-dans-google-workspace.md) |
 | Inscription d'application, autorisations Microsoft Graph, consentement | Microsoft Entra ID | Les droits exacts de myBrief chez Microsoft, et ce qui peut les bloquer | [Autoriser myBrief dans Microsoft Entra ID](autoriser-mybrief-dans-microsoft-entra-id.md) |
 | **Domaines autorisés** | Authentification | Qui obtient un compte à sa première connexion | [Restreindre aux domaines autorisés](restreindre-aux-domaines-autorises.md) |
@@ -73,8 +79,8 @@ clarifier la page.
 
 ## Vérifier que tout fonctionne
 
-1. Le bouton **Tester** de chaque mode joue la vraie connexion dans un nouvel onglet : c'est la seule
-   preuve que le secret, l'URI de redirection et l'annuaire sont bons.
+1. Le bouton **Tester** de chaque mode, dans sa pastille dépliée, joue la vraie connexion dans un nouvel
+   onglet : c'est la seule preuve que le secret, l'URI de redirection et l'annuaire sont bons.
 2. Déconnectez-vous : la page de connexion ne montre que les modes voulus.
 3. Avec un compte d'un domaine autorisé qui n'existe pas encore : il se crée à la connexion.
 

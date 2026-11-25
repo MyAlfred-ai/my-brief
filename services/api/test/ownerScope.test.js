@@ -205,6 +205,8 @@ describe('OWNED_COLLECTIONS', () => {
       // Héritée : plus aucun code n'y écrit, elle reste couverte par la purge
       // tant qu'elle n'est pas supprimée de la base.
       'userMailAccounts',
+      // Logos des tags : à part de `userTags`, lue en entier à chaque ouverture.
+      'userTagLogos',
       'userTags',
       'userTemplates',
     ]);

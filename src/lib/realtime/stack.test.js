@@ -224,6 +224,64 @@ describe('socket zombie : ouvert, muet, application vivante', () => {
     stack.stop();
   });
 
+  it('pause longue (15 min) : la reprise renouvelle le canal, sans toast, et la parole part sur le neuf', async () => {
+    // Plainte d'un client : « pas de son après une pause de 15 minutes ». Rien n'a
+    // circulé sur le socket pendant la pause : il peut être mort, encore OPEN.
+    const { stack, ctx } = makeStack();
+    const old = await openMic(stack);
+    stack.start();
+    ctx.paused = true;
+    stack.notePaused();
+    await vi.advanceTimersByTimeAsync(15 * 60_000);
+    expect(ctx.tempkeys).toBe(0); // pendant la pause : rien ne bouge
+
+    ctx.paused = false;
+    const before = FakeWebSocket.instances.length;
+    stack.noteResumed();
+    const fresh = await nextSocket(before);
+    fresh.open();
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(ctx.tempkeys).toBe(1);
+    expect(ctx.toasts).toEqual([]);
+    const sentBefore = old.sent.length;
+    await speakFor(stack, 1_000);
+    expect(fresh.sent.length).toBeGreaterThan(1); // session.update + audio
+    expect(old.sent.length).toBe(sentBefore);
+    stack.stop();
+  });
+
+  it('pause courte (30 s) : le socket qui vient de servir est gardé', async () => {
+    const { stack, ctx } = makeStack();
+    await openMic(stack);
+    stack.start();
+    ctx.paused = true;
+    stack.notePaused();
+    await vi.advanceTimersByTimeAsync(30_000);
+    ctx.paused = false;
+    stack.noteResumed();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(ctx.tempkeys).toBe(0);
+    stack.stop();
+  });
+
+  it('arrêt pendant la pause : la pause est oubliée, la réunion suivante ne renouvelle rien à tort', async () => {
+    const { stack, ctx } = makeStack();
+    await openMic(stack);
+    stack.start();
+    stack.notePaused();
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    stack.stop();
+
+    stack.start();
+    stack.notePaused();
+    await vi.advanceTimersByTimeAsync(5_000);
+    stack.noteResumed();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(ctx.tempkeys).toBe(0);
+    stack.stop();
+  });
+
   it('socket fermé : le chien de garde laisse la main à onUnexpectedClose (une seule reconnexion)', async () => {
     // /tempkey ne répond jamais : la reconnexion reste en vol, le socket reste
     // fermé. Le chien de garde ne doit RIEN ajouter dans cet état.
@@ -375,6 +433,28 @@ describe('canal audio système — son propre superviseur', () => {
   });
 });
 
+describe('quota de minutes', () => {
+  it('la rotation nomme la réunion en cours : le serveur ne la refuse pas pour le quota', async () => {
+    const queries = [];
+    let meetingId = '';
+    const { stack } = makeStack({
+      getMeetingId: () => meetingId,
+      fetchTempKey: (query) => {
+        queries.push(String(query));
+        return Promise.resolve({ ok: true, status: 200, data: { value: 'sk-x' } });
+      },
+    });
+    await openMic(stack);
+    stack.start();
+    await vi.advanceTimersByTimeAsync(ROTATION_MS);
+    (await nextSocket(1)).open();
+    meetingId = 'm-42';
+    await vi.advanceTimersByTimeAsync(ROTATION_MS);
+    expect(queries).toEqual(['lang=fr', 'lang=fr&meetingId=m-42']);
+    stack.stop();
+  });
+});
+
 describe('non-régression', () => {
   it('rotation micro à 25 min, silencieuse, et onPeriodicCheck coupe tout (plafond 8 h)', async () => {
     const { stack, ctx } = makeStack();
@@ -409,5 +489,120 @@ describe('non-régression', () => {
     expect(mic.readyState).toBe(FakeWebSocket.CLOSED);
     expect(sys.readyState).toBe(FakeWebSocket.CLOSED);
     expect(ctx.tempkeys).toBe(before);
+  });
+});
+
+describe('réseau annoncé par le navigateur, retour d’une interruption', () => {
+  it('« offline » : le socket est abandonné tout de suite, sans attendre 40 s de chien de garde', async () => {
+    const lost = [];
+    const { stack, ctx } = makeStack({
+      onLiveStateChange: (up) => {
+        lost.push(up);
+        return up ? undefined : 'gap-1';
+      },
+      onGapMarker: (gapId) => lost.push(gapId),
+      fetchTempKey: () => {
+        ctx.tempkeys += 1;
+        return Promise.reject(new TypeError('Failed to fetch')); // hors ligne
+      },
+    });
+    const ws = await openMic(stack);
+    stack.start();
+
+    stack.noteNetwork(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(ws.readyState).toBe(FakeWebSocket.CLOSED);
+    // La coupure s'ouvre à l'instant vrai : le passage sera transcrit en différé.
+    expect(lost).toEqual([true, false, 'gap-1']);
+    expect(ctx.toasts).toEqual(['statuses.connectionLost']);
+    expect(ctx.tempkeys).toBe(1);
+    stack.stop();
+  });
+
+  it('« offline » répété, ou sans socket ouvert : une seule perte signalée', async () => {
+    const { stack, ctx } = makeStack({
+      fetchTempKey: () => new Promise(() => {}),
+    });
+    await openMic(stack);
+    stack.start();
+    stack.noteNetwork(false);
+    stack.noteNetwork(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(ctx.toasts).toEqual(['statuses.connectionLost']);
+    stack.stop();
+  });
+
+  it('« online » : la reconnexion part tout de suite, et le retry en attente ne double pas', async () => {
+    let online = false;
+    const { stack, ctx } = makeStack({
+      fetchTempKey: () => {
+        ctx.tempkeys += 1;
+        return online
+          ? Promise.resolve({ ok: true, status: 200, data: { value: 'sk-retour' } })
+          : Promise.reject(new TypeError('Failed to fetch'));
+      },
+    });
+    await openMic(stack);
+    stack.start();
+    stack.noteNetwork(false);
+    await vi.advanceTimersByTimeAsync(1_000); // 1re tentative en échec, retry dans 5 s
+    expect(ctx.tempkeys).toBe(1);
+
+    online = true;
+    const before = FakeWebSocket.instances.length;
+    stack.noteNetwork(true);
+    const ws = await nextSocket(before);
+    ws.open();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(ctx.tempkeys).toBe(2);
+    expect(ctx.toasts).toContain('statuses.connectionRestored');
+
+    // Le retry de 5 s programmé avant le retour ne doit pas repartir pour rien.
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(ctx.tempkeys).toBe(2);
+    stack.stop();
+  });
+
+  it('refresh() sur un socket encore ouvert : rotation silencieuse (il peut être mort sous une page gelée)', async () => {
+    const { stack, ctx } = makeStack();
+    await openMic(stack);
+    stack.start();
+
+    const before = FakeWebSocket.instances.length;
+    stack.refresh();
+    const ws = await nextSocket(before);
+    ws.open();
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(ctx.tempkeys).toBe(1);
+    expect(ctx.toasts).toEqual([]); // planifiée : aucun « Connexion perdue »
+    expect(ctx.states[ctx.states.length - 1]).toBe('connected');
+    stack.stop();
+  });
+
+  it('refresh() sur un socket fermé : reconnexion signalée', async () => {
+    const { stack, ctx } = makeStack({ fetchTempKey: () => new Promise(() => {}) });
+    const ws = await openMic(stack);
+    stack.start();
+    ctx.recording = false; // la fermeture ne relance rien…
+    ws.serverClose();
+    ctx.recording = true;
+
+    stack.refresh();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(ctx.toasts).toEqual(['statuses.connectionLost']);
+    stack.stop();
+  });
+
+  it('hors enregistrement : ni refresh ni réseau ne réveillent quoi que ce soit', async () => {
+    const { stack, ctx } = makeStack();
+    await openMic(stack);
+    ctx.recording = false;
+    stack.refresh();
+    stack.noteNetwork(false);
+    stack.noteNetwork(true);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(ctx.tempkeys).toBe(0);
+    expect(ctx.toasts).toEqual([]);
   });
 });

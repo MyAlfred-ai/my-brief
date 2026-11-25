@@ -16,12 +16,20 @@ import { dirname, join } from 'node:path';
 const api = {
   fetchTags: vi.fn(),
   saveTag: vi.fn(),
+  saveTagContextRequest: vi.fn(),
+  fetchTagLogo: vi.fn(),
+  saveTagLogoRequest: vi.fn(),
+  deleteTagLogoRequest: vi.fn(),
   deleteTag: vi.fn(),
   setMeetingTag: vi.fn(),
 };
 vi.mock('../services/tagsApi.js', () => ({
   fetchTags: (...a) => api.fetchTags(...a),
   saveTag: (...a) => api.saveTag(...a),
+  saveTagContextRequest: (...a) => api.saveTagContextRequest(...a),
+  fetchTagLogo: (...a) => api.fetchTagLogo(...a),
+  saveTagLogoRequest: (...a) => api.saveTagLogoRequest(...a),
+  deleteTagLogoRequest: (...a) => api.deleteTagLogoRequest(...a),
   deleteTag: (...a) => api.deleteTag(...a),
   setMeetingTag: (...a) => api.setMeetingTag(...a),
 }));
@@ -45,7 +53,18 @@ const {
   TAG_COLOR_FALLBACK,
   TAG_SHAPE_FALLBACK,
   TAG_HUE_LIGHTNESS,
+  TAG_CONTEXT_MAX,
+  tagContextMax,
+  saveTagContext,
+  summaryTag,
+  liveTagContext,
+  tagLogos,
+  ensureTagLogo,
+  saveTagLogo,
+  removeTagLogo,
+  logoOf,
 } = await import('./tags.js');
+const { liveMeetingIdStore } = await import('./recording.js');
 
 const ok = (data) => ({ ok: true, status: 200, data });
 const ko = (status, error) => ({ ok: false, status, data: { error } });
@@ -61,6 +80,7 @@ beforeEach(() => {
   tagShapes.set([TAG_SHAPE_FALLBACK]);
   tagHueLightness.set(TAG_HUE_LIGHTNESS);
   tagsMax.set(0);
+  tagContextMax.set(TAG_CONTEXT_MAX);
   historyItems.set([
     { meetingId: 'm-1', title: 'Point produit' },
     { meetingId: 'm-2', title: 'Client Dupont', tagId: 't-1' },
@@ -320,5 +340,142 @@ describe('tagShapeClip', () => {
     tagShapes.set(['circle', 'star']);
     expect(tagShapeClip('blob')).toBe(`var(--tag-shape-${TAG_SHAPE_FALLBACK})`);
     expect(tagShapeClip(undefined)).toBe(`var(--tag-shape-${TAG_SHAPE_FALLBACK})`);
+  });
+});
+
+describe('contexte d’un tag', () => {
+  it('saveTagContext garde la version NORMALISÉE renvoyée par le serveur', async () => {
+    tags.set([TAG_A, TAG_B]);
+    api.saveTagContextRequest.mockResolvedValue(
+      ok({ tag: { id: 't-1', context: 'Projet.\n\nActeurs : Claire.' } }),
+    );
+    const res = await saveTagContext('t-1', '  Projet.\n\n\n\nActeurs : Claire.  ');
+    expect(api.saveTagContextRequest).toHaveBeenCalledWith(
+      't-1',
+      '  Projet.\n\n\n\nActeurs : Claire.  ',
+    );
+    expect(res).toEqual({ ok: true, context: 'Projet.\n\nActeurs : Claire.' });
+    expect(get(tags).find((t) => t.id === 't-1').context).toBe('Projet.\n\nActeurs : Claire.');
+    expect(get(tags).find((t) => t.id === 't-2')).not.toHaveProperty('context');
+  });
+
+  it('un refus laisse le catalogue intact et remonte le slug', async () => {
+    tags.set([{ ...TAG_A, context: 'Avant' }]);
+    api.saveTagContextRequest.mockResolvedValue(ko(400, 'context_too_long'));
+    expect(await saveTagContext('t-1', 'Après')).toEqual({
+      ok: false,
+      error: 'context_too_long',
+    });
+    expect(get(tags)[0].context).toBe('Avant');
+  });
+
+  it('loadTags reprend la borne servie', async () => {
+    api.fetchTags.mockResolvedValue(ok({ tags: [], contextMax: 900 }));
+    await loadTags();
+    expect(get(tagContextMax)).toBe(900);
+  });
+
+  it('summaryTag : id, nom et contexte d’un tag qui en a un', () => {
+    tags.set([{ ...TAG_A, context: '  Projet Atlas, cliente Claire Martin.  ' }]);
+    expect(summaryTag('t-1')).toEqual({
+      tagId: 't-1',
+      tagLabel: 'Client Dupont',
+      tagContext: 'Projet Atlas, cliente Claire Martin.',
+    });
+  });
+
+  it('summaryTag : sans contexte, l’id seul — le prompt ne change pas', () => {
+    tags.set([TAG_A]);
+    expect(summaryTag('t-1')).toEqual({ tagId: 't-1', tagLabel: null, tagContext: null });
+    expect(summaryTag(null)).toEqual({ tagId: null, tagLabel: null, tagContext: null });
+    expect(summaryTag('t-supprime')).toEqual({ tagId: null, tagLabel: null, tagContext: null });
+  });
+
+  it('la copie locale de la borne est identique à celle du serveur', () => {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const lib = readFileSync(
+      join(here, '..', '..', 'services', 'api', 'lib', 'tagContext.js'),
+      'utf8',
+    );
+    const m = lib.match(/export const TAG_CONTEXT_MAX = (\d+);/);
+    expect(m, 'TAG_CONTEXT_MAX introuvable dans lib/tagContext.js').toBeTruthy();
+    expect(TAG_CONTEXT_MAX).toBe(Number(m[1]));
+  });
+});
+
+describe('liveTagContext — le tag de la réunion EN DIRECT', () => {
+  it('celui de la réunion qui s’enregistre, pas de celle affichée', () => {
+    tags.set([{ ...TAG_A, context: 'Cliente : Claire Martin.' }, TAG_B]);
+    historyItems.set([
+      { meetingId: 'm-live', tagId: 't-1' },
+      { meetingId: 'm-archive', tagId: 't-2' },
+    ]);
+    liveMeetingIdStore.set('m-live');
+    expect(liveTagContext()).toEqual({ tagId: 't-1', context: 'Cliente : Claire Martin.' });
+    liveMeetingIdStore.set(null);
+  });
+
+  it('rien hors enregistrement, ni pour un tag sans contexte', () => {
+    tags.set([TAG_A]);
+    historyItems.set([{ meetingId: 'm-live', tagId: 't-1' }]);
+    expect(liveTagContext()).toBeNull();
+    liveMeetingIdStore.set('m-live');
+    expect(liveTagContext()).toBeNull();
+    liveMeetingIdStore.set(null);
+  });
+});
+
+describe('logos des tags', () => {
+  const PNG = 'data:image/png;base64,iVBORw0KGgo';
+  const V1 = '2026-11-18T10:00:00Z';
+  const V2 = '2026-11-18T11:00:00Z';
+  beforeEach(() => tagLogos.set(new Map()));
+
+  it('lu à la demande, une fois par version — deux demandes simultanées n’en font qu’une', async () => {
+    api.fetchTagLogo.mockResolvedValue(ok({ id: 't-1', dataUrl: PNG }));
+    const tag = { ...TAG_A, logoAt: V1 };
+    const [a, b] = await Promise.all([ensureTagLogo(tag), ensureTagLogo(tag)]);
+    expect(a).toBe(PNG);
+    expect(b).toBe(PNG);
+    await ensureTagLogo(tag);
+    expect(api.fetchTagLogo).toHaveBeenCalledTimes(1);
+    // Une nouvelle version se relit.
+    await ensureTagLogo({ ...tag, logoAt: V2 });
+    expect(api.fetchTagLogo).toHaveBeenCalledTimes(2);
+  });
+
+  it('un tag sans logo ne coûte aucune requête ; un échec laisse le tag sans logo', async () => {
+    expect(await ensureTagLogo(TAG_A)).toBeNull();
+    expect(api.fetchTagLogo).not.toHaveBeenCalled();
+    api.fetchTagLogo.mockResolvedValue(ko(404, 'logo_not_found'));
+    expect(await ensureTagLogo({ ...TAG_A, logoAt: V1 })).toBeNull();
+    expect(get(tagLogos).size).toBe(0);
+  });
+
+  it('logoOf ne rend que le logo de la version annoncée', () => {
+    const logos = new Map([['t-1', { at: V1, dataUrl: PNG }]]);
+    expect(logoOf(logos, { ...TAG_A, logoAt: V1 })).toBe(PNG);
+    expect(logoOf(logos, { ...TAG_A, logoAt: V2 })).toBe('');
+    expect(logoOf(logos, TAG_A)).toBe('');
+  });
+
+  it('poser puis retirer met à jour le catalogue et la copie locale', async () => {
+    tags.set([TAG_A]);
+    api.saveTagLogoRequest.mockResolvedValue(ok({ tag: { id: 't-1', logoAt: V1 } }));
+    expect(await saveTagLogo('t-1', PNG)).toEqual({ ok: true });
+    expect(get(tags)[0].logoAt).toBe(V1);
+    expect(logoOf(get(tagLogos), get(tags)[0])).toBe(PNG);
+
+    api.deleteTagLogoRequest.mockResolvedValue(ok({ tag: { id: 't-1', logoAt: null } }));
+    expect(await removeTagLogo('t-1')).toEqual({ ok: true });
+    expect(get(tags)[0]).not.toHaveProperty('logoAt');
+    expect(get(tagLogos).has('t-1')).toBe(false);
+  });
+
+  it('un refus remonte le slug, rien ne change', async () => {
+    tags.set([TAG_A]);
+    api.saveTagLogoRequest.mockResolvedValue(ko(400, 'logo_invalid'));
+    expect(await saveTagLogo('t-1', PNG)).toEqual({ ok: false, error: 'logo_invalid' });
+    expect(get(tags)[0]).not.toHaveProperty('logoAt');
   });
 });

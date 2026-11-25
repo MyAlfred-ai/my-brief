@@ -10,6 +10,8 @@ import {
   isPlausibleRefinement,
   parseNoteDirectives,
   REFINE_FLASH_MS,
+  contextTerms,
+  mentionsTerm,
 } from './transcriptRefine.js';
 
 describe('diffWordFlags — quels mots la relecture a changés', () => {
@@ -281,9 +283,7 @@ describe('garde anti-substitution — les notes ne remplacent jamais un autre no
         'SDIS',
       ),
     ).toBeNull();
-    expect(
-      acceptRefined('On livre chez Globex demain.', 'On livre demain.', 'Globex'),
-    ).toBeNull();
+    expect(acceptRefined('On livre chez Globex demain.', 'On livre demain.', 'Globex')).toBeNull();
   });
 
   it('changedWordGroups aligne remplacements et scissions en blocs comparables', () => {
@@ -416,5 +416,93 @@ describe('createTranscriptRefiner — ordonnanceur', () => {
     failing.notify();
     await expect(vi.runAllTimersAsync()).resolves.not.toThrow();
     expect(failing.isInFlight()).toBe(false);
+  });
+});
+
+const ATLAS = `Rénovation énergétique du siège d’Atlas, à Lyon.
+
+Acteurs : Claire Martin, directrice des services généraux ; Hugo Bernard, bureau d’études ; Inès Roche.
+Sigles : DCE = dossier de consultation des entreprises ; PAC = pompe à chaleur.`;
+
+describe('contextTerms — les noms et sigles d’un contexte de tag', () => {
+  it('noms propres réunis, sigles, élision défaite ; pas les mots qui ouvrent une phrase', () => {
+    expect(contextTerms(ATLAS)).toEqual([
+      'Atlas',
+      'Lyon',
+      'Claire Martin',
+      'Hugo Bernard',
+      'Inès Roche',
+      'DCE',
+      'PAC',
+    ]);
+  });
+
+  it('borné, et vide sans contexte', () => {
+    expect(contextTerms(ATLAS, 2)).toEqual(['Atlas', 'Lyon']);
+    expect(contextTerms('')).toEqual([]);
+  });
+});
+
+describe('mentionsTerm — le filtre local de la relecture par le tag', () => {
+  const terms = contextTerms(ATLAS);
+
+  it('un nom proche à l’oreille, ou un sigle en minuscules, déclenche la relecture', () => {
+    expect(mentionsTerm('Hugo Bernar envoie la note.', terms)).toBe(true);
+    expect(mentionsTerm('On part sur la pac air-eau.', terms)).toBe(true);
+    expect(mentionsTerm('Ines valide.', terms)).toBe(true);
+  });
+
+  it('une phrase qui ne cite personne, ou qui cite juste, ne coûte rien', () => {
+    expect(mentionsTerm('On se revoit jeudi pour le budget.', terms)).toBe(false);
+    expect(mentionsTerm('Claire Martin valide la PAC.', terms)).toBe(false);
+  });
+});
+
+describe('createTranscriptRefiner — le contexte du tag', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  function build({ text, notes = '', tag }) {
+    const items = [{ text }];
+    const post = vi.fn(async (sentences) => sentences);
+    const refiner = createTranscriptRefiner({
+      getTargets: () => items.map((item) => ({ item, text: item.text })),
+      getNotes: () => notes,
+      getTag: () => tag,
+      isActive: () => true,
+      post,
+      apply: () => {},
+      debounceMs: 100,
+    });
+    return { refiner, post };
+  }
+  const TAG = { tagId: 't-atlas', context: ATLAS };
+
+  it('sans notes : relit, avec l’id du tag, une phrase qui cite un nom de travers', async () => {
+    const { refiner, post } = build({ text: 'Hugo Bernar envoie la note.', tag: TAG });
+    refiner.notify();
+    await vi.runAllTimersAsync();
+    expect(post).toHaveBeenCalledWith(['Hugo Bernar envoie la note.'], '', 't-atlas');
+  });
+
+  it('sans notes : aucun appel pour une phrase qui ne cite personne', async () => {
+    const { refiner, post } = build({ text: 'On se revoit jeudi.', tag: TAG });
+    refiner.notify();
+    await vi.runAllTimersAsync();
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it('avec des notes : relit comme avant, le tag en plus', async () => {
+    const { refiner, post } = build({ text: 'On se revoit jeudi.', notes: 'Globex', tag: TAG });
+    refiner.notify();
+    await vi.runAllTimersAsync();
+    expect(post).toHaveBeenCalledWith(['On se revoit jeudi.'], 'Globex', 't-atlas');
+  });
+
+  it('un tag sans contexte ne change rien', async () => {
+    const { refiner, post } = build({ text: 'Hugo Bernar.', tag: null });
+    refiner.notify();
+    await vi.runAllTimersAsync();
+    expect(post).not.toHaveBeenCalled();
   });
 });

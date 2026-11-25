@@ -25,6 +25,11 @@
  * n'est lu que si l'administration laisse le choix à chacun — quand elle
  * impose l'envoi, ou le ferme, il ne compte pas (cf. lib/myBrain/feed.js).
  *
+ * Le sous-document `transcriptCorrections` (`{ rules, learn }`) porte les
+ * « Mots remplacés » du compte : sa liste de corrections de la transcription,
+ * en plus de celle de l'organisation, et le choix de la laisser se remplir
+ * depuis les notes (cf. lib/transcriptCorrections.js).
+ *
  * ── Pourquoi une collection, et pas un champ de plus sur `userConfig` ───────
  * `userConfig` est réécrit à zéro à chaque sauvegarde (`deleteMany` puis
  * `insertOne`, cf. routes/templates.js) : tout champ ajouté y serait effacé au
@@ -51,6 +56,14 @@ import {
   MAX_RECIPIENTS_CEILING,
 } from '../actions/recipients.js';
 import { TEMPLATE_MAX } from '../actions/templating.js';
+import { AI_HELP_FIRST_DOMAINS, normalizeDomains } from '../aiHelp/domains.js';
+import { readPreferences } from '../aiHelp/preferences.js';
+import {
+  USER_CORRECTIONS_MAX,
+  learnCorrections,
+  readUserCorrections,
+  sanitizeTranscriptCorrections,
+} from '../transcriptCorrections.js';
 
 export const USER_ACTIONS_COLLECTION = 'userActionSettings';
 
@@ -84,13 +97,13 @@ export const FOLDER_MAX = 500;
 
 /**
  * Au-delà, la liste de destinations par tag devient illisible — et le plafond
- * de tags par utilisateur est de toute façon plus bas (USER_TAGS_MAX = 20).
+ * de tags par utilisateur est de toute façon plus bas (USER_TAGS_MAX = 30).
  */
 export const TAG_FOLDERS_MAX = 40;
 
 /**
  * Même plafond que les destinations, et pour la même raison : il borne le
- * document, jamais l'usage — `USER_TAGS_MAX` (20) le rend de toute façon
+ * document, jamais l'usage — `USER_TAGS_MAX` (30) le rend de toute façon
  * inatteignable.
  */
 export const TAG_RECIPIENTS_MAX = 40;
@@ -429,6 +442,142 @@ export function createUserActionsRepo(db) {
         { upsert: true },
       );
       return this.getMyBrain(email);
+    },
+
+    // ── Aide IA d'une réunion ──────────────────────────────────────────────
+
+    /**
+     * Le DERNIER réglage du compte : l'Aide IA allumée ou non, ses domaines,
+     * le signal sonore. C'est ce que l'écran de démarrage présente déjà coché
+     * — « comme la dernière fois », zéro clic si rien ne change. Éteinte par
+     * défaut : recevoir le droit ne fait pas parler l'IA dans la réunion
+     * suivante, c'est celui qui lance la réunion qui l'allume.
+     *
+     * L'ordre du jour n'y est PAS : il appartient à une réunion, pas au compte.
+     *
+     * @param {string} email
+     * @returns {Promise<{enabled: boolean, domains: object, sound: boolean}>}
+     */
+    async getAiHelp(email) {
+      const doc = await collection().findOne(ownerFilter(email));
+      return {
+        enabled: doc?.aiHelp?.enabled === true,
+        domains: normalizeDomains(doc?.aiHelp?.domains, AI_HELP_FIRST_DOMAINS),
+        sound: doc?.aiHelp?.sound !== false,
+      };
+    },
+
+    /**
+     * Champ absent = inchangé ; `domains` partiel accepté.
+     * @param {string} email
+     * @param {{enabled?: boolean, domains?: object, sound?: boolean}} patch
+     */
+    async updateAiHelp(email, { enabled, domains, sound } = {}) {
+      const updatedAt = new Date().toISOString();
+      const $set = { 'aiHelp.updatedAt': updatedAt, updatedAt };
+      if (enabled !== undefined) $set['aiHelp.enabled'] = enabled === true;
+      if (sound !== undefined) $set['aiHelp.sound'] = sound !== false;
+      if (domains !== undefined) {
+        $set['aiHelp.domains'] = normalizeDomains(domains, (await this.getAiHelp(email)).domains);
+      }
+      await collection().updateOne(
+        // Égalité, PAS `ownerFilter` : un `$or` ne fournit rien à l'upsert.
+        { emailLower: normalizeEmail(email) },
+        { $set, $setOnInsert: { ...ownerFields(email), createdAt: updatedAt } },
+        { upsert: true },
+      );
+      return this.getAiHelp(email);
+    },
+
+    /**
+     * Les préférences de l'Aide IA (Réglages → Aide IA) : démarrage, sons,
+     * voix. Cf. lib/aiHelp/preferences.js — et pourquoi elles ne relisent pas
+     * `aiHelp.enabled` / `aiHelp.domains` ci-dessus.
+     * @param {string} email
+     */
+    async getAiHelpPreferences(email) {
+      const doc = await collection().findOne(ownerFilter(email));
+      return readPreferences(doc?.aiHelp);
+    },
+
+    /**
+     * Remplace les préférences ENTIÈRES (déjà fondues par `mergePreferences`).
+     * @param {string} email
+     * @param {object} preferences
+     */
+    async saveAiHelpPreferences(email, preferences) {
+      const updatedAt = new Date().toISOString();
+      await collection().updateOne(
+        { emailLower: normalizeEmail(email) },
+        {
+          $set: { 'aiHelp.preferences': preferences, 'aiHelp.updatedAt': updatedAt, updatedAt },
+          $setOnInsert: { ...ownerFields(email), createdAt: updatedAt },
+        },
+        { upsert: true },
+      );
+      return this.getAiHelpPreferences(email);
+    },
+
+    // ── Mots remplacés du compte ───────────────────────────────────────────
+
+    /**
+     * La liste de corrections du compte et le choix de la laisser se remplir
+     * depuis les notes. Vide et allumé pour un compte qui n'a rien réglé.
+     *
+     * @param {string} email
+     * @returns {Promise<{rules: Array<{from: string[], to: string}>, learn: boolean}>}
+     */
+    async getTranscriptCorrections(email) {
+      const doc = await collection().findOne(ownerFilter(email));
+      return readUserCorrections(doc?.transcriptCorrections);
+    },
+
+    /**
+     * Champ absent = inchangé ; `rules` remplace la liste ENTIÈRE (c'est
+     * l'écran de réglages qui l'envoie, comme celui de l'administration).
+     *
+     * @param {string} email
+     * @param {{rules?: unknown, learn?: boolean}} patch
+     */
+    async saveTranscriptCorrections(email, { rules, learn } = {}) {
+      const updatedAt = new Date().toISOString();
+      const $set = { 'transcriptCorrections.updatedAt': updatedAt, updatedAt };
+      if (rules !== undefined) {
+        $set['transcriptCorrections.rules'] = sanitizeTranscriptCorrections(
+          rules,
+          USER_CORRECTIONS_MAX,
+        );
+      }
+      if (learn !== undefined) $set['transcriptCorrections.learn'] = learn !== false;
+      await collection().updateOne(
+        // Égalité, PAS `ownerFilter` : un `$or` ne fournit rien à l'upsert.
+        { emailLower: normalizeEmail(email) },
+        { $set, $setOnInsert: { ...ownerFields(email), createdAt: updatedAt } },
+        { upsert: true },
+      );
+      return this.getTranscriptCorrections(email);
+    },
+
+    /**
+     * Verse dans la liste du compte les remplacements écrits dans ses notes.
+     * Rien n'est écrit quand rien n'est retenu — ni quand le compte a coupé
+     * l'apprentissage : c'est ici que le choix est tenu, pas dans l'écran, pour
+     * qu'un onglet resté ouvert ne continue pas d'apprendre.
+     *
+     * @param {string} email
+     * @param {Array<{from: string, to: string}>} replacements
+     * @param {{shared?: unknown}} [opts] - la liste de l'organisation : ce
+     *   qu'elle corrige déjà de la même façon n'est pas recopié
+     * @returns {Promise<{rules: Array, learn: boolean,
+     *   added: Array<{from: string, to: string}>, full: boolean}>}
+     */
+    async learnTranscriptCorrections(email, replacements, { shared = [] } = {}) {
+      const current = await this.getTranscriptCorrections(email);
+      if (!current.learn) return { ...current, added: [], full: false };
+      const { rules, added, full } = learnCorrections(current.rules, replacements, { shared });
+      if (!added.length) return { ...current, added, full };
+      const saved = await this.saveTranscriptCorrections(email, { rules });
+      return { ...saved, added, full };
     },
   };
 }

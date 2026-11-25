@@ -10,8 +10,8 @@ variables que myBrief remplace à chaque envoi.
 
 ## Étapes
 
-1. Ouvrez **Ma configuration → Envoi d'email** pour l'**Objet du mail**, ou **Entreposer** : la carte
-   **Nom des fichiers** est la même sur les deux pages.
+1. Ouvrez **Réglages → Après la réunion → Envoi d'email** pour l'**Objet du mail**, ou l'onglet **Entreposer** :
+   la carte **Nom des fichiers** est la même sur les deux onglets.
 2. Tapez le texte ; cliquez une variable pour l'insérer à l'endroit du curseur.
 3. Vérifiez l'**Aperçu**, calculé avec des valeurs d'exemple.
 4. Cliquez **Enregistrer**.

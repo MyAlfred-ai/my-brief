@@ -168,3 +168,46 @@ describe('MobileMeetingOverlays', () => {
     expect(onNotesInput).toHaveBeenCalledTimes(3);
   });
 });
+
+describe('MobileMeetingOverlays — un geste sur la réunion demandé à l’Aide IA', () => {
+  it('passe par les fonctions de la barre de réunion : pause, puis le compte rendu', async () => {
+    const { aiHelpCommands } = await import('../stores/aiHelp.js');
+    const onPause = vi.fn();
+    const onSummarize = vi.fn();
+    renderOverlays({ live: true, onPause, onSummarize });
+
+    aiHelpCommands.set([{ type: 'meeting', do: 'pause' }]);
+    await vi.waitFor(() => expect(onPause).toHaveBeenCalledTimes(1));
+    aiHelpCommands.set([{ type: 'summary', template: 'standard' }]);
+    await vi.waitFor(() => expect(onSummarize).toHaveBeenCalledWith({ template: 'standard' }));
+  });
+
+  it('hors réunion (archive ouverte) : rien ne part', async () => {
+    const { aiHelpCommands } = await import('../stores/aiHelp.js');
+    const { get } = await import('svelte/store');
+    const onSave = vi.fn();
+    renderOverlays({ live: false, onSave });
+    aiHelpCommands.set([{ type: 'meeting', do: 'end' }]);
+    await vi.waitFor(() => expect(get(aiHelpCommands)).toEqual([]));
+    expect(onSave).not.toHaveBeenCalled();
+  });
+});
+
+describe('MobileMeetingOverlays — une note dictée à l’Aide IA', () => {
+  it('s’ajoute à la suite des notes, sur sa ligne, et part comme une frappe', async () => {
+    const { aiHelpNotes } = await import('../stores/aiHelp.js');
+    const onNotesInput = vi.fn();
+    renderOverlays({ notes: 'Sujet : lot 2.\n', onNotesInput });
+
+    aiHelpNotes.set(['Budget validé à 120 000 euros.', 'Livraison fin mars.']);
+    await vi.waitFor(() => expect(onNotesInput).toHaveBeenCalledTimes(1));
+    // La file est vidée : la note n'est écrite qu'une fois.
+    const { get } = await import('svelte/store');
+    expect(get(aiHelpNotes)).toEqual([]);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Notes de réunion' }));
+    expect(screen.getByRole('textbox').value).toBe(
+      'Sujet : lot 2.\nBudget validé à 120 000 euros.\nLivraison fin mars.',
+    );
+  });
+});

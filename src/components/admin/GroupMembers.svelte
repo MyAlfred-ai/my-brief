@@ -3,18 +3,17 @@
    * Un groupe et ses membres : qui en fait partie, en ajouter, en retirer.
    *
    * Les membres se LISENT par la liste des comptes filtrée sur le groupe
-   * (`listUsers({ group })`) : même projection que l'onglet Utilisateurs, donc
-   * chaque ligne connaît aussi les AUTRES groupes du compte. C'est ce qui
-   * permet de dire, avant le geste, ce que « Retirer » va faire : un compte
-   * qui n'a pas d'autre groupe revient dans le groupe par défaut, et un compte
-   * dont le groupe par défaut est le seul groupe ne peut pas en sortir. Le
-   * serveur applique la même règle ; l'écran la dit pour qu'elle ne surprenne
-   * pas.
+   * (`listUsers({ group })`) : même projection que l'onglet Utilisateurs.
+   * Un compte n'ayant qu'un groupe, l'écran dit avant le geste ce que
+   * « Retirer » va faire : renvoyer le compte dans le groupe par défaut —
+   * d'où l'on ne sort, donc, qu'en rejoignant un autre groupe. Le serveur
+   * applique la même règle ; l'écran la dit pour qu'elle ne surprenne pas.
    *
    * L'ajout passe par une recherche parmi tous les comptes, avec les comptes
    * déjà membres écartés : une liste complète à cocher ne tient pas dès
    * quelques dizaines de comptes, et la recherche est le geste des autres
-   * écrans d'administration.
+   * écrans d'administration. Chaque compte trouvé montre son groupe actuel :
+   * l'ajouter ici l'en fait sortir.
    */
   import { createEventDispatcher, onMount } from 'svelte';
   import IconBack from '~icons/solar/arrow-left-linear';
@@ -34,7 +33,7 @@
   export let texts; // $uiText.adminGroups
   export let userTexts; // $uiText.adminUsers (rôles)
   export let group;
-  /** Tous les groupes, pour nommer les autres appartenances d'un membre. */
+  /** Tous les groupes, pour nommer le groupe actuel d'un compte trouvé. */
   export let groups = [];
   export let defaultId = 'default';
 
@@ -128,25 +127,19 @@
   const add = (user) => change(user, { add: [user.email] });
   const remove = (user) => change(user, { remove: [user.email] });
 
-  /** Les groupes du membre AUTRES que celui-ci, résolus par nom. */
-  function otherGroupsOf(user, byId) {
-    return (user.groupIds || [])
-      .filter((id) => id !== group.id)
-      .map((id) => byId.get(id))
-      .filter(Boolean);
+  /** Le groupe actuel d'un compte trouvé, résolu par nom — celui qu'il quittera. */
+  function currentGroupOf(user, byId) {
+    return byId.get(user.groupIds?.[0] || defaultId) || null;
   }
 
   /**
-   * Ce que « Retirer » va faire pour ce membre : le retirer simplement,
-   * le renvoyer dans le groupe par défaut, ou rien (c'est déjà son seul
-   * groupe, et c'est le groupe par défaut).
+   * Ce que « Retirer » va faire : renvoyer le membre dans le groupe par
+   * défaut, ou rien quand c'est le groupe par défaut lui-même.
    */
-  function removalOf(user, byId) {
-    const others = otherGroupsOf(user, byId);
-    if (others.length > 0) return { allowed: true, hint: texts.removeHint };
-    if (group.id === defaultId) return { allowed: false, hint: texts.removeOnlyDefaultHint };
-    return { allowed: true, hint: fill(texts.removeLastHint, { default: defaultName }) };
-  }
+  $: removal =
+    group.id === defaultId
+      ? { allowed: false, hint: texts.removeOnlyDefaultHint }
+      : { allowed: true, hint: fill(texts.removeLastHint, { default: defaultName }) };
 
   const initialsOf = (user) => (user.name || user.email || '?').trim().slice(0, 2).toUpperCase();
 </script>
@@ -164,10 +157,16 @@
     <div class="gm-head-text">
       <h3 class="gm-name">
         {group.name}
-        {#if group.isDefault}<span class="gm-default">{texts.defaultBadge}</span>{/if}
+        {#if group.isDefault}<span class="gm-default">{texts.defaultBadge}</span>
+        {:else if group.isAdmin}<span class="gm-default">{texts.adminBadge}</span>{/if}
       </h3>
       <p class="gm-desc" class:gm-desc-empty={!group.description}>
-        {group.description || (group.isDefault ? texts.defaultHint : texts.noDescription)}
+        {group.description ||
+          (group.isDefault
+            ? texts.defaultHint
+            : group.isAdmin
+              ? texts.adminHint
+              : texts.noDescription)}
       </p>
     </div>
     <!-- Quota, droits, effectif et crayon : un bloc qui passe sous le titre
@@ -229,11 +228,18 @@
     {:else if addable.length > 0}
       <ul class="gm-candidates">
         {#each addable as user (user.email)}
+          {@const current = currentGroupOf(user, groupsById)}
           <li class="gm-candidate">
             <span class="gm-avatar gm-avatar-sm" aria-hidden="true">{initialsOf(user)}</span>
             <span class="gm-candidate-text">
               <span class="gm-candidate-name">{user.name || user.email}</span>
               <span class="gm-candidate-email">{user.email}</span>
+              {#if current}
+                <span class="gm-current">
+                  <span class="gm-current-label">{texts.currentGroup}</span>
+                  <GroupChip group={current} />
+                </span>
+              {/if}
             </span>
             <button
               type="button"
@@ -266,8 +272,6 @@
     {:else}
       <ul class="gm-list">
         {#each members as user (user.email)}
-          {@const others = otherGroupsOf(user, groupsById)}
-          {@const removal = removalOf(user, groupsById)}
           <li class="gm-row" class:gm-row-disabled={user.disabled}>
             <span class="gm-avatar" aria-hidden="true">{initialsOf(user)}</span>
             <div class="gm-identity">
@@ -280,14 +284,6 @@
                   >{/if}
               </div>
               <div class="gm-row-email">{user.email}</div>
-              {#if others.length}
-                <div class="gm-others">
-                  <span class="gm-others-label">{texts.otherGroups}</span>
-                  {#each others as other (other.id)}
-                    <GroupChip group={other} />
-                  {/each}
-                </div>
-              {/if}
             </div>
             <button
               type="button"
@@ -686,14 +682,14 @@
     color: var(--ink-faint);
     overflow-wrap: anywhere;
   }
-  .gm-others {
+  .gm-current {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
     gap: 0.3rem;
     margin-top: 0.35rem;
   }
-  .gm-others-label {
+  .gm-current-label {
     font-size: 0.72rem;
     color: var(--ink-faint);
   }

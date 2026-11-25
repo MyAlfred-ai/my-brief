@@ -416,6 +416,45 @@ body {
   color: rgb(160, 160, 160);
 }
 
+/* Avec la carte de l'Aide IA sous la phrase (AiHelpSetupCard, comptes qui y ont
+   droit) : l'accueil se resserre pour que la carte tienne AU-DESSUS du dock —
+   sans cela elle touchait « Démarrer » dès 800 px de haut — et défile si la
+   fenêtre est plus basse encore. Le centrage passe par `margin: auto` : avec
+   `align-items: center`, un contenu plus haut que l'écran déborde par le haut,
+   hors d'atteinte du défilement. */
+.welcome-with-ai {
+  align-items: flex-start;
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 20px 20px 120px;
+}
+.welcome-with-ai .welcome-content {
+  margin: auto 0;
+}
+.welcome-with-ai .welcome-logo {
+  width: auto;
+  height: clamp(72px, 15vh, 150px);
+}
+.welcome-with-ai .welcome-title {
+  font-size: clamp(30px, 4.2vw, 52px);
+}
+.welcome-with-ai .welcome-sub {
+  font-size: 16px;
+}
+/* Téléphone : le logo et le titre cèdent la place à la carte. `!important` sur
+   le titre parce que sa règle mobile, plus bas, en porte un. */
+@media (max-width: 768px) {
+  .welcome-with-ai .welcome-logo {
+    height: 84px;
+  }
+  .welcome-with-ai .welcome-title {
+    font-size: 26px !important;
+  }
+  .welcome-with-ai .welcome-sub {
+    font-size: 13px;
+  }
+}
+
 /* ══════════════════════════════════════════════
    RECORDING SCREEN
 ══════════════════════════════════════════════ */
@@ -1791,6 +1830,19 @@ body {
    EditableTranscript.speakerBadge). Dans le fil du texte — une ligne dédiée
    espaçait verticalement chaque prise de parole. N'apparaît que sur une
    réunion enregistrée sur les deux flux. */
+/* Le prénom qui a déclenché l'Aide IA (« Alfred, … ») : écrit dans la teinte
+   réservée à l'IA, la même que ses cartes. Graisse ET fond clair : la teinte
+   n'est jamais seule à porter l'information (tokens.css). */
+.transcript-ai-mark {
+  padding: 0 3px;
+  border-radius: 6px;
+  background: var(--ai-soft-strong);
+  color: var(--ai-ink);
+  font-weight: 600;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
 .transcript-speaker {
   display: inline-block;
   margin-right: 8px;
@@ -2599,6 +2651,34 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .word-refined-changed {
     animation: none;
+  }
+}
+
+/* ── Recherche dans les réglages : le réglage trouvé s'allume un instant ────
+   Posé par revealSetting (utils/revealSetting.js) sur la carte, la tuile ou
+   la pastille trouvée. Un contour plutôt qu'une ombre : les cartes en service
+   portent déjà un liseré en box-shadow, qu'il ne faut pas écraser. Teinte par
+   jetons --brand* uniquement (le branding est configurable). */
+.settings-flash {
+  outline: 3px solid rgb(var(--brand-rgb) / 0);
+  outline-offset: 3px;
+  animation: settings-flash 2s ease-out;
+}
+
+@keyframes settings-flash {
+  0%,
+  35% {
+    outline-color: rgb(var(--brand-rgb) / 0.65);
+  }
+  100% {
+    outline-color: rgb(var(--brand-rgb) / 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-flash {
+    animation: none;
+    outline-color: rgb(var(--brand-rgb) / 0.65);
   }
 }
 
@@ -4083,6 +4163,13 @@ body.keep-screen-awake {
      change. */
   .main-area:not(:has(.dock-wrapper)) .content-layout {
     padding-bottom: calc(76px + var(--safe-bottom));
+  }
+  /* Idem dans la transcription : le bouton « Reprendre l'enregistrement »
+     y flotte en bas (sticky), et un sticky se cale sur le bord INTÉRIEUR du
+     rembourrage — avec les 150 px gardés pour un dock absent, il flottait au
+     milieu des lignes. Spécificité (0,3,0) : l'emporte aussi sur le ≤ 480 px. */
+  .main-area:not(:has(.dock-wrapper)) .tab-transcript-wrap {
+    padding-bottom: 14px;
   }
   .main-area:not(:has(.dock-wrapper)) .mobile-fab-row {
     bottom: calc(20px + var(--safe-bottom));

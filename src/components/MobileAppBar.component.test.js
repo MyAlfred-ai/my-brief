@@ -1,21 +1,24 @@
 /**
  * Barre d'app mobile — le menu et le logo à gauche ; à droite le « + » qui
- * démarre une réunion et l'avatar, cerclé du crédit, qui ouvre le menu de
- * compte : « Ce mois-ci », Configuration, Administration, langue, sortie.
+ * démarre une réunion et l'avatar, cerclé du crédit, qui ouvre la carte du
+ * compte : qui je suis, « Ce mois-ci », et les deux boutons « Réglages » et
+ * « Admin ».
  *
  * Ce qui compte ici : le « + » n'existe que quand une réunion peut démarrer
  * (`canStart`), il fait ce que fait « Nouvelle réunion » (onStart), et le
- * bouton menu reste là dans tous les cas, EN TÊTE de barre. Logo et entrées du
- * menu de compte remontent par `onMenuAction`, l'aiguillage de la Sidebar : ce
- * que veut dire chaque action, c'est App qui le décide. Les pastilles de
- * configuration sont sur les lignes Configuration (compte) et Administration
- * (organisation), et réunies sur l'avatar menu fermé — plus sur le bouton menu.
+ * bouton menu reste là dans tous les cas, EN TÊTE de barre. Logo et boutons de
+ * la carte remontent par `onMenuAction`, l'aiguillage de la Sidebar : ce que
+ * veut dire chaque action, c'est App qui le décide. Les pastilles de
+ * configuration sont sur les boutons « Réglages » (compte) et « Admin »
+ * (organisation), et réunies sur l'avatar carte fermée — plus sur le bouton
+ * menu. La langue, le mot de passe et la sortie n'y sont plus : ce sont des
+ * pages et la dernière ligne des réglages.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 
-// « Ce mois-ci » (menu de compte) relit /stats/me à chaque ouverture.
+// « Ce mois-ci » (carte du compte) relit /stats/me à chaque ouverture.
 vi.mock('../services/statsApi.js', () => ({
   fetchMyStats: vi.fn(async () => ({
     ok: true,
@@ -93,7 +96,7 @@ describe('MobileAppBar — menu et logo', () => {
     expect(onToggleMenu).not.toHaveBeenCalled();
   });
 
-  it('le menu ne porte pas de pastille : elles sont sur l’avatar et dans le menu de compte', () => {
+  it('le menu ne porte pas de pastille : elles sont sur l’avatar et sur la carte du compte', () => {
     configChecks.set({
       loaded: true,
       account: [{ section: 'ai', code: 'x', level: 'error' }],
@@ -104,9 +107,9 @@ describe('MobileAppBar — menu et logo', () => {
   });
 });
 
-describe('MobileAppBar — compte, réglages, administration', () => {
-  const menuLabels = () =>
-    [...document.querySelectorAll('.mobile-appbar-account-menu .am-item')].map((b) =>
+describe('MobileAppBar — carte du compte', () => {
+  const cardButtons = () =>
+    [...document.querySelectorAll('.mobile-appbar-account-menu .aa-btn')].map((b) =>
       b.textContent.trim(),
     );
   const openAccount = () => userEvent.click(screen.getByRole('button', { name: 'Mon compte' }));
@@ -114,7 +117,7 @@ describe('MobileAppBar — compte, réglages, administration', () => {
   it('la barre ne porte plus que le « + » et l’avatar : ni roue, ni bouclier', () => {
     auth.set({ user: { ...USER, role: 'admin' }, capabilities: {} });
     render(MobileAppBar, { props: { canStart: true, startLabel: 'Nouvelle réunion' } });
-    expect(screen.queryByRole('button', { name: 'Configuration' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Réglages' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Administration' })).toBeNull();
     expect(screen.getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual([
       'Ouvrir le menu',
@@ -124,7 +127,7 @@ describe('MobileAppBar — compte, réglages, administration', () => {
     ]);
   });
 
-  it('l’avatar ouvre le menu de compte : identité, mois, configuration, langue, sortie', async () => {
+  it('l’avatar ouvre la carte du compte : identité, « Ce mois-ci », et « Réglages »', async () => {
     const onMenuAction = vi.fn();
     render(MobileAppBar, { props: { onMenuAction } });
 
@@ -134,46 +137,31 @@ describe('MobileAppBar — compte, réglages, administration', () => {
     await openAccount();
 
     expect(avatar.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByRole('dialog', { name: 'Mon compte' })).toBeTruthy();
     expect(document.querySelector('.am-email').textContent).toBe('dev@myalfred.ai');
     expect(screen.getByRole('region', { name: 'Ce mois-ci' })).toBeTruthy();
-    expect(menuLabels()).toEqual(['Configuration', 'Se déconnecter']);
+    // Deux espaces, deux boutons au plus — et rien d'autre : la langue, le mot
+    // de passe et la sortie sont dans les réglages.
+    expect(cardButtons()).toEqual(['Réglages']);
+    expect(screen.queryByRole('button', { name: 'Se déconnecter' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'English' })).toBeNull();
 
-    await userEvent.click(screen.getByRole('menuitem', { name: 'Se déconnecter' }));
-    expect(onMenuAction).toHaveBeenCalledWith('logout');
-    // L'action faite, le menu se referme.
+    await userEvent.click(screen.getByRole('button', { name: 'Réglages' }));
+    expect(onMenuAction).toHaveBeenCalledWith('config');
+    // L'action faite, la carte se referme.
     expect(document.querySelector('.mobile-appbar-account-menu')).toBeNull();
   });
 
-  it('« Voir mes statistiques » ouvre la page et referme le menu', async () => {
+  it('« Voir le détail » ouvre « Usage & crédits » et referme la carte', async () => {
     const onMenuAction = vi.fn();
     render(MobileAppBar, { props: { onMenuAction } });
     await openAccount();
-    await userEvent.click(screen.getByRole('menuitem', { name: 'Voir mes statistiques' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Voir le détail' }));
     expect(onMenuAction).toHaveBeenCalledWith('stats');
     expect(document.querySelector('.mobile-appbar-account-menu')).toBeNull();
   });
 
-  it('la langue se change depuis le menu de compte, puis il se referme', async () => {
-    const onSetLanguage = vi.fn();
-    render(MobileAppBar, { props: { onSetLanguage } });
-
-    await openAccount();
-    await userEvent.click(screen.getByRole('menuitemradio', { name: 'English' }));
-    expect(onSetLanguage).toHaveBeenCalledWith('en');
-    expect(document.querySelector('.mobile-appbar-account-menu')).toBeNull();
-  });
-
-  it('« Changer de mot de passe » seulement en mode mot de passe', async () => {
-    auth.set({ user: { ...USER, authMode: 'password' }, capabilities: {} });
-    const onMenuAction = vi.fn();
-    render(MobileAppBar, { props: { onMenuAction } });
-
-    await openAccount();
-    await userEvent.click(screen.getByRole('menuitem', { name: 'Changer de mot de passe' }));
-    expect(onMenuAction).toHaveBeenCalledWith('password');
-  });
-
-  it('un tap ailleurs, ou Échap, referme le menu de compte', async () => {
+  it('un tap ailleurs, ou Échap, referme la carte', async () => {
     render(MobileAppBar);
     await openAccount();
     await userEvent.click(document.body);
@@ -184,28 +172,18 @@ describe('MobileAppBar — compte, réglages, administration', () => {
     expect(document.querySelector('.mobile-appbar-account-menu')).toBeNull();
   });
 
-  it('« Configuration » ouvre Ma configuration ; pas d’administration hors administrateur', async () => {
-    const onMenuAction = vi.fn();
-    render(MobileAppBar, { props: { onMenuAction } });
-
-    await openAccount();
-    expect(screen.queryByRole('menuitem', { name: 'Administration' })).toBeNull();
-    await userEvent.click(screen.getByRole('menuitem', { name: 'Configuration' }));
-    expect(onMenuAction).toHaveBeenCalledWith('config');
-  });
-
-  it('administrateur : « Administration » ouvre l’administration', async () => {
+  it('administrateur : « Admin » ouvre l’administration', async () => {
     auth.set({ user: { ...USER, role: 'admin' }, capabilities: {} });
     const onMenuAction = vi.fn();
     render(MobileAppBar, { props: { onMenuAction } });
 
     await openAccount();
-    expect(menuLabels()).toEqual(['Configuration', 'Administration', 'Se déconnecter']);
-    await userEvent.click(screen.getByRole('menuitem', { name: 'Administration' }));
+    expect(cardButtons()).toEqual(['Réglages', 'Admin']);
+    await userEvent.click(screen.getByRole('button', { name: 'Administration' }));
     expect(onMenuAction).toHaveBeenCalledWith('admin');
   });
 
-  it('pastilles : réunies sur l’avatar, puis chacune sur sa ligne, phrase écrite', async () => {
+  it('pastilles : réunies sur l’avatar, puis chacune sur son bouton, phrase écrite', async () => {
     auth.set({ user: { ...USER, role: 'admin' }, capabilities: {} });
     configChecks.set({
       loaded: true,
@@ -221,19 +199,21 @@ describe('MobileAppBar — compte, réglages, administration', () => {
     });
     render(MobileAppBar);
 
-    // Menu fermé : l'avatar porte la plus grave des deux.
+    // Carte fermée : l'avatar porte la plus grave des deux.
     const avatar = screen.getByRole('button', { name: 'Mon compte' });
     expect(avatar.querySelector('.cad-error')).toBeTruthy();
 
     await openAccount();
-    const config = screen.getByRole('menuitem', { name: /^Configuration/ });
-    const admin = screen.getByRole('menuitem', { name: /^Administration/ });
+    const config = screen.getByRole('button', { name: 'Réglages' });
+    const admin = screen.getByRole('button', { name: 'Administration' });
     expect(config.querySelector('.cad-warning')).toBeTruthy();
     expect(admin.querySelector('.cad-error')).toBeTruthy();
-    expect(screen.getByRole('menuitem', { name: /^Administration/, description: /OpenAI/ })).toBe(
+    expect(screen.getByRole('button', { name: 'Administration', description: /OpenAI/ })).toBe(
       admin,
     );
-    // Au doigt, pas de bulle : la phrase s'écrit sous le libellé.
-    expect(config.querySelector('.am-alert-text').textContent).toContain('Clients/Acme');
+    // Au doigt, pas de bulle : la phrase de chaque espace s'écrit sous les boutons.
+    const sentences = [...document.querySelectorAll('.am-alert-text')].map((p) => p.textContent);
+    expect(sentences).toHaveLength(2);
+    expect(sentences.join(' ')).toContain('Clients/Acme');
   });
 });

@@ -10,7 +10,7 @@ le seul moyen de savoir si votre compte, votre dossier et vos destinataires fonc
 
 ## Étapes
 
-1. Ouvrez **Ma configuration → Envoi d'email** — ou **Entreposer**.
+1. Ouvrez **Réglages → Après la réunion → Envoi d'email** — ou l'onglet **Entreposer**.
 2. Cliquez **Tester l'envoi** — ou **Tester le dépôt**. Si des modifications ne sont pas enregistrées,
    le bouton devient **Enregistrer et tester l'envoi** et fait les deux.
 
@@ -34,8 +34,8 @@ valeur intégrée :
 |---|---|
 | **Transport**, **Expéditeur**, **Destinataires**, **Objet** | **Fournisseur**, **Dossier**, **Fichier** |
 
-« Ce dossier vient de vos réglages » et « il vient de l'organisation » ne se corrigent pas au même
-endroit : la provenance vous dit où agir.
+Un dossier suivi de « (vos réglages) » et un autre suivi de « (réglage de l'organisation) » ne se
+corrigent pas au même endroit : la provenance vous dit où agir.
 
 ## Ce qu'il faut savoir
 

@@ -11,8 +11,8 @@ fournisseur ; chacun relie ensuite son propre compte.
 
 ## Avant de commencer
 
-Les identifiants du fournisseur doivent être enregistrés dans **Administration → Authentification** —
-voir [Activer la connexion Google](../connexion/activer-la-connexion-google.md) ou
+Les identifiants du fournisseur doivent être enregistrés dans **Administration → Organisation →
+Authentification** — voir [Activer la connexion Google](../connexion/activer-la-connexion-google.md) ou
 [Activer Microsoft Entra ID](../connexion/activer-microsoft-entra-id.md). La connexion par ce fournisseur
 n'a pas besoin d'être activée : seuls ses identifiants comptent.
 
@@ -23,10 +23,12 @@ n'a pas besoin d'être activée : seuls ses identifiants comptent.
 
 ## Étapes
 
-1. **Administration → Actions**, carte **Compte relié** : choisissez le **Fournisseur** — **Google
-   (Gmail + Drive)** ou **Microsoft (Outlook + OneDrive)**.
-2. Avec Microsoft, décidez de **Proposer les bibliothèques SharePoint** — voir ci-dessous.
-3. Carte **Entreposer** : le **Dossier cible**, par exemple *myBrief/Comptes-rendus*. Vide, les
+1. **Administration → Capacités → Actions**, groupe **Réglages communs**, tuile **Compte relié** :
+   choisissez le **Fournisseur** — **Google (Gmail + Drive)** ou **Microsoft (Outlook + OneDrive)**. La
+   tuile affiche ensuite le fournisseur et son logo.
+2. Avec Microsoft, décidez de **Proposer les bibliothèques SharePoint** — voir ci-dessous. La tuile dit
+   « Bibliothèques SharePoint proposées » ou « OneDrive seulement ».
+3. Tuile **Entreposer** : le **Dossier cible**, par exemple *myBrief/Comptes-rendus*. Vide, les
    documents vont dans un dossier « myBrief ».
 4. Cliquez **Enregistrer**.
 
@@ -54,7 +56,7 @@ Un réglage désactivé puis réactivé n'a donc d'effet que sur les liaisons su
 
 - **Le dossier cible est dans l'espace personnel de chaque utilisateur** — son Drive ou son OneDrive —,
   jamais dans un espace partagé. Chacun peut choisir son propre dossier, un Drive partagé ou une
-  bibliothèque SharePoint, dans **Ma configuration → Entreposer** ou par tag.
+  bibliothèque SharePoint, dans **Réglages → Après la réunion → Entreposer** ou par tag.
 - **Google** : myBrief ne voit que les dossiers qu'il a créés, ou que l'utilisateur lui désigne. Un
   dossier déjà existant du même nom peut donc se retrouver en double.
 - **Changer de fournisseur** oblige les utilisateurs à relier leur compte chez le nouveau fournisseur.
@@ -63,5 +65,5 @@ Un réglage désactivé puis réactivé n'a donc d'effet que sur les liaisons su
 
 ## Vérifier
 
-Relier votre propre compte dans **Ma configuration → Connexion**, puis **Tester le dépôt** dans
-l'onglet **Actions** — voir [Tester la configuration](tester-la-configuration.md).
+Relier votre propre compte dans **Réglages → Comptes connectés**, puis **Tester le dépôt** dans
+**Administration → Capacités → Actions** — voir [Tester la configuration](tester-la-configuration.md).

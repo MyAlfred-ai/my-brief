@@ -6,7 +6,7 @@
  *   - l'administration (onglet « Actions »), servie par /api/auth/config dans
  *     `capabilities.actions` : interrupteurs par document, relais SMTP,
  *     fournisseur de dépôt ;
- *   - le compte relié de l'utilisateur (« Ma configuration » → Connexion) :
+ *   - le compte relié de l'utilisateur (« Réglages » → Connexion) :
  *     s'il existe, « Envoyer par mail » est disponible même sans relais SMTP —
  *     le serveur choisit le transport à l'envoi (lib/actions/execute.js).
  *

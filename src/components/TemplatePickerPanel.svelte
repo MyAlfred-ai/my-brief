@@ -13,6 +13,10 @@
    *     ce qui partira si l'on choisit ce template ;
    *   - un template sans Pagimètre l'explique en une ligne, au lieu de faire
    *     disparaître le curseur sans un mot ;
+   *   - « Ajouter au compte rendu » : deux tuiles à interrupteur, les Actions
+   *     détectées (cochées, avec leur nombre) et l'Infographie (décochée) —
+   *     des options de CETTE génération, assez grandes pour se voir : la
+   *     petite case du pied, elle, passait inaperçue ;
    *   - les instructions, facultatives, se déplient à la demande.
    * La carte s'adapte à SA largeur (container query), pas à celle de l'écran :
    * entre l'historique et la colonne Actions, sur un portable étroit, elle est
@@ -22,6 +26,7 @@
   import { slide } from 'svelte/transition';
   import { uiText } from '../store.js';
   import { canGenerateInfographic } from '../stores/auth.js';
+  import { summaryActions } from '../config/templates.js';
   import {
     normalizePages,
     materialCapPages,
@@ -30,9 +35,12 @@
     tickLabel,
   } from '../lib/pageMeter.js';
   import PageMeterSlider from './PageMeterSlider.svelte';
+  import ToggleSwitch from './ui/ToggleSwitch.svelte';
   import IconCheck from '~icons/solar/check-circle-bold';
   import IconAdd from '~icons/solar/add-circle-linear';
   import IconRuler from '~icons/solar/ruler-linear';
+  import IconClipboardCheck from '~icons/solar/clipboard-check-outline';
+  import IconGallery from '~icons/solar/gallery-linear';
 
   export let templateOptions = [];
   export let currentTemplate = 'standard';
@@ -40,6 +48,9 @@
   export let currentPages = null;
   /** Transcription de la réunion : sa longueur borne le Pagimètre (materialCapPages). */
   export let transcript = [];
+  /** Actions de la réunion : la tuile en dit le nombre — celles que le compte
+   *  rendu listerait (summaryActions), ni masquées ni vierges. */
+  export let actions = [];
   export let currentLanguage = 'fr';
   export let isGeneratingSummary = false;
   export let onGenerate = () => {};
@@ -58,6 +69,9 @@
   // Décochée à CHAQUE ouverture du panneau : chaque image coûte un appel au
   // modèle d'image, la demande doit être un geste explicite, jamais un reliquat.
   let withInfographic = false;
+  // Cochée par défaut : la section Actions fait partie du compte rendu depuis
+  // toujours, c'est l'en retirer qui est le geste.
+  let withActions = true;
   // Pagimètre : la longueur réglée pour chaque template pendant que la carte
   // est ouverte — passer d'un template à l'autre ne perd pas le réglage.
   let pagesByTemplate = {};
@@ -80,6 +94,11 @@
   // groupes du compte (cf. stores/auth.js, canGenerateInfographic).
   $: infographicAvailable = $canGenerateInfographic;
   $: pm = $uiText.pageMeter;
+  $: card = $uiText.dockCard;
+  // Sans action à lister, la tuile s'éteint et la section part avec elle :
+  // l'écran ne promet pas une liste que le compte rendu remplirait d'« Aucune action ».
+  $: actionsCount = summaryActions(actions).length;
+  $: actionsOn = actionsCount > 0 && withActions;
 
   /**
    * Longueur qui partira avec un template : le réglage fait dans la carte, ou
@@ -124,6 +143,7 @@
       template: selectedTemplate,
       customPrompt: instructions.trim() || null,
       infographic: infographicAvailable && withInfographic,
+      withActions: actionsOn,
       pages,
     });
   }
@@ -205,6 +225,63 @@
       {/if}
     {/if}
 
+    <!-- Options de CETTE génération : la tuile entière est le libellé de son
+         interrupteur — un clic n'importe où la bascule. -->
+    <div class="tpp-section">
+      <span class="tpp-section-label" id="tpp-options-label">{card.optionsSection}</span>
+      <div class="tpp-options" role="group" aria-labelledby="tpp-options-label">
+        <div
+          class="tpp-option"
+          class:tpp-option-on={actionsOn}
+          class:tpp-option-empty={actionsCount === 0}
+        >
+          <label class="tpp-option-main" for="tpp-opt-actions">
+            <span class="tpp-option-icon" aria-hidden="true">
+              <IconClipboardCheck width="20" height="20" />
+            </span>
+            <span class="tpp-option-text">
+              <span class="tpp-option-title">
+                {card.actionsOption}
+                {#if actionsCount > 0}<span class="tpp-option-count">{actionsCount}</span>{/if}
+              </span>
+              <span class="tpp-option-hint" class:tpp-option-hint-keep={actionsCount === 0}
+                >{actionsCount > 0 ? card.actionsOptionHint : card.actionsOptionNone}</span
+              >
+            </span>
+          </label>
+          <!-- Sans action, l'interrupteur s'affiche éteint et figé : ce que
+               l'écran montre est ce qui part. -->
+          {#if actionsCount > 0}
+            <ToggleSwitch
+              id="tpp-opt-actions"
+              bind:checked={withActions}
+              disabled={isGeneratingSummary}
+            />
+          {:else}
+            <ToggleSwitch id="tpp-opt-actions" checked={false} disabled />
+          {/if}
+        </div>
+        {#if infographicAvailable}
+          <div class="tpp-option" class:tpp-option-on={withInfographic}>
+            <label class="tpp-option-main" for="tpp-opt-infographic">
+              <span class="tpp-option-icon" aria-hidden="true">
+                <IconGallery width="20" height="20" />
+              </span>
+              <span class="tpp-option-text">
+                <span class="tpp-option-title">{card.infographicOption}</span>
+                <span class="tpp-option-hint">{card.infographicOptionHint}</span>
+              </span>
+            </label>
+            <ToggleSwitch
+              id="tpp-opt-infographic"
+              bind:checked={withInfographic}
+              disabled={isGeneratingSummary}
+            />
+          </div>
+        {/if}
+      </div>
+    </div>
+
     <div class="tpp-section">
       {#if showInstructions}
         <label class="tpp-section-label" for="tpp-instructions"
@@ -235,20 +312,6 @@
   </div>
 
   <div class="tpp-footer">
-    {#if infographicAvailable}
-      <!-- Libellé court sur carte étroite : le pied tient alors sur une ligne.
-           Le nom complet reste celui de la case (aria-label) et de la bulle. -->
-      <label class="tpp-infographic" title={$uiText.dockCard.infographicLabel}>
-        <input
-          type="checkbox"
-          aria-label={$uiText.dockCard.infographicLabel}
-          bind:checked={withInfographic}
-          disabled={isGeneratingSummary}
-        />
-        <span class="tpp-infographic-long">{$uiText.dockCard.infographicLabel}</span>
-        <span class="tpp-infographic-short">{$uiText.dockCard.infographicShort}</span>
-      </label>
-    {/if}
     {#if onCancel}
       <button
         type="button"
@@ -467,6 +530,131 @@
     color: var(--ink-faint);
   }
 
+  /* ── Options de la génération : deux tuiles à interrupteur ──
+     Côte à côte dès que la place le permet ; seule (pas d'infographie
+     proposée), la tuile des actions prend toute la largeur. Allumée, elle
+     prend le dessin d'une carte de template retenue. */
+  .tpp-options {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+    gap: 8px;
+  }
+
+  .tpp-option {
+    display: flex;
+    align-items: center;
+    min-height: 68px;
+    padding-right: 14px;
+    background: var(--surface);
+    border: 1.25px solid var(--mb-border-card);
+    border-radius: 14px;
+    transition:
+      border-color 0.15s,
+      background 0.15s;
+  }
+
+  .tpp-option:not(.tpp-option-empty):hover {
+    border-color: var(--mb-orange);
+  }
+
+  .tpp-option:focus-within {
+    box-shadow: 0 0 0 3px rgb(var(--brand-rgb) / 0.2);
+  }
+
+  .tpp-option-on {
+    background: var(--mb-orange-10);
+    border-color: var(--mb-orange);
+  }
+
+  /* Le libellé couvre toute la tuile, sauf l'interrupteur (son propre label). */
+  .tpp-option-main {
+    flex: 1;
+    min-width: 0;
+    align-self: stretch;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 10px 12px 14px;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .tpp-option-empty .tpp-option-main {
+    cursor: default;
+  }
+
+  .tpp-option-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+    border-radius: 11px;
+    background: var(--mb-bg-warm-light);
+    border: 1px solid var(--mb-border-card);
+    color: var(--mb-orange);
+    transition: background 0.15s;
+  }
+
+  .tpp-option-on .tpp-option-icon {
+    background: var(--surface);
+  }
+
+  .tpp-option-empty .tpp-option-icon {
+    color: var(--ink-faint);
+    border-color: var(--line);
+    background: var(--surface-tint);
+  }
+
+  .tpp-option-text {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .tpp-option-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-family: 'Lexend', sans-serif;
+    font-size: 14.5px;
+    font-weight: 600;
+    line-height: 1.25;
+    color: var(--ink);
+  }
+
+  .tpp-option-empty .tpp-option-title {
+    color: var(--ink-muted);
+  }
+
+  /* Le nombre d'actions : une pastille pleine, lisible d'un coup d'œil. */
+  .tpp-option-count {
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    box-sizing: border-box;
+    border-radius: 999px;
+    background: var(--brand-text);
+    color: #fff;
+    font-size: 11.5px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .tpp-option-hint {
+    font-family: 'Lexend', sans-serif;
+    font-size: 12px;
+    font-weight: 300;
+    line-height: 1.35;
+    color: var(--ink-muted);
+    text-wrap: pretty; /* pas de mot seul en seconde ligne */
+  }
+
   /* ── Instructions : repliées en un bouton, dépliées sur demande ── */
   .tpp-add-instructions {
     display: inline-flex;
@@ -588,38 +776,6 @@
     border-top: 1px solid var(--line);
   }
 
-  /* Case « Générer une infographie » — dans le pied, avec le bouton :
-     c'est une option DE cette génération, pas un réglage du panneau. */
-  .tpp-infographic {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    margin-right: auto;
-    cursor: pointer;
-    font-family: 'Lexend', sans-serif;
-    font-size: 13px;
-    font-weight: 400;
-    color: var(--ink);
-    user-select: none;
-  }
-
-  .tpp-infographic input {
-    width: 16px;
-    height: 16px;
-    margin: 0;
-    flex-shrink: 0;
-    accent-color: var(--mb-orange);
-    cursor: pointer;
-  }
-
-  .tpp-infographic input:disabled {
-    cursor: not-allowed;
-  }
-
-  .tpp-infographic-short {
-    display: none;
-  }
-
   /* « Annuler » en texte seul : présent, mais sans concurrencer « Générer → ». */
   .tpp-cancel-btn {
     flex-shrink: 0;
@@ -684,7 +840,8 @@
      Pagimètre. Deux colonnes de cartes resserrées (une seule sous 296 px),
      la coche passe en coin de la carte retenue, la pastille perd sa feuille ;
      le Pagimètre perd son sous-titre (la valeur et les mots disent déjà ce
-     qu'il règle) ; le pied tient sur une ligne, « Infographie » en court. */
+     qu'il règle) ; les tuiles d'options se resserrent ; le pied tient sur
+     une ligne. */
   @container tpp (max-width: 480px) {
     .tpp-scroll {
       padding: 16px 16px 8px;
@@ -735,14 +892,26 @@
       gap: 8px 10px;
       padding: 12px 16px calc(14px + var(--safe-bottom, 0px));
     }
-    .tpp-infographic-long {
+    /* Tuiles empilées, resserrées : leur titre suffit ; la phrase ne reste
+       que pour dire qu'aucune action n'a été détectée. */
+    .tpp-option {
+      min-height: 56px;
+      padding-right: 12px;
+    }
+    .tpp-option-main {
+      gap: 10px;
+      padding: 8px 8px 8px 10px;
+    }
+    .tpp-option-icon {
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
+    }
+    .tpp-option-title {
+      font-size: 14px;
+    }
+    .tpp-option-hint:not(.tpp-option-hint-keep) {
       display: none;
-    }
-    .tpp-infographic-short {
-      display: inline;
-    }
-    .tpp-infographic {
-      min-height: 44px;
     }
     .tpp-cancel-btn,
     .tpp-generate-btn {
@@ -756,13 +925,9 @@
     }
   }
 
-  /* Plus étroit encore (téléphone de 320 px) : la case passe seule au-dessus,
-     « Générer → » prend la largeur restante. */
+  /* Plus étroit encore (téléphone de 320 px) : « Générer → » prend la largeur
+     que lui laisse « Annuler ». */
   @container tpp (max-width: 330px) {
-    .tpp-infographic {
-      flex: 1 1 100%;
-      min-height: 32px;
-    }
     .tpp-generate-btn {
       flex: 1 1 auto;
     }

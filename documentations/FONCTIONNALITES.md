@@ -16,6 +16,7 @@ l'identité aussi ([AUTHENTIFICATION.md](./AUTHENTIFICATION.md)).
 - [10. Extension Chrome](#10-extension-chrome)
 - [11. Accueil, aide et « Quoi de neuf ? »](#11-accueil-aide-et--quoi-de-neuf-)
 - [12. MyBrain : nourrir le cerveau partagé](#12-mybrain--nourrir-le-cerveau-partagé)
+- [13. Aide IA : l'IA dans la réunion](#13-aide-ia--lia-dans-la-réunion)
 
 ---
 
@@ -118,6 +119,16 @@ myBrain n'en tirait que les pieds de page, 460 caractères), 75 Ko en texte —
   (`color-mix`, `color(srgb …)`) que produit le thème font échouer la version
   historique — la panne du 2026-08-27 sur « envoyer » et « entreposer » venait
   de là.
+- **Charte (2026-11-18)** : logo de l'entreprise en tête, dégradé primaire →
+  secondaire de Marque & apparence (bande de chaque page, barre sous le titre,
+  trait devant les intertitres, filet du pied), logo de MyBrief au pied. Le
+  texte reste noir sur blanc. Tout se loge dans les marges, la réserve du pied
+  ou en position absolue : la zone de texte que rejoue le Pagimètre n'a pas
+  bougé d'un pixel — y toucher imposerait de le recalibrer. Les dégradés sont
+  **peints en bandes** de 0,5 mm (`gradientBands`) et non décrits par un motif
+  de dégradé PDF : jsPDF n'en offre qu'en API avancée, en repère inversé, et
+  les aplats se lisent pareil dans tous les lecteurs comme à l'impression.
+  jsPDF arrondit les couleurs au centième : paliers de 1 %, invisibles.
 
 ---
 
@@ -369,8 +380,10 @@ CONFIRMÉ en base, comparé au moment où l'écriture part (une précédente a p
 `/resume`) ou qu'une écriture échoue, et l'écriture suivante repart entière.
 
 **La session locale est celle du direct.** Pendant la consultation d'une
-archive, rien n'est écrit dans le `localStorage` : « Reprendre », après une
-coupure, restaurerait l'archive à la place de la réunion en cours. Et le
+archive, c'est le direct mis de côté qui est écrit dans le `localStorage`,
+jamais l'archive : « Reprendre », après une coupure, la restaurerait à la place
+de la réunion en cours. (Rien n'y était écrit du tout : une application tuée à
+ce moment perdait ce qui s'était dit depuis l'ouverture de l'archive.) Et le
 brouillon des notes, écrit à chaque frappe, ne l'est que si la session locale
 porte la même réunion — restauré avec la transcription d'une autre, il
 partirait dans la mauvaise.
@@ -389,7 +402,7 @@ destinations contradictoires, sans règle pour trancher.
 
 ### Modèle
 
-`userTags` : `{ email, emailLower, id, label, labelLower, color, shape, createdAt, updatedAt }`.
+`userTags` : `{ email, emailLower, id, label, labelLower, color, shape, context, createdAt, updatedAt }`.
 `labelLower` neutralise casse et espaces multiples (« Client Dupont » et
 « client  dupont » sont le même classeur). Sur `resume`, le champ `tagId` est
 **absent** quand la conversation n'est pas rangée (`$unset`, jamais `''`).
@@ -427,6 +440,111 @@ ombre portée sur l'élément découpé disparaît avec lui — le halo de la fi
 « Mes tags » est sur un parent. Retenues au prototype pour rester
 reconnaissables à 12 px sur un écran ×2 ; écartés : le pentagone (un rond) et
 la croix (un « plus »).
+
+### Contexte du dossier : ce que l'IA doit savoir
+
+Un tag peut porter un texte libre (`context`, 1 500 caractères au plus) qui
+décrit le projet ou le client qu'il range : acteurs et rôles, sigles. Il est
+lu par le compte rendu, l'infographie et l'Aide IA d'une conversation taguée
+(`services/api/lib/tagContext.js`).
+
+**Éclairage, jamais source.** Le risque propre à ce texte : il contient des
+faits (« livraison en juin 2027 ») qu'un compte rendu reprendrait comme dits
+en réunion. Les trois consignes le déclarent donc de quoi comprendre et écrire
+juste les noms, et interdisent d'en tirer un fait, un chiffre ou une date. Le
+contexte d'organisation et celui de l'utilisateur n'avaient pas besoin de
+cette clause : ce sont un vocabulaire et une identité, pas un dossier.
+
+**Deux chemins de lecture, voulus.** Le prompt du compte rendu est assemblé
+par le navigateur (`config/templates.js`), comme pour les deux autres
+contextes : le texte descend avec `GET /tags` et s'insère entre l'organisation
+et l'utilisateur. L'infographie et l'Aide IA, dont les prompts s'assemblent
+côté serveur, le relisent EN BASE par l'id du tag, sous le compte du
+demandeur — le corps de `/resume` ne porte que `tagId`. Ce `tagId` est
+nécessaire : pendant un enregistrement, un tag choisi avant que la réunion
+existe reste en attente côté écran (`pendingTagId`) et n'est posé qu'après la
+réponse de `/resume`.
+
+**Aide IA : plus pertinente, pas plus lente.** Le dossier est lu EN MÊME
+TEMPS que le reste (`Promise.all` avec `whoIsAsking`) : aucune attente
+ajoutée. Ses noms et sigles (`tagContextTerms`) rejoignent le vocabulaire qui
+prépare la recherche dans myBrain : un nom dicté de travers y retrouve sa
+graphie, et sa fiche — sans appel au modèle de plus (deux, comme avant, test
+à l'appui). Le texte lui-même pèse 1 500 caractères au plus dans le prompt.
+
+**La transcription aussi** : le contexte sert de référence à la relecture des
+phrases en direct, derrière un filtre local qui évite un appel par phrase
+(documentations/TRANSCRIPTION.md, « Le contexte du tag, seconde référence de
+la relecture »).
+
+**Écrit par `POST /tags/context`, pas par `/tags/save`** : la fiche
+l'enregistre à une pause de frappe sans renvoyer nom, couleur et forme, et un
+client qui ignore le champ ne peut pas l'effacer en changeant une couleur.
+Texte normalisé à l'écriture (fins de ligne, une ligne vide au plus), refusé
+au-delà de la borne, jamais coupé en silence. La borne tient le coût : le
+texte part avec chaque appel d'une conversation taguée.
+
+### Logo d'un tag, et une fiche qui s'enregistre seule
+
+**Le logo vit à part** (`userTagLogos`, dans `OWNED_COLLECTIONS`) : `GET /tags`
+est lu à chaque ouverture de « Mes tags » et du sélecteur, trente logos
+dedans pèseraient plusieurs Mo. Le tag n'en porte que `logoAt`, qui dit au
+navigateur qu'il y en a un et si sa copie est à jour ; le logo se lit un par
+un (`GET /tags/logo`, `ensureTagLogo`, une requête par version) et vit en
+data URL — utilisable tel quel par l'infographie, son export PNG et jsPDF,
+y compris dans l'application mobile où une `<img>` vers l'API ne porterait pas
+le jeton. Le navigateur réduit l'image à 512 px en PNG avant l'envoi
+(`utils/tagLogo.js`, SVG compris) ; le serveur n'admet que PNG, JPEG, WebP,
+vérifie les premiers octets, borne à 300 000 caractères. Remplacer = retirer
+puis insérer (jamais d'upsert sur `ownerFilter`), et `logoAt` s'écrit APRÈS le
+logo : un échec laisse un logo non annoncé, jamais une annonce sans logo.
+
+**Infographie** : le logo du tag prend la place du pictogramme du gabarit, en
+médaillon blanc au centre de l'anneau de la couverture, dans la colonne que le
+titre (70 u) laisse libre — aucun des six corps ne bouge ; la couverture
+s'allonge à 40 u pour le porter. **PDF** : à droite du logo d'entreprise
+(`TAG_LOGO_BOX`, plus étroit), préparé par le même `logoForPdf`. `pdfConfig`
+porte `tagId` (App.svelte, sans grossir : un commentaire paraphrasant le code
+a fait la place).
+
+**Fiche** : le formulaire « Nom et apparence » a disparu du premier plan. Le
+nom se modifie sur place, couleur et forme dans une petite fenêtre
+(`TagPastillePopover`, teintes unies et formes), chaque geste enregistré
+aussitôt par `upsertTag` avec le corps complet ; le formulaire complet reste
+pour les motifs et la couleur libre. Rangement et envoi sont repliés en une
+ligne (`TagRule`) : la réponse retenue se lit, « Modifier » déplie les deux
+choix d'avant — repliées, les deux règles ne prennent plus un écran chacune
+pour un choix binaire réglé une fois.
+
+### Trouver un tag
+
+Une seule règle de correspondance (`src/utils/tagSearch.js`) pour le
+sélecteur, le filtre de l'historique et la liste de « Mes tags » : le NOM
+(ceux qui commencent par la recherche d'abord), puis le CONTEXTE, extrait à
+l'appui. Chercher dans le contexte, c'est trouver un classeur par la personne
+qu'on a en tête (« martin » → « Projet Atlas »). Casse et accents ignorés,
+mais l'extrait rendu garde le texte écrit : le repli se fait caractère par
+caractère en gardant la position d'origine, et l'extrait est coupé sur des
+limites de mot.
+
+**Créer depuis le sélecteur.** Un nom qui n'est celui d'aucun tag (règle du
+serveur, `labelKey` : casse et espaces neutralisés, accents GARDÉS) se crée et
+se pose d'un geste, pastille choisie par `freshTagColor` comme après le premier
+résumé. Plafond atteint : « Créer » inactif et la limite dite, plutôt qu'un
+refus après coup.
+
+**Récents à partir de six tags** — les tags des dernières réunions, lus dans
+l'historique (trié par date décroissante), sans stockage. En dessous, les
+sections seraient du bruit. La recherche du filtre et de « Mes tags » garde le
+seuil de sept tags, sauf dans « Mes tags » dès qu'un tag a un contexte : ce
+qu'il cite ne se lit pas dans la liste. Le champ du sélecteur ne prend le focus
+que sur un écran à souris (un clavier tactile recouvrirait le menu), et passe à
+16 px sur écran tactile : en dessous, Safari iOS zoome la page.
+
+**Écarté pour l'instant** : suggérer un tag d'après la transcription (noms et
+sigles des contextes entendus en réunion). La transcription ne vit que dans
+`App.svelte`, au plafond de lignes : la brancher demande d'abord d'en extraire
+quelque chose.
 
 ### Deux points de sécurité
 
@@ -982,7 +1100,7 @@ extrait d'App pour être partagé).
 - **« Ne plus me proposer »** : `afterSummary.offer` dans les réglages
   d'actions du compte (`userActionSettings`), vrai par défaut — seul un `false`
   explicite l'éteint. Rallumé par l'interrupteur « Après le premier résumé »
-  des deux pages Actions de « Ma configuration ». Sur le compte et non dans le
+  des deux onglets de la page Actions des réglages. Sur le compte et non dans le
   navigateur : le choix suit l'utilisateur sur son téléphone.
 - **Notifications** : celles de « Partager », plus le rangement et une
   notification d'attente le temps du PDF. Le toast d'envoi cite désormais les
@@ -998,87 +1116,132 @@ extrait d'App pour être partagé).
 
 ## 8. Infographie de compte rendu
 
-Une image portrait qui résume la réunion, générée en tâche de fond après
-`/resume`.
+Une page portrait qui résume la réunion, générée en tâche de fond après
+`/resume` : l'IA en écrit le **contenu** (`lib/infographicLayout.js`), six
+**gabarits** le mettent en page dans le navigateur (`src/components/infographic/`)
+avec le logo et les couleurs de Marque & apparence.
 
-**Pipeline** : un réécrivain `gpt-5.4` transforme les matériaux de la réunion
-(transcription, actions visibles, notes) en consigne d'image, puis un modèle
-d'image la dessine. Le réécrivain est passé de `gpt-5-mini` à `gpt-5.4`, le
-défaut du résumé, le 2026-09-15 : avec la direction artistique ci-dessous, c'est
-lui qui décide de la forme, et `gpt-5-mini` suivait mal une consigne structurée —
-mesuré sur le résumé (`lib/summaryModels.js`). Effort de raisonnement `medium`,
-explicite ; `OPENAI_MODEL_INFOGRAPHIC` change le modèle, l'écran
-d'administration non.
+**Pourquoi des gabarits et plus une image** (2026-11-17). De 2026-08-31 à
+2026-11-17, un modèle texte rédigeait un prompt d'image, puis un modèle d'image
+(`gpt-image-2`, puis `gpt-image-2.5-flare`) dessinait toute la page, lettrage
+compris : une à trois minutes, deux appels, des coquilles possibles dans le
+texte dessiné, et **aucun moyen de poser le logo** — le prompt interdisait même
+« logo ou marque », un modèle d'image ne reproduisant pas un fichier existant.
+Écartés : garder l'image avec un logo collé par-dessus (le dessin restait lent
+et inégal, et rien ne réservait sa place) ; laisser l'IA écrire une page HTML
+libre (lent — une page de HTML coûte bien plus de jetons qu'un JSON —, rendu au
+hasard, impossible à tester, et du HTML d'IA tiré d'une transcription injecté
+dans l'application). Retenu : **un cadre fixe, six corps de page**, un contrat
+JSON borné. Le lecteur retrouve toujours au même endroit le logo (haut gauche,
+sur fond blanc pour qu'aucun logo ne disparaisse sur sa propre couleur),
+l'essentiel en grand, les actions en bas.
 
-**Deux modèles, deux natures de réglage.** Celui qui ÉCRIT le prompt reste un
-réglage de déploiement (ci-dessus) ; celui qui DESSINE est passé dans
-Administration → IA le 2026-09-16 (`lib/infographicModels.js`). Il était fixe
-dans le code jusque-là, au motif qu'« en faire un réglage ajouterait deux pannes
-possibles sans besoin exprimé ». Ce qui a changé : la génération 2.5 introduit
-des **paliers** là où il n'y avait qu'un modèle, et l'arbitrage
-rapidité/coût/accès de l'organisation n'est pas le nôtre. Défaut
-`gpt-image-2.5-flare` — annoncé par OpenAI meilleur que `gpt-image-2` pour
-environ moitié moins de latence, **non mesuré depuis ce dépôt** (clé et
-facturation de l'organisation) : à juger en recette, en régénérant une réunion
-connue. C'est précisément pourquoi `gpt-image-2` reste proposé — mesuré, lui
-(lettrage sans coquille, composition entière dans le cadre, les deux défauts de
-`gpt-image-1` que des règles de prompt compensaient mal, **retirées depuis**) —,
-et pourquoi le revirement se fait depuis l'écran, sans déploiement. Liste fermée
-côté écran : `/images/generations` accepterait n'importe quelle chaîne et
-n'échouerait qu'en **tâche de fond**, l'utilisateur voyant `error` et
-l'administrateur rien. `OPENAI_MODEL_INFOGRAPHIC_IMAGE` reste la porte de sortie
-vers un palier non listé (`gpt-image-2.5-sunburst`, écarté faute de mesure qui le
-départage de Flare). Le **format**, lui, reste fixe : la page portrait est un
-choix de produit, et la direction artistique ci-dessous est écrite pour elle.
+**Le choix du gabarit est celui de l'IA, validé par le code.** Les règles
+(`INFOGRAPHIC_LAYOUT_RULES`, `lib/prompts.js`) décrivent les six gabarits et ce
+qui fait choisir chacun ; le template du compte rendu part en **indice**
+(nommé seulement s'il est intégré : un identifiant de template personnel ne dit
+rien au modèle). `normalizeLayout` ne garde que les clés connues, borne chaque
+texte et chaque liste (la mise en page compte sur ces bornes — pas de
+`line-clamp`, que l'export ne sait pas rendre), ramène chaque énumération à une
+valeur permise, et **rétrograde en Synthèse** un gabarit sans sa matière (une
+feuille de route sans trois jalons serait une page vide). Une réponse illisible
+fait échouer l'infographie : sans contenu, rien à mettre en page.
 
-**Direction artistique** (2026-09-15) : constat sur les images produites —
-contenu juste, forme pauvre. Le réécrivain recevait des consignes de maquette
-génériques (« palette harmonieuse », « hiérarchie forte ») et rendait une liste
-de zones remplies de phrases, que le modèle d'image dessinait en document à
-cases. Ses règles (`INFOGRAPHIC_WRITER_RULES`) décrivent désormais ce qu'un
-directeur artistique exigerait : l'architecture de la page (bandeau, **un**
-élément héros, grille de cartes, tableau des actions, pied qui ferme), la
-traduction de chaque donnée en forme graphique (grand nombre, barres, frise,
-coche, badge), une palette **nommée en hexadécimal** — un nom de couleur se rend
-au hasard, un code se rend tel quel —, trois tailles de texte, un budget de 150
-à 250 mots, et les textes de l'image **entre guillemets** pour séparer consigne
-et lettrage. Ce budget n'est pas la règle de densité retirée le 2026-09-02, qui
-compensait les pieds coupés de `gpt-image-1` : c'est une règle de lisibilité,
-qui ne touche que le réécrivain, jamais le prompt d'image. Non re-mesurée sur
-génération réelle depuis le dépôt : à juger en recette, en régénérant une
-réunion connue. Le format reste 1024 × 1536, « A4 portrait » côté produit.
+**Les actions viennent du code, pas du modèle** : celles que l'écran montre
+(`show !== false`), recopiées telles quelles — les faire réécrire, c'était
+risquer un écart avec la liste de l'écran pour rien. Quatre au plus sur la page A4,
+sur deux colonnes ; une ligne renvoie au compte rendu pour les autres.
 
-**Style graphique de l'installation** (Administration → IA, facultatif, vide par
-défaut) : un texte libre — couleurs, ton des schémas, mention à faire figurer —
-joint à la **demande** envoyée au réécrivain, où une règle de préséance le fait
-passer devant le libre choix de palette qu'on lui accorde par ailleurs. Il vit
-dans la demande et non dans les règles du réécrivain pour deux raisons : il
-change d'un client à l'autre, et c'est ce qui le fait survivre au repli
-(réécrivain en panne → les matériaux bruts partent quand même au modèle
-d'image). Il est posé **en phrase** et non dans un bloc étiqueté : un bloc en
-tête se fait recopier tel quel sur l'image, leçon déjà payée avec `#ACTIONS`.
-Vide, la demande est exactement celle d'avant ce réglage — imposer un habillage
-par défaut avait été explicitement rejeté, ce qui ne l'était pas, c'est qu'une
-organisation impose le sien.
+**Les chiffres ont une forme**, choisie par le modèle (il sait ce que le chiffre
+veut dire) : part → anneau, progression → barre vers la cible, objectif →
+règle à repère, évolution → flèche et barres comparées. Une forme sans sa
+donnée (une progression sans cible) redevient un nombre : jamais de graphique
+faux. Les nombres arrivent en nombres et prennent ici le format de la langue.
 
-**Langue de l'image** (2026-10-21) : celle de l'interface, comme le compte
-rendu — et non plus « la langue des matériaux », que suivaient les règles du
-réécrivain : une réunion tenue en anglais sortait en anglais sous une interface
-française, et l'inverse. La langue voyage dans la **demande**, en phrase, pour
-la raison du style ci-dessus : le repli doit la respecter. Une **régénération**
-prend la langue sélectionnée au clic, pas celle du résumé ; à défaut (ancien
-client), celle stockée avec la réunion. Repli `fr`, code normalisé
-(`normalizeLang`) avant d'entrer dans la demande.
+**Un appel court, en même temps que le compte rendu** (2026-11-17, « la
+génération prend du temps », constaté en recette). Trois leviers, du plus au
+moins payant :
+- **en parallèle** : demandée avec le résumé, l'écriture du contenu part dès
+  le début de `/resume` — elle ne dépend que des matériaux — et seul son
+  enregistrement attend que la réunion soit écrite (`composeInfographicLayout`
+  puis `saveInfographic`, lib/infographic.js). Avant, elle partait après la
+  rédaction : son temps s'ajoutait à celui du compte rendu. Rédaction en échec :
+  l'écriture s'achève sans rien enregistrer (son coût est perdu, cas rare) ;
+- **le palier rapide** : `gpt-6-luna`, effort `low`, à la place de `gpt-5.4` —
+  trier une réunion dans des rubriques bornées ne demande pas le modèle du
+  compte rendu ; `none` est écarté, le choix du gabarit demande un peu de
+  jugement ;
+- **un JSON compact** : la réponse (~400 jetons) s'écrit jeton par jeton, et
+  l'indentation pèse un quart des caractères (mesuré au banc sur six contenus).
+Côté écran, la relecture passe de 4 à 2 s. **Non mesuré sur génération
+réelle** depuis ce dépôt (clé de l'organisation) — ni la durée, ni la justesse
+du choix de gabarit sur le palier rapide : à juger en recette sur des réunions
+connues ; `OPENAI_MODEL_INFOGRAPHIC=gpt-5.4` rend l'ancien modèle sans
+redéployer, l'écran d'administration non.
+
+**Une page A4, toujours** (demande du 2026-11-17). La feuille a la hauteur de
+l'A4 (√2 × sa largeur), jamais plus : une première version laissait la page
+s'allonger avec le contenu (jusqu'à 2,6 fois sa largeur au banc), refusé. Deux
+leviers : des bornes de contenu réglées pour l'A4 (`LAYOUT_LIMITS`, et les
+mêmes nombres dans les consignes de l'IA), et un AJUSTEMENT — montée, la
+feuille se mesure et réduit l'échelle de tout son contenu (`--ig-k`, cf.
+`src/lib/infographic/fit.js`) jusqu'à tenir, par dichotomie, plancher 0,72 en
+deçà duquel le texte deviendrait illisible (le bas serait alors rogné). Mesuré
+au banc sur six réunions fictives denses : échelle de 0,77 (Atelier, Tableau
+de bord) à 1, aucun débordement. Les actions passent sur deux colonnes, quatre
+au plus sur la page.
+
+**Écran et PNG identiques.** Toutes les dimensions sont en unités de page
+(1 % de la largeur × l'échelle) : la même feuille s'affiche en miniature de
+86 px, en grand, et se rend en PNG de 1 080 px ×2 (`exportPng.js`,
+html2canvas-pro), qui attend l'ajustement avant la photo. Deux contraintes de
+l'export, invisibles à l'écran : html2canvas sérialise chaque `<svg>` en image
+isolée, où ni classe ni variable CSS n'existent — d'où les couleurs
+**littérales** calculées par `palette.js` pour les pictogrammes et anneaux ;
+et un logo SVG sans dimensions propres sortait **absent** du PNG (mesuré au
+banc) — d'où sa conversion en bitmap juste avant la capture.
+
+**Deux logos, lus à l'affichage** (pas à la génération : une marque changée
+s'applique aux infographies existantes sans les régénérer). En tête, celui de
+l'ENTREPRISE (`companyLogo`) ; en pied, discret, celui de l'APPLICATION avec
+« myBrief ». Le premier n'est PAS dans la sonde publique `/api/auth/config`,
+qui porte déjà le second à chaque démarrage et que la page de connexion n'a
+pas besoin d'alourdir : il se lit à part (`GET /api/branding/company-logo`,
+compte connecté), une fois par session, à la première infographie affichée.
+Absent, le logo de l'application prend sa place en tête, et un constat de
+configuration (`company_logo_missing`, avertissement) pose une pastille sur
+Marque & apparence : un manque visible de tous ceux qui reçoivent
+l'infographie mérite plus qu'un conseil.
+
+**Dégradés partout, mais des contours en vraies bordures.** Les bandeaux,
+tuiles et piliers sont en dégradés calculés dans `palette.js` — le bandeau
+part vers une teinte plus profonde quand son texte est blanc, plus claire
+quand il est encre, pour que le contraste tienne d'un bout à l'autre (test à
+l'appui). Constaté au banc d'essai : html2canvas efface du PNG un `box-shadow`
+utilisé comme contour, et transforme un `inset` en aplat — d'où des bordures
+pour tous les contours, les ombres ne servant qu'au relief. Le **style
+graphique** (texte libre de l'ère image) et le **modèle d'image** ont quitté
+l'écran : la mécanique des réglages reste (`lib/infographicModels.js`, l'API
+les accepte, des valeurs sont en base) mais plus rien ne les lit.
+
+**Langue** (2026-10-21) : celle de l'interface, comme le compte rendu, posée en
+phrase dans la demande. Une **régénération** prend la langue sélectionnée au
+clic, à défaut celle stockée avec la réunion. Les libellés imprimés par le
+gabarit (« Actions », « Décisions »…) suivent `layout.langue`, pas l'écran :
+ils doivent parler la langue des textes de l'IA.
 
 **Qui peut en générer** (2026-09-25) : l'installation doit la proposer
-(Administration → IA) ET un groupe du compte en donner le droit, cumulatif
-d'un groupe à l'autre ; « Défaut » le donne au départ. Le pourquoi, les portes
+(Administration → IA) ET le groupe du compte en donner le droit (un seul
+groupe par compte depuis le 2026-10-26) ; « Défaut » et « Admin » le donnent au
+départ. Le pourquoi, les portes
 et le 409 sont dans AUTHENTIFICATION.md §3.
 
-**L'image vit dans une collection dédiée** (`infographics`) : `/history` renvoie
-les documents `resume` entiers, y embarquer plusieurs Mo de base64 ferait peser
-chaque réunion illustrée sur chaque chargement d'historique. Le document
-`resume` ne porte que `infographic.status`.
+**Le contenu vit dans une collection dédiée** (`infographics`) : `/history`
+renvoie les documents `resume` entiers, qui ne portent que
+`infographic.status`. Un document y porte `layout` (gabarit) ou, d'avant les
+gabarits, `image` (plusieurs Mo de base64) — `GET /infographic` sert l'un ou
+l'autre, et une régénération remplace l'image par un gabarit (`$unset`), jamais
+les deux.
 
 **Préséance des deux sources** : l'historique **amorce** l'état, `GET
 /infographic` donne l'état frais. Un instantané d'historique daté ne rétrograde
@@ -1090,28 +1253,44 @@ changement d'état) distingue « instantané daté » de « nouvelle génératio
 (`ready` / `error`, jamais `pending` à demeure). Le plafond ne couvre que le cas
 du serveur disparu en route.
 
-⚠️ L'affichage passe **obligatoirement par un portal** (montage à la racine), et
-l'organisation OpenAI doit être **vérifiée** pour appeler le modèle d'image.
+⚠️ La visionneuse passe **obligatoirement par un portal** (montage à la racine).
 
 ---
 
 ## 9. Administration
 
-Dix sections, une barre d'enregistrement unique par section, et des composants
-partagés (`ui/SettingsCard`, `ui/StatusBadge`, `ui/ToggleSwitch`, `ui/GroupChip`).
+Un tableau de bord pour accueil, puis treize pages rangées en cinq rubriques
+repliables (Personnes, Modèles IA, Capacités, Coûts, Organisation — cf. §11,
+« Deux espaces »), une barre d'enregistrement unique par page, et des
+composants partagés (`ui/SettingsCard`, `ui/StatusBadge`, `ui/ToggleSwitch`, `ui/GroupChip`).
 
-| Section | Contenu |
+**Clés API et Modèles, Entreprise et Marque & apparence, Authentification et
+Actions sont des tableaux de bord REPLIÉS** (2026-10-28) : `ui/DashCard` (bloc d'en-tête ou panneau déplié, l'explication
+derrière un ⓘ), `ui/DashPill` (un fournisseur, un mode de connexion — point vert
+quand c'est en service) et `ui/DashTile` (ce qui est en place, « Modifié » jusqu'à
+l'enregistrement), un seul réglage déplié à la fois. Décision : ces onglets
+dépassaient 1 800 px chacun, à lire de bout en bout pour retrouver un réglage ;
+repliés, ils tiennent sous 550 px. Deux règles en découlent, qu'aucun test ne
+protège entièrement : **la saisie vit dans l'onglet, pas dans le panneau** —
+replier ne doit rien perdre — et **ce qui demande un geste ne reste pas replié**
+(clé OpenAI absente, fournisseur activé que le serveur ne sert pas), ni ne se
+tait : ce qui bloque l'enregistrement s'écrit hors des panneaux ou sur la tuile —
+comme un bouton d'action activé qui n'apparaîtra pas (« Aucun relais », « Compte
+requis »).
+
+| Rubrique → page | Contenu |
 |---|---|
-| **Utilisateurs** | comptes, rôles, groupes (puces, cases de la fiche, filtre), réinitialisation, désactivation, suppression |
-| **Groupes** | groupes d'utilisateurs : colonne des comptes à glisser sur les cartes (ou sélectionner, au clavier et au doigt), cartes (initiales des membres, effectif, quota, droits), membres (ajout par recherche, retrait), groupe par défaut, quota de minutes de réunion par mois, droit aux infographies — cf. AUTHENTIFICATION.md §3 |
-| **Crédit de temps** | minutes restantes de chaque compte ce mois-ci, dans l'ordre d'urgence ; la page « Mes statistiques » d'un collègue (§9.2) |
-| **Authentification** | fournisseurs d'identité, domaines autorisés, modes de la page de connexion |
-| **IA** | clé OpenAI (vérifiée avant enregistrement), modèle de résumé, modèle de transcription, deux boutons **Tester** réels, infographie (interrupteur général, au-dessus des droits de groupe, + style graphique facultatif) |
-| **Actions** | interrupteurs, fournisseur, plafonds, politique SMTP, gabarits |
-| **Templates** | modèles d'organisation + les 6 défauts éditables + contexte d'organisation |
-| **Configuration** | logo, phrase d'accueil, couleurs, vocabulaire de l'organisation, corrections automatiques de la transcription (cf. TRANSCRIPTION.md §3) |
-| **MyBrain** | adresse et clé du cerveau partagé (vérifiées), qui lui envoie ses réunions — cf. §12 |
-| **Statistiques** | usage réel de l'installation, dépenses d'IA estimées et tarifs actualisables (§9.2) |
+| **Tableau de bord** | points à régler — les constats des pastilles en phrases, du plus grave au plus léger, avec le chemin de la page — et activité des 30 derniers jours |
+| **Personnes → Comptes** | comptes, rôles, groupes (puces, cases de la fiche, filtre), réinitialisation, désactivation, suppression |
+| **Personnes → Groupes** | groupes d'utilisateurs : colonne des comptes à glisser sur les cartes (ou sélectionner, au clavier et au doigt), cartes (initiales des membres, effectif, quota, droits), membres (ajout par recherche, retrait), groupe par défaut, quota de minutes de réunion par mois, droit aux infographies — cf. AUTHENTIFICATION.md §3 |
+| **Coûts → Crédit de temps** | minutes restantes de chaque compte ce mois-ci, dans l'ordre d'urgence ; la page « Usage & crédits » d'un collègue (§9.2) |
+| **Organisation → Authentification** | fournisseurs d'identité, domaines autorisés, modes de la page de connexion |
+| **Modèles IA → Clés API, Modèles** | clés OpenAI et tierces (vérifiées avant enregistrement), modèle de résumé (OpenAI ou Mistral), modèle de transcription, deux boutons **Tester** réels, infographie (interrupteur général, au-dessus des droits de groupe) |
+| **Capacités → Actions** | interrupteurs, fournisseur, plafonds, politique SMTP, gabarits |
+| **Capacités → Templates** | modèles d'organisation + les 6 défauts éditables + contexte d'organisation |
+| **Organisation → Entreprise, Marque & apparence** | logo, phrase d'accueil, couleurs, vocabulaire de l'organisation, corrections automatiques de la transcription (cf. TRANSCRIPTION.md §3) |
+| **Capacités → MyBrain** | adresse et clé du cerveau partagé (vérifiées), qui lui envoie ses réunions — cf. §12 |
+| **Coûts → Consommation** | usage réel de l'installation, dépenses d'IA estimées et tarifs actualisables (§9.2) |
 
 Règle transverse : **l'écran n'envoie que les champs modifiés**. `POST
 /api/admin/settings/ai` accepte les deux champs séparément — absent = inchangé,
@@ -1255,7 +1434,7 @@ suivent les prompts. Le reste est à recaler sur une vraie facture.
 **Trois horloges.** La transcription et la détection suivent la date de la
 réunion, comme les statistiques ; un compte rendu se date à SA génération
 (`versions.generatedAt` — régénérer en septembre une réunion de juin est une
-dépense de septembre) ; une infographie à son dessin. D'où trois champs de plus
+dépense de septembre) ; une infographie à sa génération. D'où trois champs de plus
 dans `MEETING_FIELDS` : des dates et un état, jamais `versions.html` ni la
 consigne — le test de confidentialité le vérifie, et le fake Mongo projette
 désormais dans les tableaux comme le vrai (`'versions.generatedAt'` rendait
@@ -1303,17 +1482,34 @@ possible. `referencePrices` vaut pour tout poste qui se choisit : montrer le
 prix des modèles de rédaction ou d'image, c'est passer leurs options au même
 composant.
 
-#### « Mes statistiques » et le crédit de temps
+**Les modèles de rédaction aussi (2026-10-29)** : même liste, même filtre par
+fournisseur (`ProviderFilter`), même verrou sans clé, et le coût ESTIMÉ d'un
+compte rendu d'une réunion d'une heure (`prices.summary`, sur les hypothèses de
+`assumptions.js` — d'où la mention « Coût estimé » au-dessus de la colonne).
+Leur échelle avance au pas de QUATRE, pas de deux : de GPT-6 Luna à GPT-6 Astra
+les prix vont de 1 à 100, et au doublement sept modèles sur dix plafonnaient à
+« €€€€ ». Le pas est dit dans l'infobulle de chaque liste. La rédaction peut
+partir chez Mistral (`SUMMARY_PROVIDERS`, `lib/summaryModels.js`), sur la clé
+qui débloque déjà Voxtral : le client Mistral tient le même `chat()` que celui
+d'OpenAI, sans `verbosity` ni effort de raisonnement, qu'il refuserait. Les
+paliers GPT-6 et les modèles Mistral sont proposés **sans mesure** sur nos
+comptes rendus (recopie du scaffold, longueur — GPT-6 ne reçoit pas
+`verbosity: 'high'`) : le défaut reste gpt-5.4, le seul mesuré, jusqu'à leur
+essai en recette.
 
-Pour TOUS les comptes : un panneau (`StatsPanel`, `#my-stats`) ouvert par
-« Voir mes statistiques », dans le bloc « Ce mois-ci » du menu de compte. Son usage
+#### « Usage & crédits » et le crédit de temps
+
+Pour TOUS les comptes : une page des réglages (`stats/PersonalStats`, section
+`usage` ; l'ancien lien `#my-stats` y mène toujours). Son usage
 (`GET /api/stats/me?range=month|90|365|all`) et la jauge de son crédit — et
 RIEN d'autre, administrateur compris. Le crédit de chacun est dans
-l'administration, section « Crédit de temps » (`admin/CreditsTab`,
+l'administration, page « Crédit de temps » (`admin/CreditsTab`,
 `GET /api/admin/stats/credits`), avec la page d'un collègue
 (`POST /api/admin/stats/account`). Il était d'abord un onglet « Équipe » de
-« Mes statistiques » réservé aux administrateurs : une page « Mes … » qui
-montre les autres a été refusée à la recette.
+cette page réservé aux administrateurs : une page personnelle qui montre les
+autres a été refusée à la recette. La page elle-même fut un panneau à part,
+« Mes statistiques » : sa consommation est une affaire de compte comme les
+autres, elle a rejoint les réglages (§11, « Deux espaces »).
 
 **Le curseur est la poignée au bout de l'arc, le rythme un triangle HORS de
 l'arc.** Le rythme régulier était d'abord un trait sombre en travers de
@@ -1355,13 +1551,16 @@ nomme l'écart (`deletedSeconds`).
 `liveElapsedStore`) : jauge et graphique déduisent la réunion en cours. La vue
 d'un collègue reste figée sur la réponse du serveur.
 
-**Le résumé du mois vit dans le menu de compte** (`stats/AccountMonth.svelte`),
-pas dans une carte de colonne. Les statistiques avaient trois portes — la carte
-« Temps de réunion » du bas de la colonne, une icône muette à côté de la roue
-crantée, une ligne du menu de compte —, et aucune ne disait rien avant d'ouvrir
-une page plein écran ; la carte prenait 75 px en permanence. La carte est
-devenue l'anneau de l'avatar et une ligne sous le nom (la capsule de compte), et
-le menu montre le crédit, le rythme et trois chiffres, avec le lien vers la page.
+**Le résumé du mois vit sur la carte du compte du téléphone**
+(`stats/AccountMonth.svelte`), pas dans une carte de colonne. Les statistiques
+avaient trois portes — la carte « Temps de réunion » du bas de la colonne, une
+icône muette à côté de la roue crantée, une ligne du menu du nom —, et aucune
+ne disait rien avant d'ouvrir une page plein écran ; la carte prenait 75 px en
+permanence. Elle est devenue l'anneau de l'avatar et une ligne sous le nom ; sur
+téléphone, où cette ligne est masquée, la carte que l'avatar ouvre montre le
+crédit, le rythme et trois chiffres, avec le lien vers la page. Sur ordinateur
+le bloc a disparu avec le menu du nom : la ligne sous le nom suffit, le détail
+est à un clic (« Réglages → Usage & crédits »).
 Pistes écartées (maquettes d'octobre 2026) : une barre en haut à droite comme
 sur téléphone — une bande de plus sur chaque écran — et un rail d'icônes à la
 Teams — une refonte du layout pour le même gain. Le crédit vient de `quotaNow`
@@ -1409,7 +1608,8 @@ qui défile, pas à son bord. L'en-tête remonte de `--ap-body-pad-top`
 
 Une pastille dit « il reste quelque chose à régler ici », sur la section qui le
 corrige (colonne de gauche, déroulant mobile) et sur le bouton qui ouvre le
-panneau (roue crantée, bouclier, bouton menu mobile). Le serveur rend des
+panneau (boutons « Réglages » et « Admin » de la carte du compte, avatar et
+déroulant des sections sur téléphone). Le serveur rend des
 constats `{ section, code, level, vars }` (`lib/configChecks.js`), l'écran les
 met en phrases (`uiText.configChecks`).
 
@@ -1481,6 +1681,168 @@ pures de `extension/lib/core.js` le sont.
 
 ## 11. Accueil, aide et « Quoi de neuf ? »
 
+### Deux espaces : Réglages et Administration
+
+La carte du compte, en bas de la colonne, porte deux boutons libellés :
+« Réglages » (ce qui regarde la personne connectée) et « Admin » (ce qui regarde
+l'organisation, administrateurs seulement). C'est le découpage de MIA, repris
+tel quel (2026-11-13) pour qu'on retrouve l'un en connaissant l'autre : une page
+n'est que dans l'un des deux espaces, et les rubriques portent les mêmes noms.
+
+Ce que ça remplace : une roue crantée muette, une ligne « Administration »
+cachée dans le menu déroulant du nom, et ce menu lui-même — à la fois fiche
+(identité, groupe, langue, mot de passe) et navigation. La fiche est devenue la
+page « Mon profil », accueil des réglages ; « Mes statistiques », qui était un
+troisième panneau, y est la page « Usage & crédits » ; « Se déconnecter » ferme
+la colonne. Côté administration, onze onglets à plat mêlaient ce qu'on règle
+une fois, ce qu'on gère et ce qu'on consulte : ils sont rangés en cinq
+rubriques repliables.
+
+Décisions, et ce qui a été écarté :
+
+- **Pas de tuiles « Espaces » sur l'accueil** (templates, tags, import, comme
+  dans MIA) : refusées à la maquette. « Ma bibliothèque » reste un groupe des
+  réglages, « Outils » une page de leur pied de colonne.
+- **Pas de teinte propre à l'administration.** MIA teinte son bouton « Admin »
+  en violet ; ici le violet est réservé à l'Aide IA (`--ai`, `tokens.css`),
+  seule teinte hors marque de l'interface. Le bouton de l'espace ouvert se
+  signale par `aria-current` et le fond des entrées actives.
+- **Les pages à onglets gardent un écran par réglage** (`ui/SubTabs` —
+  « Préférences IA », « Pendant la réunion », « Après la réunion », qui
+  s'appelait « Actions ») plutôt qu'une page qui les empile : mail et dépôt
+  avaient déjà été séparés parce qu'on les réglait l'un sous l'autre sans les
+  distinguer. Empiler « Mon contexte » et « Détection d'actions » a été essayé :
+  deux « Enregistrer » se retrouvaient à l'écran, dont celui de la détection,
+  collé en pied de page, qui semblait valoir pour les deux.
+- **Les identifiants des pages n'ont pas bougé** (`ai`, `branding`, `stats`,
+  `mail`, `action-storage`…) : le diagnostic du serveur range ses constats sous
+  ces identifiants (`lib/configChecks.js`). Renommer une page se fait dans
+  `uiText`, jamais dans son identifiant ; aucun test ne lie les deux côtés.
+- **Les anciens liens tiennent** : `#my-stats`, `#my-templates` et `#my-tags`
+  ouvrent les réglages sur la bonne page (`stores/panels.js`).
+- **Sur téléphone, la carte s'ouvre depuis l'avatar** (`AccountMenu`) et garde
+  « Ce mois-ci » : la capsule de la colonne y est masquée, c'est le seul
+  endroit où le crédit se lit sans ouvrir une page.
+- **Le pli d'une rubrique est mémorisé par appareil**, et arriver sur une page
+  déplie la sienne : la page affichée ne peut pas être introuvable dans la
+  colonne.
+
+**Le tableau de bord et les pages découpées** (seconde étape, 2026-11-13).
+L'administration s'ouvre sur un tableau de bord (`admin/DashboardTab`) : les
+constats du diagnostic en phrases, la plus grave d'abord, chacun avec le chemin
+de sa page. Il lit le store des pastilles : il ne peut pas les contredire. Avant
+lui, il fallait ouvrir les rubriques une à une pour savoir ce que leurs
+pastilles voulaient dire, et l'administration s'ouvrait sur une page de réglage
+prise au hasard de l'ordre de la colonne.
+
+« Clés API » et « Modèles » sont deux pages servies par UN composant (`AiTab`,
+prop `view`), comme « Entreprise » et « Marque & apparence » (`BrandingTab`) :
+même chargement, même règle « on n'envoie que ce qui a changé », et chaque page
+ne peut modifier que la moitié qu'elle montre. Écarté : deux composants par
+écran — ce qui relie les moitiés (un modèle verrouillé sans la clé de son
+fournisseur, la barre d'enregistrement) aurait été dupliqué.
+
+Ce que le découpage coûte : on ne colle plus une clé ET on ne choisit plus son
+modèle d'un seul « Enregistrer ». Depuis « Modèles », « Ajouter la clé » mène à
+« Clés API », ouverte sur le bon fournisseur (l'onglet visé passe par
+`panelNav.sub`). Et sur « Clés API », un modèle en service sans sa clé ne
+bloque plus l'enregistrement d'une AUTRE clé : on ne peut pas y changer de
+modèle, ce serait une impasse.
+
+Côté serveur, un seul constat a changé de section : le vocabulaire vide est
+rangé sous `company` (la page « Entreprise ») et non plus `branding`. Les
+autres identifiants n'ont pas bougé — `ai` est la page « Clés API », `branding`
+« Marque & apparence ».
+
+**La recherche dans les réglages** (2026-11-13). Une douzaine de pages côté compte,
+quatorze côté organisation, des onglets et des tuiles repliées dedans : savoir
+OÙ se règle une chose était devenu le vrai coût. En mode réglages, la pilule
+sous « Nouvelle réunion » cherche un réglage au lieu d'une réunion, ses
+résultats prennent la place des sections ; Ctrl K (⌘ K) y mène de partout ; sur
+téléphone, le champ est en tête du déroulant des sections.
+
+- **Elle trouve des RÉGLAGES, pas des pages** : le catalogue
+  (`config/settingsSearch.js`) liste les cartes, tuiles et pastilles de chaque
+  page en plus des pages elles-mêmes, et le choix d'un résultat ouvre la page,
+  son onglet, déplie la tuile et allume la carte (`utils/revealSetting.js`).
+  Ne chercher que dans les noms de pages aurait laissé « logo » sans réponse.
+- **Le réglage se retrouve à l'écran par le texte de son titre**, celui que
+  `uiText` donne à la fois à l'écran et au catalogue : aucune ancre à poser
+  dans quinze composants, un titre renommé suit seul. Le prix : une carte dont
+  le titre change de clé `uiText` sans que le catalogue suive ne s'allume plus
+  (la page s'ouvre quand même). `config/settingsSearch.test.js` vérifie que
+  chaque titre existe dans les deux langues, pas qu'il est encore affiché.
+- **Les mots qu'on tape ne sont pas ceux de l'écran** : synonymes par entrée
+  dans `uiText.settingsSearch.keywords`, FR et EN. Le moteur
+  (`utils/settingsSearch.js`) ignore accents et mots vides (« changer la
+  langue »), accepte un mot à moitié tapé, et une faute de frappe — seulement
+  pour un mot que rien ne contient tel quel : sinon « logo » ramenait
+  « login ». Le mot exact passe avant le début de mot (« micro » : « Micro et son »
+  avant « Microsoft »).
+- **Un administrateur trouve les deux espaces depuis l'un ou l'autre** : on
+  ne sait pas toujours si une chose se règle pour soi ou pour tous. À égalité,
+  le panneau ouvert d'abord ; un résultat de l'autre porte son nom en tête de
+  chemin. Ouvrir une page de l'AUTRE panneau a demandé de corriger
+  `openPanel` : la page visée était posée sur la nav du panneau sortant, que
+  le suivant écrasait en s'enregistrant (le même défaut guettait tout
+  raccourci vers une page des réglages pris depuis l'administration).
+- **Rien n'est proposé qu'on ne puisse ouvrir** : la recherche suit la colonne
+  affichée (« Comptes connectés », l'onglet MyBrain, la carte du mot de passe,
+  le son de l'ordinateur n'existent pas partout). Les pages de
+  l'administration sont décrites dans `config/adminSections.js`, sorti
+  d'`AdminPanel` pour que la recherche les connaisse panneau fermé.
+- Écarté : une palette de commandes en surimpression (à la VS Code). La
+  colonne est déjà le sommaire ; y chercher garde le résultat à l'endroit où
+  on l'aurait trouvé à la main.
+
+**Les réglages suivent le fil de la réunion** (2026-11-14). « Mon compte »
+comptait sept entrées, dont quatre réglaient la réunion et non le compte ; l'IA
+était à trois endroits (« Préférences IA », « Aide IA », « Détection
+d'actions ») ; « actions » avait deux sens — ce que l'IA repère en réunion, ce
+que devient la réunion ensuite. La colonne se lit désormais dans l'ordre où
+l'on s'en sert : « Mon compte » (les quatre pages de MIA, sous leurs noms),
+« Mes réunions » (« Pendant la réunion », puis « Après la réunion », l'ancienne
+« Actions »), « Ma bibliothèque », et « Outils » en pied de colonne. Onze
+entrées sont devenues neuf ; les écrans et leurs boutons « Enregistrer » n'ont
+pas changé, ils ont changé de place.
+
+- **Deux autres découpages ont été écartés.** Cinq pages sans onglets, à
+  enregistrement automatique comme dans MIA : le moins d'entrées, mais des
+  pages longues sur téléphone, et tous les écrans à réécrire. Une vue
+  d'ensemble en page d'accueil, avec l'état de chaque réglage : la plus
+  lisible, mais une page qui doit connaître l'état de tout. Le tri par moment
+  ne coûte qu'un déménagement.
+- **« Aide IA » est sous DEUX pages** : « Pendant la réunion », où elle joue,
+  et « Préférences IA », où on la cherche. Même écran, même libellé, même
+  icône. La recherche liste l'onglet sous ses deux pages, ses cartes une seule
+  fois (sous « Pendant la réunion ») ; « Réglages de l'Aide IA », depuis le
+  pupitre d'une réunion, mène à « Pendant la réunion ».
+- **L'icône de l'Aide IA est son orbe à la sonnette** (`icons/AiHelpIcon`),
+  dans sa teinte — pas la cloche de notification que la colonne portait : on
+  reconnaît en réglages ce qu'on a vu en réunion. C'est la seule icône
+  d'onglet ; une par onglet allongeait la rangée d'un téléphone sans rien
+  dire de plus.
+- **Sans droit à l'Aide IA, « Préférences IA » n'a qu'un écran**, et pas de
+  rangée d'onglets : une rangée d'un seul onglet n'apprend rien.
+- **« Outils » est une section sans groupe** : la colonne et le déroulant du
+  téléphone la rangent sous le filet, avec les liens. Sous « Ma bibliothèque »
+  sans rien pour l'en détacher, elle aurait eu l'air d'en faire partie. Ses
+  deux blocs s'empilent sur une page : aucun n'a de bouton Enregistrer, la
+  raison d'être des onglets ne joue pas.
+- **Les anciennes adresses tiennent** (`movedConfigTarget`) : `audio`,
+  `aiHelp`, `import`, `extension`, `ai/detection`, `ai/corrections` mènent à
+  leur place d'aujourd'hui. Piège payé : la redirection doit être la PREMIÈRE
+  déclaration réactive de `SettingsPanel`. Svelte les exécute dans l'ordre du
+  fichier, une fois par passe ; placée après le calcul des onglets, elle
+  changeait la nav trop tard, et la page s'ouvrait sur son premier onglet au
+  lieu de celui visé. Aucun test ne monte le panneau entier : c'est vérifié à
+  la main, panneau ouvert puis fermé.
+- **La rangée d'onglets défile jusqu'à l'onglet ouvert** (`ui/SubTabs`) :
+  quatre onglets ne tiennent pas sur un téléphone, et un raccourci peut ouvrir
+  le dernier — l'écran affiché, sans rien pour dire lequel c'est.
+- Les identifiants `ai`, `actions` et `mail` n'ont toujours pas bougé (les
+  constats du diagnostic) ; `meeting` et `tools` sont nouveaux.
+
 ### Modale de bienvenue
 
 S'affiche à la première connexion, une seule fois par utilisateur (mémorisé dans
@@ -1493,7 +1855,7 @@ qu'on faisait défiler sans les lire. La visio se guide désormais au démarrage
 
 ### Aide
 
-« Aide » et « Déclarer un bug ou une idée », dans « Ma configuration », sont des
+« Aide » et « Déclarer un bug ou une idée », dans « Réglages », sont des
 liens : la documentation en ligne (`DOCS_URL`, publiée depuis `docs/user/`) et le
 formulaire de remontées, dans un nouvel onglet. L'aide intégrée tenait une
 seconde copie du mode d'emploi, qui dérivait : retirée le 2026-09-15.
@@ -1738,3 +2100,823 @@ transcriptions comprises.
   au trafic sortant filtré, le flux est à ouvrir ; l'adresse peut être interne
   (`http://mybrain:3000`), le lien « Ouvrir la revue » prend alors l'adresse
   publique que myBrain annonce pour lui-même.
+
+---
+
+## 13. Aide IA : l'IA dans la réunion
+
+Pendant une réunion, une IA lit la transcription au fil de l'eau et intervient
+par écrit : elle relève une décision qui contredit le projet, répond à une
+question, suit l'ordre du jour, propose une idée. Avec myBrain (§12), elle
+s'appuie sur la fiche du projet ; sans, sur la seule réunion. Code :
+`services/api/lib/aiHelp/`, `routes/aiHelp.js`, `src/stores/aiHelp.js`,
+`src/components/aiHelp/`.
+
+### 13.1 Qui décide quoi
+
+| Décision | Qui | Où |
+|---|---|---|
+| Domaines proposés, mot d'appel, niveau d'intervention | **Administration** | `appSettings{key:'aiHelp'}` |
+| Droit « Aide IA », droit « Aide IA avec myBrain » | **Administration**, par groupe | `userGroups.aiHelpAllowed` / `aiHelpMyBrainAllowed` |
+| Allumée ou non, domaines, ordre du jour, projet | **Celui qui lance la réunion** | `resume.aiHelp`, et son dernier choix dans `userActionSettings.aiHelp` |
+
+Les deux droits naissent **refusés partout**, groupes fixes compris — à
+l'inverse de l'infographie, qui avait un existant à préserver. Déployer n'allume
+donc rien. Le droit se relit à **chaque** appel : retiré en cours de réunion, il
+éteint l'Aide IA à la lecture suivante (409, jamais 403).
+
+**Lire myBrain ne dépend pas de la politique d'envoi** (`off`/`optin`/`forced`) :
+nourrir le cerveau et le consulter sont deux décisions. Il faut une clé dont la
+vérification a rendu le droit `lire`.
+
+### 13.2 Décisions, et ce qui a été écarté
+
+- **C'est le modèle de MyBrief qui rédige ; myBrain ne fournit que la matière**
+  (`/api/v1/fiche`, `/contexte`, `/recherche` — aucune n'appelle de modèle chez
+  lui). Écarté : son `/api/v1/question`, un tour d'agent qui peut durer quatre
+  minutes et n'en mène que trois de front par clé. Une intervention qui arrive
+  une minute après la phrase qu'elle commente ne sert à rien.
+- **Périmètre de l'APPLICATION, pas de la personne** (choix produit, 2026-11-12).
+  myBrain identifie la clé, pas l'utilisateur : tout compte qui a le droit « avec
+  myBrain » lit le même wiki, hors zones restreintes. Écarté : les droits de la
+  personne, qui demandaient une évolution de myBrain. C'est le droit de groupe
+  qui fait office de périmètre — d'où les DEUX droits.
+- **Une intervention à la fois, sur une « scène » au bas de la transcription.**
+  Écartés après maquette : des bulles dans le fil de la transcription (elles
+  défilent et disparaissent avec la conversation, précisément quand une alerte
+  compte) et une colonne dédiée (elle cache les actions et les notes).
+- **Une teinte réservée à l'IA, hors marque** (`--ai`, tokens.css) et un orbe
+  animé. Demande explicite après une première maquette aux couleurs de
+  l'application : une intervention de l'IA ne s'y distinguait pas d'une carte
+  d'action.
+- **Des cartes et un signal sonore, pas de voix de synthèse** : elle couperait
+  la parole et repasserait dans la transcription. Revu le 2026-11-13 à la
+  demande du produit : une voix, choisie par chacun et éteinte par défaut, et
+  son écho reconnu (13.14).
+- **Le mot d'appel doit OUVRIR la phrase** (`utils/wakeWord.js`) : on ne répond
+  jamais à une conversation qui ne nous était pas adressée. C'est le défaut qui
+  ferait couper la fonction. Une exception depuis le 2026-11-13 (13.12) : le
+  prénom qui FERME la phrase après une virgule — « tu en penses quoi,
+  Alfred ? ».
+- **Les interventions restent sur la réunion, hors compte rendu.** Ni `/resume`
+  ni le dépôt dans myBrain ne lisent `resume.aiHelp`. Décision de produit.
+- **Le réglage se reprend « comme la dernière fois »**, et se change en un geste
+  avant comme pendant : c'est la contrainte qui a dessiné la carte de l'accueil
+  et la pastille du dock (un clic par domaine, sans panneau à ouvrir). Depuis
+  le 2026-11-13 les domaines y sont rangés dans un menu — cf. 13.11.
+
+### 13.3 Cadence et coût
+
+Une **lecture** est un appel au modèle. Elle attend deux phrases finalisées,
+laisse retomber la rafale (1,5 s), et ne repart pas avant vingt secondes : au
+plus 180 par heure, sous le plafond du serveur (240 par compte). Aucune lecture
+ne part si seules les questions sont allumées. Une question est un appel de
+plus (60 par heure et par compte).
+
+La transcription vient du **corps** de la requête, comme pour la détection
+d'actions : la copie en base a jusqu'à vingt secondes de retard. Ce n'est qu'un
+texte donné au modèle ; ce qui s'écrit l'est sous le compte du demandeur, sur
+une réunion qui est la sienne et qui est **en cours** — hors réunion, ces routes
+ne dépensent rien.
+
+⚠️ **Non mesuré.** Aucun appel à un vrai modèle n'a été fait avant la mise en
+recette : la justesse du garde-fou, son silence le reste du temps, la latence et
+le coût réel restent à éprouver. Le modèle est celui de la détection d'actions
+(`OPENAI_MODEL_AI_HELP` pour en changer). Ces appels ne sont pas encore dans les
+dépenses estimées des statistiques (§9.2).
+
+### 13.4 Pièges payés
+
+- **Le passage où le projet est reconnu a été lu sans sa fiche.** Tant que le
+  projet est inconnu, la lecture demande au modèle le nom qu'il entend, puis à
+  myBrain la fiche. Une contradiction dite dans ce même passage était perdue —
+  le passage est marqué lu. `watchMeeting` le relit donc aussitôt contre la
+  fiche, pour le seul garde-fou du projet (un appel de plus, une fois par
+  réunion). Vu au premier parcours de bout en bout.
+- **Un nom que myBrain ne résout pas n'est demandé qu'une fois**
+  (`aiHelp.lastGuess`) : sinon chaque lecture relançait la même recherche.
+- **L'état d'une intervention vit dans une table à part** (`aiHelp.states`), pas
+  dans le tableau : une intervention s'ajoute par `$push` pendant que
+  l'utilisateur en acquitte une autre, et réécrire le tableau en perdrait une.
+  L'identifiant sert de clé de champ : hexadécimal, revérifié avant usage.
+- **La réserve sous la transcription** (pour que la dernière phrase reste
+  au-dessus de la carte) était écrasée par la colonne flex : 148 px rendus pour
+  253 demandés. `flex: none`.
+- **Le dock recouvre déjà le bas du panneau Notes** (il est centré sur toute la
+  zone principale). Avec la pastille, l'onde est réduite à `8vw` : mesuré à
+  1 280 px, 25 px de recouvrement en plus, contre 64 à `14vw`.
+
+- **Un droit donné en administration n'apparaissait qu'après rechargement.**
+  L'écran ne lisait ses droits qu'au montage de l'accueil, que l'administration
+  ne démonte pas. Ils sont relus à chaque fermeture de panneau et à chaque
+  ouverture de réunion (le « + » du téléphone ne passe pas par l'accueil). Vu
+  en recette : l'administrateur qui venait d'ouvrir l'Aide IA à son groupe ne la
+  trouvait pas — et l'onglet ne disait nulle part qu'aucun groupe n'y avait
+  droit. D'où la carte « Qui y a droit ».
+- **L'IA ne savait pas à qui elle parlait.** La première version ne lui donnait
+  ni le nom du compte, ni son contexte (« Réglages → Préférences IA »), ni les noms des
+  intervenants (le store lisait `author`, « Intervenant » partout). Elle reçoit
+  maintenant les trois, les mêmes étiquettes que l'écran
+  (`effectiveSpeakerLabels`), et — avec myBrain — la fiche de la personne,
+  cherchée par son nom et gardée dix minutes, absence comprise.
+- **« myBrain ne sait pas » ne se distinguait pas de « myBrain n'a pas été
+  consulté ».** Une réponse porte désormais ce que myBrain a apporté
+  (`knowledge` : `none`, `down`, `empty`, `offered`, `used`), dit sur la carte ;
+  et Administration → Aide IA a une sonde « Tester la lecture », qui montre ce
+  que myBrain rend pour une question.
+- **Contexte vide → recherche par mots-clés.** L'assemblage de myBrain est fait
+  pour une question rédigée ; quand il ne rend aucune fiche, on cherche les noms
+  propres de la question (`keywordsOf`) et on lit les deux premières fiches.
+  Non mesuré : ajouté sur un cas rapporté (« c'est quoi le projet AMBRE »), pas
+  sur un échantillon.
+
+- **Les droits de la clé myBrain étaient une photo qu'on ne reprenait jamais.**
+  `verified.droits` date du dernier test de connexion. Une clé créée pour
+  nourrir le cerveau — tout ce que myBrief demandait jusque-là —, à laquelle on
+  AJOUTE « lire » dans myBrain, gardait ici « nourrir » seul : l'Aide IA
+  concluait « pas de lecture », sans jamais reposer la question, et rien à
+  l'écran ne le disait. `refreshMyBrainRights` redemande à myBrain : de
+  lui-même quand un compte qui a le droit du groupe bute sur une clé « sans
+  lire » (au plus toutes les dix minutes, cinq secondes d'attente), à chaque
+  ouverture de l'onglet d'administration, et dès que myBrain refuse la clé en
+  pleine réunion (le cas inverse : « lire » retiré).
+- **« Elle ne cherche pas dans myBrain » avait quatre causes, toutes
+  muettes** : le groupe sans le droit « avec myBrain », la clé sans « lire »,
+  myBrain non relié, myBrain qui ne rend rien. `aiHelpAccess` rend la raison
+  (`brainReason`) ; elle est dite sous la réponse (`knowledge` : `no_right`,
+  `no_key_right`), au pupitre, et dans Administration → Aide IA pour le compte
+  de l'administrateur lui-même (`me`, calculé par la fonction qui décide en
+  réunion). Signalé deux fois en recette avant d'être rendu lisible.
+- **La première phrase d'une réunion ne déclenchait rien.** La scène est montée
+  avant que la réunion ait son identifiant ; le store, qui ignore tout sans lui,
+  ne faisait donc son « premier passage » qu'à la première phrase — et la
+  rangeait parmi les lignes « déjà là ». Ni mot d'appel, ni lecture. Vu en
+  jouant l'ordre du jour dicté, dont c'est justement la phrase. `AiHelpStage`
+  rappelle maintenant l'observation dès que l'identifiant existe.
+
+### 13.5 L'ordre du jour dicté (2026-11-12)
+
+Demande : définir l'ordre du jour PENDANT la réunion, que l'IA le retienne, le
+restitue, dise s'il a été tenu, et signale à la fin ce qui n'a pas été abordé.
+
+- **Un seul ordre du jour, quelle que soit son origine.** `aiHelp.agenda` reste
+  un texte, un point par ligne ; un point annoncé à voix haute y est ajouté par
+  le serveur. Écarté : une liste « entendue » à côté de la liste saisie — deux
+  listes à l'écran, et un état à suivre pour chacune.
+- **Deux chemins pour un point dicté.** Annoncé sans appeler l'IA (« à l'ordre
+  du jour… »), il est retenu par la LECTURE (`agenda_new`). Dicté à l'IA
+  (« Alfred, à l'ordre du jour… »), par la RÉPONSE (`agenda_add`) — sinon elle
+  aurait répondu « c'est noté » sans rien noter, la lecture ne passant que
+  vingt secondes plus tard.
+- **Ce que l'utilisateur retire ne revient pas.** `aiHelp.agendaHeard` garde la
+  clé des points venus de la réunion et de ceux qu'on a retirés ; la lecture ne
+  les remet pas, même redits. Une demande expresse à l'IA passe outre.
+- **Pendant la réunion, l'écran n'envoie plus jamais le texte entier** : il
+  effacerait un point que l'IA vient de retenir. Il envoie « ajoute ce point »,
+  « retire celui-là » ; le texte saisi sur l'accueil est un brouillon qui part
+  une fois. Et le serveur relit l'ordre du jour APRÈS l'appel au modèle, qui
+  dure plusieurs secondes.
+- **Un point traité le reste.** Le modèle ne lit que la fin de la
+  transcription : sans cliquet, le premier point d'une longue réunion redevenait
+  « pas encore abordé », et le rappel de fin l'aurait compté oublié. Le prompt
+  reçoit l'état connu de chaque point, et `todo` ne défait ni `now` ni `done`.
+- **Le rappel de fin ne dépend pas de la plume du modèle.** S'il dit « la
+  réunion se termine » (`ending`) et qu'un point reste `todo`, l'intervention
+  part : son texte s'il en a écrit un, la liste des points sinon. Pas deux fois
+  pour les mêmes points en dix minutes ; rien si tout est traité ; rien en
+  « Discrètes ». Il sonne, comme une contradiction.
+- **Non mesuré.** Aucun vrai modèle : ni la justesse de « la réunion se
+  termine », ni celle des points retenus (un sujet évoqué pris pour un point
+  annoncé), ni la tenue des états sur une longue réunion.
+- **Limite connue.** Deux libellés ne sont le même point qu'à la casse, aux
+  accents et à la ponctuation près. « Le budget » et « Budget 2027 » font deux
+  points si le modèle ne les rapproche pas — la consigne le lui demande.
+
+### 13.6 Le prénom qui déclenche, dans la teinte de l'IA (2026-11-12)
+
+Demande : quand le mot d'appel déclenche l'Aide IA, il apparaît d'une autre
+couleur dans la transcription.
+
+- **Coloré = entendu, jamais l'inverse.** `wakeWordSpan` (où est le prénom) et
+  `matchWakeWord` (a-t-il déclenché) lisent le texte par la même fonction. Et
+  seules les lignes que le store a réellement prises pour un appel
+  (`aiHelpCalledLines`) sont marquées : « Alfred » cité en milieu de phrase,
+  ou dit quand les questions sont coupées, reste du texte ordinaire.
+- **`EditableTranscript` ne connaît pas l'Aide IA** : il reçoit une fonction
+  (`aiMark`) qui rend, pour une ligne, ce qu'il faut écrire autrement.
+  `LiveTranscript` la REFAIT quand la liste des lignes, le mot d'appel ou la
+  langue change — la réactivité de Svelte ne voit pas ce qu'une fonction lit
+  en dedans (le piège déjà payé quatre fois).
+- La ligne reste un seul texte : le double-clic l'édite entière.
+
+### 13.7 Tout allumé d'office, et des gestes (2026-11-12)
+
+Demandes : toutes les options actives par défaut et invisibles avant la
+réunion ; des actions (poser un tag, fermer sa fenêtre, ajouter une note, un
+rappel sonore dans N minutes) ; une sonnette d'hôtel au centre de l'orbe.
+
+- **Le réglage de départ est posé par le SERVEUR**, à la première lecture d'une
+  réunion qui n'en a pas (`POST /ai-help/session` réduit à `meetingId`) : allumée,
+  tous les domaines. Écarté : le laisser à l'écran, comme avant — une page
+  rechargée en pleine réunion repoussait « tout allumé » par-dessus ce qu'on
+  venait de couper. Le store ne pousse plus rien à l'ouverture, il relit.
+- **Plus de « comme la dernière fois »** pour l'état et les domaines : sans
+  écran avant la réunion, un domaine coupé un jour le restait sans qu'on le
+  voie. Seul le signal sonore suit le compte.
+- **La carte de l'accueil n'est plus montée** (`AiHelpSetupCard`, ses styles
+  `.welcome-with-ai` et le brouillon d'ordre du jour du store restent dans le
+  dépôt, inactifs) : à supprimer ou à remonter selon ce que donnera l'essai.
+- **Un geste n'est jamais exécuté par le modèle.** Il le nomme (`actions` de la
+  réponse) ; le serveur le vérifie — le tag doit exister chez ce compte, le
+  délai tenir entre 1 et 240 minutes — et garde ce qui a été fait (`acts`) sur
+  la réponse ; l'écran énonce ces lignes lui-même. Sans cela, la phrase du
+  modèle annonçait un tag posé alors qu'aucun ne portait ce nom.
+- **Elle ne crée pas de tag.** Trente au plus par compte, et un nom mal
+  transcrit en userait un : un tag inconnu est dit, pas créé.
+- **Le tag et la note sont faits par l'ÉCRAN** (`runAction`, stores/aiHelp.js) :
+  les notes d'une réunion en cours vivent dans `App.svelte` et la base les
+  suit — une note écrite côté serveur aurait été écrasée à la sauvegarde
+  suivante. Elle passe par une file (`aiHelpNotes`) que vide
+  `MobileMeetingOverlays`, seul composant lié aux notes qui soit monté pendant
+  toute réunion, à l'ordinateur comme au téléphone. Aucune ligne dans
+  `App.svelte`.
+- **Un rappel est une intervention DATÉE** (`kind: 'reminder'`, `dueAt`), gardée
+  avec la réunion : l'écran la tait jusqu'à son heure, un minuteur la fait
+  sonner, et un rechargement de page la réarme. Écarté : un minuteur seul, que
+  le moindre rechargement aurait perdu.
+- **« Ferme », « merci » ne passent pas par le modèle** (`isDismissal`) : deux
+  secondes d'attente pour une carte qui dit « je ferme » seraient l'inverse du
+  service. Volontairement étroit — une phrase qui ne dit que cela ; le reste va
+  au modèle, qui sait aussi fermer (`{"type":"close"}`).
+- **Non mesuré** : aucun vrai modèle n'a nommé ces gestes ; un geste pris à
+  tort (une phrase de réunion lue comme un ordre) reste à observer en recette.
+
+### 13.8 Le pupitre est une conversation (2026-11-12)
+
+Demande : la fenêtre de « Demander » doit être surtout une zone où l'IA
+répond, avec quelques exemples et rien de plus ; les échanges s'empilent vers
+le bas, comme un fil de discussion ; on y demande une synthèse, l'ordre du
+jour, les actions, des idées.
+
+- **Le fil remplace le journal.** Il montre tout ce que l'IA a dit, réponses
+  et interventions spontanées, dans l'ordre. Une question posée là reçoit sa
+  réponse là, rangée d'emblée (`seen`) : elle ne ressurgit pas sur la scène
+  quand on referme. Écarté : garder la scène pour toutes les réponses — le
+  pupitre se refermait à chaque question, on ne pouvait pas enchaîner.
+- **Les réglages passent derrière une icône** (`AiHelpSettings`,
+  `aiHelpDeskView`) : sur téléphone c'est le seul endroit pour éteindre l'IA
+  ou couper un domaine, on ne pouvait pas les retirer. « Corriger », sur la
+  carte de l'ordre du jour, y mène directement.
+- **Une question porte sur la réunion ENTIÈRE.** La transcription jointe à une
+  question passe de 12 000 à 48 000 caractères, et le prompt reçoit les
+  actions déjà relevées (`<actions_relevees>`, celles que le panneau montre) :
+  « fais une synthèse » ne résumait que le dernier quart d'heure. Coût : une
+  question pèse jusqu'à ~12 000 jetons d'entrée sur une longue réunion — une
+  question, pas une lecture au fil de l'eau, qui reste courte.
+- **Une réponse peut être une liste** : 1 800 caractères au plus, sauts de
+  ligne gardés (`block`), rendus tels quels (`white-space: pre-line`). Sur la
+  scène, une longue réponse défile au lieu de couvrir la transcription.
+- **Piège payé : `$: … tick().then(…)`.** Suivre le bas du fil par une
+  instruction réactive qui appelle `tick()` relançait un rendu à chaque rendu :
+  la boucle d'événements ne rendait plus la main (le test de composant ne se
+  terminait jamais — c'est lui qui l'a montré). `afterUpdate` fait la même
+  chose sans rien programmer.
+- **Non mesuré** : la qualité d'une synthèse sur une vraie réunion, et sa
+  latence avec 48 000 caractères de transcription.
+
+### 13.9 Le Markdown des réponses (2026-11-12)
+
+Signalé en recette : les réponses s'affichaient en texte brut, astérisques et
+crochets compris — myBrain écrit ses fiches en Markdown, le modèle le reprend.
+
+- **Un arbre, jamais du HTML.** `src/utils/miniMarkdown.js` lit un Markdown
+  simple (gras, italique, code, listes, liens, citations ; titres et tableaux
+  aplatis) en un arbre de nœuds que `AiMarkdown` rend élément par élément.
+  Écarté : une bibliothèque de Markdown et `{@html}` — l'appli n'insère de HTML
+  brut nulle part, et ce texte vient d'un modèle qui a lu une transcription et
+  un wiki. Il aurait fallu l'assainir, et faire confiance à l'assainisseur.
+- **Un lien n'est cliquable qu'en http(s)**, ou relatif à la racine quand on
+  connaît l'adresse de myBrain (seule source de liens relatifs). Tout le reste
+  — `javascript:`, `data:` — n'est que son texte.
+- **Pas de regard en arrière dans les expressions régulières** (`(?<=…)`) : les
+  Safari d'avant 16.4 les refusent au chargement du script, et c'est toute
+  l'appli qui ne démarrerait pas. D'où la lecture caractère par caractère.
+- **Le gabarit en ligne tient sur une ligne** (`prettier-ignore`) : un retour à
+  la ligne entre deux nœuds est un espace à l'écran (« gras , »).
+- La réponse qui s'écrit mot à mot referme le gras et le code restés ouverts
+  (`closeOpenMarkdown`), pour qu'on ne voie pas passer la syntaxe.
+
+### 13.10 Une seule fenêtre, et sa taille (2026-11-13)
+
+Demandes : les fenêtres de réponse se superposaient — une seule modale, une
+seule chose à fermer ; pouvoir agrandir et réduire la fenêtre et son texte,
+par des boutons et à la voix.
+
+- **Une carte, la dernière.** La scène ne montre plus qu'une intervention ;
+  les autres ne se parcourent plus carte après carte (« 1 autre », « 2
+  autres »), elles se lisent dans la conversation, que la carte ouvre d'un
+  bouton. Écarté : empiler toutes les interventions ouvertes dans la carte —
+  trois réponses couvraient la transcription.
+- **Fermer ferme tout** (`closeAiHelpCards`) : la croix, « Compris », Échap,
+  « Demander » une seconde fois (`toggleAiHelpDesk`), la croix de la
+  conversation, « Alfred, ferme ». Ce qui reste ouvert est rangé avec elle.
+  Conséquence assumée : une alerte non lue derrière une réponse est rangée
+  aussi — elle reste dans le fil, et la carte annonçait qu'il y en avait
+  d'autres.
+- **La taille est UNE variable** : la scène pose `--ai-scale` (1 ; 1,2 ; 1,45)
+  et chaque taille de texte des composants de l'Aide IA s'écrit
+  `calc(Npx * var(--ai-scale, 1))`. Écarté : `zoom`, qui fausse les mesures de
+  hauteur dont la transcription a besoin pour garder sa dernière ligne au-dessus
+  de la fenêtre. Hors de la scène (pastille du dock), la variable est absente
+  et vaut 1.
+- **La largeur suit, sans sortir de la colonne de la transcription** (640, 780,
+  940 px au plus). À 1 280 px de large la colonne n'en offre que 580 : la
+  fenêtre y grandit en hauteur et en texte, pas en largeur. Écarté : la laisser
+  déborder sur les actions et les notes.
+- **Gardée sur l'appareil** (`localStorage`), pas sur le compte : la bonne
+  taille d'un écran de salle n'est pas celle d'un téléphone.
+- **« Agrandis », « plus petit » ne passent pas par le modèle**
+  (`sizeRequest`), comme « ferme » ; dits autrement (« j'ai du mal à te
+  lire »), le modèle nomme le geste (`{"type":"size"}`) et l'écran le fait.
+
+### 13.11 Des gestes sur la réunion, le mot d'appel visible, les domaines en menu (2026-11-13)
+
+Demandes : pouvoir demander à l'IA de mettre en pause, de reprendre, de
+terminer ; de corriger ou de remplacer un texte de la transcription ; le compte
+rendu et son template, avant la fin de la réunion. Faire apparaître le mot
+d'appel, discrètement, près de l'orbe. Retirer de la barre les quatre boutons
+de domaine, qui prennent trop de place, sans perdre le moyen de les couper.
+
+- **Même circuit que les autres gestes** : le modèle NOMME (`meeting`,
+  `summary`, `replace`), le serveur vérifie et rend `actions`, l'écran fait.
+  Ce qui est refusé est DIT sur la réponse (`acts[].ok` faux) et ne part pas :
+  « reprends » sur une réunion qui tourne, un template qu'aucun ne porte, un
+  passage absent de la transcription.
+- **Ni l'enregistrement ni la transcription ne vivent dans un store** : ils
+  sont dans `App.svelte`, plafonné. Le store pose donc le geste dans une file
+  (`aiHelpCommands`, `aiHelpEdits`), lue par un composant déjà monté pendant
+  la réunion et qui tient déjà la fonction : `AiHelpMeetingBridge` (dans
+  `MobileMeetingOverlays`, qui a pause / reprise / enregistrer) et
+  `AiHelpStage` (dans `LiveTranscript`, qui a les lignes et relaie déjà
+  l'événement `edit` d'une correction à la main). App n'y gagne que trois
+  attributs — payés par `meetingElapsed`, sorti dans `utils/formatUtils.js`.
+- **« Termine » = « Enregistrer sans résumé ».** Écarté : ouvrir la feuille
+  « Terminer la réunion ? » — elle demande un clic, alors que la commande sert
+  à s'en passer, et l'enregistrement continuerait si personne ne répond.
+  Écarté aussi : ouvrir le sélecteur de templates, qui laisse la réunion ni
+  rangée ni résumée si on s'en va. Ranger ne perd rien, et le compte rendu
+  reste possible depuis l'historique. **Supprimer n'est pas un geste de l'IA**,
+  et ne doit pas le devenir : une phrase dite en réunion ne doit rien pouvoir
+  effacer.
+- **« Reprends » ne s'entend pas** : la pause coupe les pistes du micro, donc
+  la transcription, donc le mot d'appel. Il se demande par écrit. Le texte de
+  la pause le dit, pour qu'on ne reste pas à parler à une IA sourde.
+- **Le pont relit l'état AU MOMENT du geste** (`isPaused`, `live`), et ne
+  rejoue ni une pause ni une reprise sans objet : `resumeRecording` sur une
+  réunion qui tourne remettrait le chronomètre à zéro et doublerait son
+  minuteur. Le serveur le vérifie aussi (`paused`, dit par l'écran) — mais
+  plusieurs secondes séparent la question du geste.
+- **Les templates sont NOMMÉS par l'écran** (`templates`, dans le corps de la
+  question) : les templates par défaut vivent dans le frontend
+  (`config/templates.js`), le serveur ne les connaît pas. Ce n'est pas une
+  donnée qu'on croit : elle ne décide que de ce que ce même écran s'entendra
+  demander. Un nom inconnu ne termine pas la réunion — on ne coupe pas un
+  enregistrement sur un nom mal transcrit.
+- **« À la fin, le compte rendu avec… »** (`when: 'end'`) pose le template
+  courant d'App (le sélecteur le présélectionne) et le store s'en souvient :
+  « termine » rédige alors ce compte rendu au lieu de ranger. Cette mémoire
+  est dans le store, pas sur la réunion : un rechargement de page l'oublie.
+- **Une correction lit comme une correction automatique**
+  (`replacePassage`, dans `utils/transcriptCorrections.js`) : mot entier, casse
+  et accents indifférents, majuscule de début de phrase gardée. Le serveur fait
+  la même lecture sur la transcription jointe (`saidInMeeting`), en écartant
+  la question elle-même : dictée, elle contient toujours le mot à remplacer.
+  L'écran n'écrit ni la ligne en cours, ni une phrase adressée à l'IA
+  (`aiHelpCalledLines`), et ne vide jamais une prise de parole.
+- **Le store relit en place une ligne qui a changé** (`lineOf`) — corrigée par
+  l'IA, à la main, ou une voix qu'on vient de nommer. Avant, sa copie de la
+  transcription gardait le premier texte lu : l'IA répondait d'après un nom
+  déjà corrigé à l'écran. La comparaison porte sur le texte brut : une ligne
+  inchangée ne coûte rien, même à chaque delta du direct.
+- **Écarté : reconnaître « pause » ou « termine » sans le modèle**, comme
+  « ferme ». Fermer une fenêtre par erreur ne coûte rien ; couper un
+  enregistrement, si. Les deux secondes du modèle sont le prix du jugement
+  (« on termine bientôt » n'est pas « termine »), que la consigne demande
+  expressément.
+- **Le mot d'appel sous « Aide IA »**, en petit, dans la pastille ; sur
+  téléphone il REMPLACE le libellé du bouton — cinq commandes de front, pas la
+  place d'une ligne de plus. Il n'est écrit que s'il déclenche quelque chose
+  (allumée ; « questions ouvertes » aussi jusqu'au 2026-11-14, cf. 13.15).
+  Écarté : une bulle d'aide à la première
+  réunion — elle disparaît le jour où l'administrateur change le prénom.
+- **Les domaines dans un menu**, derrière un bouton de la pastille. Écarté :
+  les laisser aux seuls réglages du pupitre — une fenêtre de la moitié de
+  l'écran pour un interrupteur. Écarté : garder les icônes en plus petit —
+  elles ne disaient déjà leur nom qu'au survol. Le menu dit le nom, l'effet et
+  l'état ; un point sur le bouton dit qu'un domaine est coupé. Calé sur le bord
+  DROIT de la pastille : à gauche, il sortait de l'écran sous 800 px. La
+  pastille passe de ~400 à ~290 px ; ses libellés tiennent jusqu'à 1 120 px de
+  large (1 280 avant).
+- **Non mesuré** : la tenue du modèle sur ces consignes en réunion réelle —
+  faux « termine », passage mal recopié —, et le coût d'un « remplace
+  partout » sur une transcription de plusieurs heures (une écriture par ligne
+  changée, par l'événement `edit`).
+
+### 13.12 Une demande dictée : l'entendre entière, l'entendre juste, chercher large (2026-11-13)
+
+Trois reproches après usage : « il coupe trop tôt et comprend la moitié
+de la phrase », « la transcription écorche les mots, il faudrait trouver des
+équivalents », « il trouve très peu d'informations dans myBrain ». Chacun avait
+une cause précise dans le code.
+
+**Elle coupait trop tôt.** La question partait dès que la ligne portant le mot
+d'appel était bouclée — or une ligne se boucle à la première ponctuation de fin
+de phrase, ou à la première respiration (un segment de la détection de voix se
+ferme après 500 ms). « Alfred, j'ai une question. Est-ce que… » envoyait « j'ai
+une question » ; la suite, sans mot d'appel, n'était lue par personne.
+`utils/voiceRequest.js` écoute maintenant la demande jusqu'au SILENCE de celui
+qui parle, mesuré sur son texte — lignes bouclées et ligne en cours, du même
+flux :
+
+| La demande a l'air… | Elle part après |
+|---|---|
+| finie (une question, une phrase complète) | 2,5 s sans mot nouveau |
+| en suspens (une amorce — « j'ai une question », « tu peux me dire » —, une virgule, un mot de liaison en dernier, pas de ponctuation sur moins de six mots) | 4 s |
+| un geste (« ferme », « agrandis ») | 0,9 s |
+
+Plafond : 30 s. 2,5 s : une respiration en milieu de phrase fait 1 à 2 s, et
+la transcription suit la voix avec une demi-seconde de retard. Écarté : se fier
+à la ponctuation seule — le moteur met un point à la fin de chaque segment,
+finie ou non, d'où l'heuristique `looksFinished`, faite pour se tromper du côté
+« pas finie ». Écarté aussi : un seul délai long pour tout — « Alfred, ferme »
+ne peut pas attendre quatre secondes.
+
+L'inverse existait aussi : une demande dite sans ponctuation finale restait
+« en cours » jusqu'à dix secondes, et rien ne partait tant que personne ne
+reparlait. Lire la ligne en cours règle les deux.
+
+**Deux phrases d'une traite n'étaient lues qu'à moitié.** Sous le modèle par
+défaut, la ponctuation boucle une ligne sans changer de segment : la ligne
+suivante porte le MÊME `itemId`. Le store reconnaissait une ligne par lui seul
+— la seconde écrasait la première dans sa copie de la transcription, tour à
+tour à chaque rendu, et n'était jamais lue : ni pour un mot d'appel (« Bon.
+Alfred, … » ne déclenchait rien), ni pour une lecture, ni dans la transcription
+jointe aux questions. `aiHelpLineKey` porte maintenant l'horodatage de la
+ligne, et un rang pour celles qui se ressembleraient encore.
+
+**Le prénom se compare à l'oreille** (`utils/soundsLike.js`, copie serveur dans
+`lib/aiHelp/soundsLike.js`, tenues ensemble par un test de parité) : mêmes
+lettres, puis même clé phonétique (« Alfrède », « Halfred », « Alfraid »), puis
+une lettre d'écart à partir de cinq lettres, deux à partir de neuf. Jamais un
+mot PLUS LONG d'une lettre qui s'entend : « Alfredo » n'est pas « Alfred » — le
+test d'origine le dit, il tient toujours. « Al Fred » est recollé. Le nom d'un
+tag ou d'un template demandé à l'IA passe par la même comparaison
+(`closestName`), à condition d'être SEUL à sonner ainsi : deux candidats, et
+rien n'est pris.
+
+**Le prénom en fin de phrase**, après une virgule, appelle aussi : c'est la
+ponctuation d'une adresse, et la phrase qu'il ferme est la question. Sans la
+virgule (« j'en ai parlé à Alfred », « on est chez My Alfred ») : rien. C'est
+revenir sur une décision de 13.2, à la demande (« qu'il regarde en arrière ») ;
+le garde-fou reste la virgule, et trois mots au moins avant elle.
+
+**« Regarder en arrière » est une consigne, pas un mécanisme.** La
+transcription part déjà avec chaque question ; ce qui manquait, c'est de dire
+au modèle de s'en servir. Une question dictée porte maintenant deux consignes :
+relire les dernières répliques pour la compléter, et rapprocher à l'oreille un
+nom qui ne correspond à rien. Une question écrite ne les reçoit pas.
+
+**myBrain : chercher les NOMS, sous toutes leurs graphies**
+(`lib/aiHelp/brainSearch.js`). Relu dans le code de myBrain : sa recherche est
+un plein texte par préfixe qui exige TOUS les mots et ne tolère aucune faute ;
+son contexte n'épingle une fiche nommée que par égalité stricte ; sa fiche par
+nom tolère une lettre mais ne rend pas la fiche qu'elle jugeait probable. Une
+question dictée dont un nom est écorché tombait dans les trois. Et même bien
+écrite, elle ne lisait que le contexte — deux fiches de repli si, et seulement
+si, il était vide.
+
+Désormais, avec myBrain :
+
+1. en même temps que le contexte, le modèle PRÉPARE la recherche
+   (`searchPlanPrompt`) : la question telle qu'on a voulu la poser, les noms
+   sur lesquels elle porte avec leurs graphies plausibles à l'oreille — il a
+   sous les yeux la fin de la réunion, les tags, le projet, les notes, le
+   vocabulaire de l'organisation —, et un à trois sujets ;
+2. chaque nom est cherché seul : la fiche qui porte ce nom, le plein texte sur
+   ce nom, puis — si aucun TITRE ne lui ressemble — le plein texte sur ses
+   trois premières lettres, dont on ne garde que les titres qui sonnent pareil.
+   C'est ce dernier pas qui retrouve Marquet sous « Market » sans le modèle ;
+3. les fiches désignées par leur nom passent devant celles qui le citent ;
+   quatre au plus sont lues et jointes AVANT le contexte assemblé ;
+4. si le contexte était vide, il est redemandé sur la question comprise.
+
+Coût : **un appel de plus au modèle par question** quand myBrain est lu
+(compté à part, `aiHelp.calls.plan`), 8 s au plus — au-delà, ou en panne, la
+recherche part des noms tels qu'écrits. Et 2 à 3 lectures de myBrain par nom,
+six noms au plus. Écarté : la route `/mcp` de myBrain, qui liste tous les noms
+de fiches — un second protocole à tenir, deux mille noms à relire par question.
+
+⚠️ **Non mesuré.** Aucun appel à un vrai modèle ni à un vrai myBrain : ni la
+qualité des graphies proposées, ni la latence ajoutée (une préparation, puis
+des lectures), ni le taux de faux départs du prénom en fin de phrase. Vérifié
+dans le navigateur avec un canal de transcription simulé qui parle comme le
+modèle par défaut (mot à mot, un segment, pas de `completed`), et contre un
+faux myBrain strict comme le vrai.
+
+**Limites.** La sonde « Tester la lecture » d'Administration → Aide IA ne
+montre toujours que le contexte de myBrain, pas la recherche élargie. Une faute
+en DÉBUT de nom (« Zabre ») échappe au préfixe : seule la préparation du modèle
+la rattrape. Après l'envoi d'une demande, ce que la personne ajoute sans redire
+le prénom n'est pas pour l'IA. Côté myBrain, `/fiche?nom=` perd la fiche qu'il
+juge « probable » (elle n'est ni rendue ni listée en candidat) : à corriger
+là-bas, ce contournement-ci n'en dépend pas.
+
+### 13.13 Un son par sens (2026-11-13)
+
+Demande : « un petit son, une sonnette d'hôtel, courte mais audible, quand
+l'aide intervient pour une idée ; quand elle identifie une action à réaliser,
+un son bref et sobre qui suggère qu'elle a compris et qu'elle agit ».
+
+- **Trois sons, pas un** (`utils/chime.js`) : le carillon reste à l'urgent
+  (contradiction, rappel, fin de réunion) ; l'idée a la sonnette — le visage
+  de l'IA, déjà une sonnette de comptoir (13.7) ; le geste fait, deux frappes
+  de maillet à la quinte montante. Écarté : un seul son pour tout — on ne
+  saurait plus, sans regarder, s'il faut lever les yeux.
+- **Le geste ne s'entend que FAIT.** `runAction` dit s'il a agi : un tag
+  introuvable, un template que l'écran ne connaît plus restent muets — un
+  « compris » sur un geste raté mentirait. Un rappel posé compte comme fait.
+  « Ferme » et « agrandis », traités sans le modèle, s'entendent aussi.
+- **Un son par lecture** : l'urgent couvre l'idée arrivée avec lui.
+- **Une réponse reste muette** : on l'attend, les yeux sur l'écran.
+- **Niveaux mesurés** (rendu hors ligne, crête / RMS max sur 50 ms) :
+  carillon 0,10 / 0,04 ; sonnette 0,19 / 0,08, audible 0,6 s ; geste
+  0,09 / 0,03, 0,16 s. La sonnette est la plus forte, à la demande — et dans
+  l'aigu (si 6, ~2 kHz), qui perce la conversation sans la couvrir.
+
+⚠️ **Non mesuré** : si la sonnette, captée par le micro, repasse dans la
+transcription des participants à distance — le risque que le carillon
+évitait en restant faible. Un son n'est pas de la parole, mais un moteur de
+transcription peut en tirer un mot.
+
+### 13.14 Le son verrouillé, le bouton muet, les préférences, la voix (2026-11-13)
+
+Retour après 13.13 : « les sons sont très bien, mais aucun son depuis
+l'application web ». Puis : couper le son pendant la réunion ; un menu dédié
+pour les réglages par défaut ; faire parler l'Aide IA, avec l'outil choisi
+parmi les IA renseignées — « tout doit être bien testé avant d'être proposé ».
+
+- **Le son était VERROUILLÉ par Chrome.** Mesuré dans Chrome : une page sans
+  aucun clic crée un contexte audio `suspended`, et `resume()` ne rend jamais
+  la main ; après un clic, même sept secondes plus tard, il joue. La page de
+  test jouait dans un clic ; l'application, après une réponse réseau. Une
+  réunion peut démarrer sans un clic dans l'onglet (extension, `#record`) puis
+  se mener à la voix. Désormais : le contexte naît au PREMIER geste de la page
+  (`armAiHelpAudio`, monté avec la scène) ; un son dû pendant le verrou est TU,
+  pas mis en attente — il éclaterait au premier clic, en retard sur ce qu'il
+  annonçait ; la cloche porte alors un point et son clic déverrouille.
+  ⚠️ Non mesuré : l'atténuation des « communications » de Windows (−80 % par
+  défaut quand un micro est ouvert) pourrait encore rendre les sons faibles en
+  réunion — hypothèse, rien ne l'a montré.
+- **Le muet vaut pour UNE réunion, et ne part pas au serveur.** Avant, la
+  cloche du pupitre écrivait `aiHelp.sound` sur le compte : couper le son
+  d'une réunion le coupait pour toutes, sans le dire. Elle coupe maintenant
+  sons ET voix pour cette réunion (`setAiHelpSound`) ; un rechargement de page
+  le rétablit (assumé, documenté). `sound` reste accepté par
+  `/ai-help/session`, ignoré : un onglet resté sur l'ancienne version l'envoie.
+- **Les préférences vivent sous `aiHelp.preferences`** (Réglages → Pendant la réunion → Aide IA,
+  `lib/aiHelp/preferences.js`) : démarrage (allumée, domaines), les sons (quatre depuis 13.16),
+  voix. Écarté : relire `aiHelp.enabled` / `aiHelp.domains`, restés de « comme
+  la dernière fois » (13.7) — des comptes y gardent un `enabled: false` posé
+  sans le savoir, leurs réunions auraient démarré éteintes. Seul un ancien
+  `sound: false` est repris : il coupe tous les sons.
+- **La voix, trois moteurs.** Le navigateur (`speechSynthesis`, gratuit, local)
+  et, sur les clés de l'installation, OpenAI (`/audio/speech`) et Mistral
+  (Voxtral TTS). Un moteur n'est PROPOSÉ qu'après un essai réussi, modèle par
+  modèle (`voiceCatalog`, gardé 6 h par clé, 10 min s'il a échoué) : c'est la
+  lecture littérale de « testé avant d'être proposé ». Relevés de documentation
+  du jour : les trois modèles OpenAI s'arrêtent le 6 janvier 2027 (`retiresAt`
+  les retire ce jour-là, l'essai le ferait de toute façon) ; Mistral rend
+  l'audio en base64 (`audio_data`) et refuse tout champ inconnu (422 sur
+  `speed`) — rien d'autre ne part que `model`, `input`, `voice_id`,
+  `response_format`.
+- **Le store choisit quoi lire, un composant en fait des phrases.** La file
+  `aiHelpSpeech` porte des interventions ; `AiHelpVoice` (monté avec la scène)
+  a les libellés (« Contradiction. … », « C'est l'heure du rappel : … ») et
+  confie le texte à `lib/aiHelp/voice.js`, une phrase à la fois. Couper le son,
+  « Alfred, ferme », fermer la fenêtre : elle se tait, file comprise.
+- **Son écho n'est pas relu** (`utils/speechEcho.js`) : une ligne de trois mots
+  au moins dont 70 % viennent d'une phrase dite depuis moins de six secondes
+  est écartée de ce que l'IA lit et écoute. Écarté : couper le micro pendant
+  qu'elle parle — on perdrait qui l'interrompt. La ligne reste, elle, dans la
+  transcription (App.svelte, plafonné) : défaut documenté.
+- **Compté, pas encore chiffré** : chaque phrase lue par OpenAI ou Mistral
+  incrémente `aiHelp.speech.<moteur>.calls/chars` sur la réunion.
+
+⚠️ **Non mesuré.** Aucun appel à un vrai OpenAI ni à un vrai Mistral : le
+parcours complet (essai des modèles, Réglages, « Écouter », lecture dans la
+page) a été vérifié dans le navigateur contre de faux fournisseurs qui rendent
+un vrai WAV, et la voix du navigateur sur celle du système. Ni la latence d'une
+phrase, ni la qualité des voix en français, ni les seuils de l'écho face à une
+vraie transcription.
+
+### 13.15 Questions-réponses coupées : les gestes restent (2026-11-14)
+
+Retour : « quand on désactive la discussion avec l'IA, le mot-clé qui permet
+justement de la déclencher ne marche plus — on ne peut plus actionner les
+autres demandes ». Exact : tout ce qu'on dit à « Alfred, … » passe par
+`/ai-help/ask`, gestes compris (13.7, 13.11), et le domaine `qa` fermait ce
+chemin à trois endroits — l'écoute du prénom, l'envoi, la route (409).
+Personne ne l'avait décidé : les gestes sont arrivés après les questions et en
+ont hérité l'interrupteur. L'écran le cachait : « Répond à « Alfred, … » ».
+
+- **Le prénom s'écoute dès que l'Aide IA est allumée**, et le pupitre garde
+  son champ. `qa` ne coupe plus que les RÉPONSES : la route passe
+  `answers: false` au moteur, qui ne lit ni myBrain ni l'historique et donne
+  une consigne à part (`commandPrompt`) — les gestes, la dictée de l'ordre du
+  jour, rien d'autre.
+- **C'est le modèle qui dit si c'était un geste** (`command`). Écarté : une
+  liste de verbes côté écran — « Alfred, on fait une pause ? » est un geste,
+  « Alfred, c'est quoi la pause ? » une question. Le prix : une question posée
+  réponses coupées coûte un appel (compté), pour un 409 `ai_help_domain_off`.
+  Le modèle qui répond quand même n'est pas cru : sans `command`, sa phrase est
+  jetée ; du texte libre aussi. Avec un geste, une phrase de 280 caractères au
+  plus — confirmer, ou demander confirmation (« dans le doute… », 13.11).
+- **Le refus se voit sur la scène** : la carte « en attente » d'une question
+  dictée s'efface ; le bandeau `questions_off` dit pourquoi. Au pupitre, la
+  même phrase vient de l'erreur.
+- **Le droit retiré par l'administration suit la même règle.** Un groupe sans
+  « Questions-réponses » peut encore demander un tag ou une pause : un appel au
+  modèle par demande. Si un administrateur a coupé le domaine pour limiter
+  les appels, ce n'est plus tout à fait le cas — à revoir s'il le faut, par un
+  droit « gestes » à part.
+
+⚠️ **Non mesuré** : la justesse du tri geste / question par le vrai modèle.
+Vérifié avec un faux modèle (route, store, écran) ; « Alfred, ferme » et
+« agrandis » ne passent pas par le modèle, ils sont sûrs.
+
+### 13.16 Le minuteur (2026-11-17)
+
+Demande : « que les actions de l'aide IA puissent déclencher un minuteur
+visible à l'écran ; l'aide pourra l'arrêter ou le modifier à la demande ; à la
+fin du décompte, une petite mélodie de quelques secondes. Simple, design,
+cohérent dans l'interface et robuste dans le fonctionnement. »
+
+- **Un geste de plus, pas une variante du rappel.** Le rappel se TAIT jusqu'à
+  son heure puis dit de quoi il s'agit ; le minuteur se VOIT décompter et ne
+  dit que « c'est fini ». Écarté : étendre `reminder` d'un drapeau « visible »
+  — un rappel est une intervention (carte, « Compris », gardée dans le fil),
+  un minuteur n'en est pas une : il n'a rien à dire après zéro.
+- **Un seul, trois verbes** (`lib/aiHelp/timer.js`) : `start` REMPLACE celui
+  qui tourne, `add` le rallonge ou le raccourcit, `stop`. Écarté : plusieurs
+  minuteurs — « arrête le minuteur » deviendrait ambigu, et deux décomptes à
+  lire en réunion, c'est un de trop. Écarté aussi : une pause du minuteur —
+  « mets en pause » désigne déjà la réunion.
+- **Gardé avec la réunion** (`aiHelp.timer`), pas dans l'écran : une page
+  rechargée le retrouve. Le serveur garde une HEURE (`endsAt`) et ne rend que
+  le temps RESTANT : l'écran pose l'échéance sur sa propre horloge. Un poste
+  décalé de trente secondes afficherait sinon un décompte faux d'autant.
+  Arrivé à zéro, il n'existe plus à la lecture — rien à effacer quand
+  personne n'est là pour le voir finir.
+- **Même circuit que les autres gestes** : le modèle NOMME, le serveur
+  vérifie (durée de 5 s à 4 h, un seul geste par réponse), et la carte dit ce
+  qui a été fait — « Aucun minuteur ne tourne » quand on lui demande d'en
+  changer un qui n'existe pas. Le modèle sait où il en est (« il reste
+  3 min 20 ») : c'est ce qui donne un sens à « ajoute deux minutes ».
+  Différence : le geste est FAIT par le serveur, pas par l'écran, qui s'y
+  conforme (champ `timer` de la réponse). Seul l'arrêt a un bouton, donc une
+  route sans modèle (`POST /ai-help/session`, `timer: 'stop'`).
+- **Une horloge relue, pas un délai attendu** (`stores/aiHelpTimer.js`) : le
+  reste est recalculé contre l'heure quatre fois par seconde. Écarté : un
+  `setTimeout` de la durée — un poste mis en veille le fait sonner à son
+  réveil. En retard de moins d'une minute, il sonne ; au-delà, il s'efface
+  sans bruit.
+- **Deux réponses qui se croisent** : une session relue AVANT la demande et
+  arrivée après effacerait le minuteur qu'on vient de lancer. Chaque
+  changement fait à l'écran avance un compteur (`timerRev`) ; une session
+  partie avant lui ne touche pas au minuteur. Et à moins de cinq secondes de
+  la fin, une session qui le dit fini ne l'efface pas : l'horloge de l'écran
+  a quelques dixièmes de retard sur celle du serveur, il va sonner.
+- **Dans le flux, pas par-dessus** (`AiHelpTimer.svelte`, monté par
+  `LiveTranscript` — zéro ligne dans `App.svelte`). Première version : une
+  capsule en surimpression au coin de la transcription. Elle masquait la fin
+  des lignes qui passaient dessous (vu à la capture à 1 280 px). Elle a donc
+  sa rangée, au-dessus de la liste, qui cède sa hauteur le temps du décompte.
+  Écarté aussi : une carte de la scène — elle n'en montre qu'une et se ferme
+  d'un geste, le décompte aurait disparu à la première question.
+- **Un quatrième son** (`playTimerMelody`, `sounds.timer`) : une phrase de
+  boîte à musique en sol majeur, comme l'alerte, qui finit sur l'accord de
+  tonique. Mesurée (rendu hors ligne de Chromium) : audible 3,4 s, crête
+  0,23, sans saturer — au niveau de la sonnette. Elle a son interrupteur et
+  son bouton **Écouter** dans Réglages → Aide IA ; écarté : la ranger sous
+  « Alertes » — couper les contradictions aurait fait taire un minuteur
+  qu'on a demandé exprès.
+- **Fermer la fenêtre de l'IA n'arrête pas le minuteur** ; elle range celui
+  qui vient de sonner.
+
+⚠️ **Non mesuré** : aucun vrai modèle n'a nommé ce geste — sa justesse entre
+« minuteur » et « rappel », la conversion des durées dites (« un quart
+d'heure », « une minute trente »), la reprise du libellé quand on change la
+durée. Vérifié avec un faux modèle : route, store, écran, et le parcours joué
+dans la vraie appli à 1 280 et 375 px. La mélodie n'a pas été ÉCOUTÉE, ni son
+passage éventuel dans la transcription par le micro (cf. 13.13).
+
+### 13.17 Le tag retient le projet (2026-11-23)
+
+Constat à l'usage : au démarrage, l'IA « tombe à côté » ou propose des
+homonymes. Lu dans les deux codes : sans lien tag → fiche, le serveur
+demande à myBrain le NOM du tag (`GET /api/v1/fiche?nom=`). myBrain y passe
+le nom seul à son rapprochement — sans le type attendu ni les indices qui
+départagent —, et un mot partagé suffit à faire un candidat, de tout type ;
+il rend les candidats sans leur type. Côté myBrief, une fiche « sûre » est
+prise sans regarder si c'est un projet : un tag au nom d'un client peut
+retenir la fiche du client.
+
+Décision : ne plus deviner pour une réunion taguée. Dès que la réunion a
+son projet (choisi, reconnu au tag ou à ce qui se dit) et que son tag ne
+mène pas à lui, la scène propose **Relier le tag « … » à ce projet ?**
+(`stores/aiHelpTagLink.js`). La route existait (`POST /ai-help/tag-project`,
+qui relit la fiche dans myBrain) ; l'écran manquait.
+
+- **Au moment où les deux sont connus**, pas dans « Mes tags » : c'est en
+  réunion qu'on sait quel projet va avec quel tag, sans rien chercher.
+- **Après les interventions ouvertes** : une alerte n'attend pas une
+  question de rangement.
+- **Un tag relié à un AUTRE projet se propose aussi** : seule façon, à ce
+  jour, de corriger un lien faux.
+- **« Pas maintenant » vaut pour la réunion et ce projet** — mémoire de
+  l'écran, rien en base. Écarté : relier sans demander (un tag de client
+  qui couvre plusieurs projets resterait collé au premier venu), et un refus
+  définitif (aucun autre écran ne relie un tag : la porte serait fermée).
+- **Écarté pour l'instant** : ouvrir le type et les indices sur l'API de
+  myBrain (`kind`, `indices` de `vault_resolve_entity`) et filtrer les
+  candidats par type côté myBrief. Ils restent la voie pour une réunion SANS
+  tag, où le projet se devine encore.
+
+### 13.18 Des idées rares, et qui servent (2026-11-25)
+
+Constat à l'usage : les idées sont « trop nombreuses et pas toujours
+pertinentes ». Trois causes lues dans le code : une lecture toutes les vingt
+secondes pouvait rendre une idée à chaque fois, rien ne les espaçait ; le
+niveau d'intervention ne les touchait pas (la consigne « idée » partait en
+« Discrètes », alors que l'administration les annonçait aux seules
+« Soutenues ») ; la consigne les tirait du NOUVEAU passage, vingt secondes de
+parole, sans barre ni droit de se taire.
+
+Décision (option retenue : espacer selon le niveau) —
+`lib/aiHelp/ideas.js` :
+
+- **L'espacement est tenu par le serveur, pas par le modèle.** Une idée n'est
+  DEMANDÉE que lorsqu'elle est permise : dix minutes au moins après la
+  précédente en « Normales », cinq en « Soutenues », jamais en « Discrètes » ;
+  pas avant ~3 000 caractères de réunion (trois minutes de parole) ; pas
+  redemandée moins de deux minutes après une demande restée sans réponse
+  (`aiHelp.ideasLookedAt`). Sinon sa consigne n'entre pas dans le prompt, et
+  une idée rendue quand même est jetée. Écarté : « une idée de temps en
+  temps » écrit dans la consigne — le modèle ne voit pas l'heure de ses idées,
+  et chaque lecture était un tirage de plus où la plus faible finissait par
+  passer.
+- **Une seule par lecture, et pas une redite.** Même titre aux accents près,
+  ou deux mots porteurs en commun formant les trois cinquièmes du plus court
+  (`repeatsIdea`, mots vides écartés). Toutes les idées de la réunion sont
+  rappelées au modèle, pas seulement les douze dernières interventions :
+  espacées, elles en sortaient vite.
+- **Une barre dans la consigne.** Sur le sujet des dernières minutes (fin de
+  `<transcription_avant>` + nouveau passage), appuyée sur le dossier, le
+  projet, l'organisation ; jamais une généralité, un conseil de méthode, une
+  reformulation ou la logistique ; « une idée moyenne coûte plus qu'aucune ».
+- **Un effort de raisonnement `medium`** pour la lecture qui demande une idée,
+  `low` pour les autres : juger qu'aucun participant ne l'a eue demande plus
+  qu'un repérage. Au plus une lecture sur six, deux minutes au moins entre
+  deux.
+- Bonus : une boîte à idées seule allumée, sans idée permise, ne coûte plus
+  aucun appel.
+
+⚠️ **Non mesuré** contre un vrai modèle : si la barre fait taire les bonnes
+idées avec les mauvaises, la latence d'une lecture en `medium`, et si dix
+minutes est le bon rythme. À éprouver en recette ; les durées sont des
+constantes (`IDEA_GAP_MS`).
+
+### 13.19 Ce que ça ne fait pas encore
+
+- Les interventions d'une réunion terminée ne se relisent pas depuis
+  l'historique (elles sont en base, `aiHelpItemsOf` sait les relire).
+- Le lien d'un tag à son projet ne se voit ni ne se délie dans « Mes tags » :
+  il se pose ou se change en réunion (13.17). Sans tag, le projet se devine
+  toujours par le nom entendu, avec les homonymes de myBrain.
+- Le prénom coloré dans la transcription ne survit pas à la réunion : la liste
+  des phrases qui ont appelé l'IA vit dans le store, pas sur la réunion. Une
+  réunion rouverte, ou la page rechargée en cours de route, ne le montre plus.
+- Un rappel posé ne s'annule pas, et aucun écran ne liste ceux qui restent à
+  venir. L'IA ne crée pas de tag, ne retire ni tag ni note.
+- Le minuteur ne se met pas en pause, et il n'y en a qu'un à la fois. Il
+  s'arrête avec la réunion. Son arrêt par la croix, si le réseau manque à cet
+  instant, n'est pas rejoué : il revient à la relecture suivante de la session.
+- L'ordre du jour d'une réunion ne se reprend pas à la suivante, et une réunion
+  REPRISE ne relit pas ce qui s'est dit avant la reprise.
+- Une correction demandée à l'IA ne s'annule pas d'un geste (elle se reprend à
+  la main), ne vaut que pour ce qui est déjà dit — la suite de la réunion
+  garde l'orthographe du moteur — et ne porte que sur un passage tenant dans
+  une prise de parole. Le serveur ne la vérifie que sur les 48 000 derniers
+  caractères de la transcription.
+- Un compte rendu commandé pour la fin ne survit pas à un rechargement de page.
+

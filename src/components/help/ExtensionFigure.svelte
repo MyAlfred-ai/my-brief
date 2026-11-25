@@ -11,7 +11,7 @@
   $: status = labels.status || 'Connecté';
   $: primary = labels.primary || 'Nouvelle réunion';
   $: secondary = labels.secondary || 'Ouvrir MyBrief';
-  $: links = labels.links || ['Historique', 'Ma configuration'];
+  $: links = labels.links || ['Historique', 'Réglages'];
 </script>
 
 <svg class="exf" viewBox="0 0 300 208" role="img" aria-label={labels.alt || ''}>

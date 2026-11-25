@@ -53,6 +53,327 @@ retouche : `npx vitest run scripts/whats-new.test.mjs`.
 
 ---
 
+## Aide IA : moins d'idées, et mieux choisies
+<!-- id: aide-ia-idees-espacees | genre: amelioration | pour: tous -->
+
+La boîte à idées de l'Aide IA se fait rare : au plus une idée toutes les dix minutes, toutes les cinq en interventions « Soutenues », aucune en « Discrètes ». Elle attend que la réunion soit lancée, part du sujet qui vous occupe depuis plusieurs minutes, et se tait plutôt que de redire une idée ou d'énoncer une banalité.
+
+### en: AI Help: fewer ideas, better chosen
+
+The AI Help idea box now speaks up rarely: one idea every ten minutes at most, every five with "Frequent" interventions, none with "Discreet". It waits until the meeting is under way, works from the topic you have been on for several minutes, and stays silent rather than repeat an idea or state the obvious.
+
+## Aide IA : un tag retient le projet de ses réunions
+<!-- id: aide-ia-tag-projet | genre: amelioration | pour: tous -->
+
+Quand l'Aide IA connaît le projet d'une réunion taguée, elle propose de relier le tag à sa fiche dans myBrain. Un clic sur « Relier », et les réunions suivantes avec ce tag partent directement sur le bon projet : plus de question, plus d'homonymes à départager.
+
+### en: AI Help: a tag remembers its meetings' project
+
+When AI Help knows the project of a tagged meeting, it offers to link the tag to its myBrain sheet. One click on "Link", and the next meetings with this tag start straight on the right project: no more question, no more look-alikes to choose from.
+
+## Un logo pour chaque tag, et une fiche plus simple
+<!-- id: tags-logo-fiche | genre: nouveaute | pour: tous -->
+
+Dans Réglages → Mes tags, déposez le logo du client ou du projet : il se pose en médaillon sur l'infographie et en tête du compte rendu PDF. La fiche du tag s'enregistre au fil de vos gestes : le nom se modifie sur place, la couleur en un clic, et le rangement et l'envoi tiennent sur une ligne.
+
+### en: A logo for every tag, and a simpler tag page
+
+In Settings → My tags, drop the client's or project's logo: it appears as a medallion on the infographic and at the top of the PDF report. The tag page saves as you go: rename in place, change the colour in one click, and filing and sending fit on one line each.
+
+## Trouvez et créez vos tags d'un geste
+<!-- id: tags-recherche-creation | genre: amelioration | pour: tous -->
+
+Le menu qui range une réunion cherche dans le nom de vos tags et dans ce que vous avez écrit sur eux : tapez le nom d'une cliente, le tag de son projet apparaît. Un nom inconnu ? « Créer » le crée et y range la réunion. Les tags de vos dernières réunions passent en tête.
+
+### en: Find and create your tags in one go
+
+The menu that files a meeting searches your tag names and what you wrote about them: type a client's name and her project's tag shows up. Unknown name? "Create" makes the tag and files the meeting in it. Tags from your latest meetings come first.
+
+## Dites à l'IA de quoi parle un tag
+<!-- id: contexte-des-tags | genre: nouveaute | pour: tous -->
+
+Dans Réglages → Mes tags, chaque tag a un champ « Que doit savoir l'IA ? » : le projet, ses acteurs et leurs rôles, les sigles. Comptes rendus, infographie et Aide IA d'une réunion taguée s'en servent pour comprendre de quoi on parle, sans rien ajouter qui n'ait été dit. Pendant l'enregistrement, un nom ou un sigle écorché par la transcription est rétabli tel que vous l'avez écrit.
+
+### en: Tell the AI what a tag is about
+
+In Settings → My tags, every tag has a "What should the AI know?" field: the project, its people and their roles, the acronyms. Reports, the infographic and AI Help for a tagged meeting use it to understand what is being discussed, without adding anything that was not said. While recording, a name or acronym the transcript mangles is restored as you wrote it.
+
+## L'extension Chrome s'installe sans accroc et annonce ses mises à jour
+<!-- id: extension-chrome-mises-a-jour | genre: amelioration | pour: tous -->
+
+Sous Windows, « Extraire tout » sur le fichier .zip donne directement le dossier à choisir dans Chrome. Quand une nouvelle version de l'extension existe, Réglages → Outils → Extension Chrome l'annonce et la propose. Sur un autre ordinateur, le menu de l'extension offre de lui redonner accès à votre MyBrief d'un clic.
+
+### en: The Chrome extension installs smoothly and announces its updates
+
+On Windows, "Extract All" on the .zip file gives you the folder to pick in Chrome straight away. When a new version of the extension is out, Settings → Tools → Chrome extension says so and offers it. On another computer, the extension's menu lets you give it back access to your MyBrief in one click.
+
+## Une réunion terminée peut reprendre
+<!-- id: reprendre-reunion-terminee | genre: nouveaute | pour: tous -->
+
+Arrêtée trop tôt, coupée par le déjeuner, ou qui continue le lendemain : « Reprendre », juste après l'arrêt, ou « Reprendre l'enregistrement », en bas de la transcription d'une réunion rouverte, relance l'enregistrement. La suite s'ajoute à la même réunion, et un seul compte rendu couvre le tout.
+
+### en: A finished meeting can resume
+
+Stopped too early, interrupted by lunch, or continued the next day: "Resume", right after stopping, or "Resume recording", at the bottom of a reopened meeting's transcript, starts recording again. What follows is added to the same meeting, and a single summary covers it all.
+
+## Le compte rendu en PDF, à votre marque
+<!-- id: pdf-resume-charte | genre: amelioration | pour: tous -->
+
+Le PDF du compte rendu — téléchargé, joint à un mail ou déposé sur un Drive — porte le logo de votre entreprise en tête et vos couleurs en dégradé discret : en haut de chaque page, sous le titre et devant les intertitres. Le texte reste noir sur blanc, et le logo de myBrief signe le pied de page.
+
+### en: Your PDF summary, in your brand
+
+The PDF summary — downloaded, attached to an email or saved to a Drive — carries your company logo at the top and your colours as a subtle gradient: across each page, under the title and beside headings. Text stays black on white, and the myBrief logo signs the footer.
+
+## Après une pause, le micro et la transcription repartent tout de suite
+<!-- id: reprise-apres-pause | genre: correctif | pour: tous -->
+
+Après une longue pause — un café, l'ordinateur mis en veille, le casque éteint entre-temps —, « Reprendre » retrouve le son du micro et la transcription dès les premiers mots. La pause elle-même n'est plus notée « Enregistrement interrompu » dans la transcription.
+
+### en: After a break, the microphone and transcript come back right away
+
+After a long break — coffee, the computer gone to sleep, the headset switched off in the meantime — "Resume" picks up the microphone and the transcript from the very first words. The break itself is no longer marked as "Recording interrupted" in the transcript.
+
+## Infographies : six mises en page à votre marque, sur une page A4
+<!-- id: infographie-gabarits | genre: nouveaute | pour: tous -->
+
+L'infographie, toujours sur une page A4, choisit la mise en page qui convient à la réunion — Synthèse, Décision, Feuille de route, Tableau de bord, Atelier ou Bilan — avec dégradés, pictogrammes et graphiques. Elle porte le logo de votre entreprise et vos couleurs, ses textes sont exacts, et elle arrive bien plus vite. Les anciennes restent consultables et téléchargeables.
+
+### en: Infographics: six branded layouts, on one A4 page
+
+The infographic, always on one A4 page, picks the layout that suits the meeting — Overview, Decision, Roadmap, Dashboard, Workshop or Review — with gradients, icons and charts. It carries your company's logo and colours, its text is exact, and it arrives much faster. Older infographics can still be viewed and downloaded.
+
+## Le logo de votre entreprise sur les infographies
+<!-- id: logo-entreprise-infographies | genre: nouveaute | pour: administrateurs -->
+
+Marque & apparence propose désormais deux logos : celui de l'application et celui de votre entreprise, qui ouvre chaque infographie. Tant qu'il manque, une pastille le signale et le logo de l'application le remplace.
+
+### en: Your company logo on infographics
+
+Brand & appearance now offers two logos: the application's and your company's, which opens every infographic. While it is missing, a badge flags it and the application logo stands in.
+
+## Aide IA : un minuteur à l'écran, sur simple demande
+<!-- id: aide-ia-minuteur | genre: nouveaute | pour: tous -->
+
+Demandez-le à l'Aide IA, à voix haute ou par écrit : « Alfred, lance un minuteur de cinq minutes pour la pause ». Le décompte s'affiche au-dessus de la transcription ; « ajoute deux minutes » ou « arrête le minuteur » le changent, sa croix l'arrête. À zéro, une courte mélodie — à écouter et à régler dans Réglages → Pendant la réunion → Aide IA.
+
+### en: AI Help: an on-screen timer, just by asking
+
+Ask AI Help, aloud or in writing: “Alfred, start a five-minute timer for the break”. The countdown shows above the transcript; “add two minutes” or “stop the timer” change it, its cross stops it. At zero, a short melody plays — listen to it and set it in Settings → During the meeting → AI Help.
+
+## Aide IA : vos demandes passent, même sans les questions-réponses
+<!-- id: aide-ia-gestes-sans-questions | genre: correctif | pour: tous -->
+
+Questions-réponses coupées, son prénom ne déclenchait plus rien : ni tag, ni note, ni pause. Désormais « Alfred, ajoute le tag… », « mets en pause », « à l'ordre du jour : … » marchent toujours, à voix haute ou au pupitre. Seules les questions restent sans réponse, et elle le dit.
+
+### en: AI Help: your requests go through, even without questions & answers
+
+With Questions & answers off, its name no longer triggered anything: no tag, no note, no pause. Now “Alfred, add the tag…”, “pause”, “on the agenda: …” still work, aloud or in the panel. Only questions go unanswered, and it says so.
+
+## Vos remplacements de notes valent pour les réunions suivantes
+<!-- id: mots-remplaces | genre: nouveaute | pour: tous -->
+
+Écrivez « Remplace Durend par Durand » dans les notes d'une réunion : ce mot mal transcrit rejoint vos « Mots remplacés » et sera corrigé d'office dans vos réunions suivantes, dès la fin de chaque phrase. La liste se complète ou s'allège dans Réglages → Pendant la réunion → Mots remplacés (100 au plus).
+
+### en: Replacements written in your notes now apply to your next meetings
+
+Write “Replace Durend with Durand” in a meeting's notes: that mistranscribed word joins your “Replaced words” and is fixed automatically in your next meetings, at the end of each sentence. Extend or trim the list in Settings → During the meeting → Replaced words (100 at most).
+
+## Réglages et Admin : cherchez un réglage par son nom
+<!-- id: recherche-reglages | genre: nouveaute | pour: tous -->
+
+Dans Réglages ou Admin, tapez ce que vous cherchez sous « Nouvelle réunion » — « micro », « langue », « logo », « clé openai » : les réglages qui répondent s'affichent avec leur chemin, et un clic ouvre la bonne page sur le réglage, mis en évidence. Accents et fautes de frappe ne gênent pas. Ctrl K (⌘ K sur Mac) y mène de partout.
+
+### en: Settings and Admin: search for a setting by name
+
+In Settings or Admin, type what you are looking for under “New meeting” — “microphone”, “language”, “logo”, “api key”: matching settings appear with their path, and one click opens the right page on that setting, highlighted. Accents and typos don't get in the way. Ctrl K (⌘ K on Mac) takes you there from anywhere.
+
+## Aide IA : ses sons, sa voix, et une cloche pour la faire taire
+<!-- id: aide-ia-sons | genre: amelioration | pour: tous -->
+
+Une idée s'annonce d'un coup de sonnette, un geste fait de deux notes brèves. La cloche de sa pastille coupe ses sons et sa voix pour la réunion. Dans Réglages → Pendant la réunion → Aide IA, choisissez comment elle démarre, quels sons jouent, et faites-la lire à voix haute : voix du navigateur, d'OpenAI ou de Mistral.
+
+### en: AI Help: its sounds, its voice, and a bell to silence it
+
+An idea comes with a desk-bell ring, an action done with two short notes. The bell on its pill mutes its sounds and voice for the meeting. In Settings → During the meeting → AI Help, choose how it starts, which sounds play, and have it read aloud: browser, OpenAI or Mistral voice.
+
+## Aide IA : elle vous laisse finir, et cherche mieux dans myBrain
+<!-- id: aide-ia-ecoute-et-recherche | genre: amelioration | pour: tous -->
+
+Votre demande part quand vous vous taisez, plus à la première phrase : « Alfred, j'ai une question. Est-ce que… » lui arrive en entier. Elle entend son prénom même écorché par la transcription, ou placé en fin de phrase. Dans myBrain, elle cherche chaque nom cité, y compris mal transcrit — « Durend » retrouve Durand — et lit davantage de fiches.
+
+### en: AI Help: it lets you finish, and searches myBrain more thoroughly
+
+Your request is sent once you stop talking, no longer at the first sentence. It hears its name even when the transcript garbles it, or when it ends your sentence. In myBrain, it looks up every name you mention, even a misspelled one, and reads more pages.
+
+## Administration : un tableau de bord, et des pages plus courtes
+<!-- id: admin-tableau-de-bord | genre: nouveaute | pour: administrateurs -->
+
+L'administration s'ouvre sur un tableau de bord : ce qui reste à régler, du plus grave au plus léger, avec un lien vers la page où le corriger, et l'activité des 30 derniers jours. Les clés d'IA et les modèles ont chacun leur page ; le vocabulaire de l'organisation et l'apparence aussi. La touche Échap referme l'administration.
+
+### en: Administration: a dashboard, and shorter pages
+
+Administration now opens on a dashboard: what is left to fix, most serious first, with a link to the page where to fix it, and activity over the last 30 days. AI keys and models each have their own page; so do the organization's vocabulary and its appearance. The Escape key closes administration.
+## Aide IA : pause, compte rendu et corrections, sur simple demande
+<!-- id: aide-ia-gestes-reunion | genre: amelioration | pour: tous -->
+
+Demandez-le à l'Aide IA, à voix haute ou par écrit : mettre la réunion en pause, la terminer, rédiger le compte rendu avec le template de votre choix, corriger un mot dans la transcription. Son prénom s'affiche désormais à côté de son orbe, et ses domaines se règlent dans un menu, derrière un seul bouton de la barre du bas.
+
+### en: AI Help: pause, minutes and transcript fixes, just by asking
+
+Ask AI Help, aloud or in writing: pause the meeting, end it, write the minutes with the template of your choice, fix a word in the transcript. Its name now shows next to its orb, and its areas are set in a menu, behind a single button of the bottom bar.
+
+## La réunion tient bon sur téléphone : appel, autre application, réseau
+<!-- id: reunion-resiste-aux-interruptions | genre: amelioration | pour: tous -->
+
+Un appel, un passage sur une autre application ou une coupure de réseau n'arrêtent plus la réunion : le micro et la transcription repartent seuls, le trou est marqué dans la transcription, et ce qui s'est dit pendant une coupure de réseau est transcrit à son retour. Si le téléphone a fermé MyBrief, « Reprendre » continue la même réunion, chronomètre compris.
+
+### en: Meetings survive calls, app switches and network drops on your phone
+
+A call, switching to another app or a network drop no longer ends the meeting: the microphone and transcript restart on their own, the gap is marked in the transcript, and what was said during a network drop is transcribed once it returns. If your phone closed MyBrief, "Resume" continues the same meeting, timer included.
+
+
+## Réglages et Admin : deux boutons, des menus qui suivent la réunion
+<!-- id: menus-reglages-et-admin | genre: amelioration | pour: tous -->
+
+En bas de la colonne, la carte de votre compte porte deux boutons. « Réglages » suit le fil d'une réunion : Mon compte, puis Mes réunions — « Pendant la réunion » (micro, mots remplacés, détection d'actions, Aide IA) et « Après la réunion » (e-mail, dépôt) —, Ma bibliothèque et Outils. « Admin » ouvre l'administration, rangée en cinq rubriques qu'on replie.
+
+### en: Settings and Admin: two buttons, menus that follow the meeting
+
+At the bottom of the column, your account card now has two buttons. “Settings” follows a meeting: My account, then My meetings — “During the meeting” (microphone, replaced words, action detection, AI Help) and “After the meeting” (email, storage) —, My library and Tools. “Admin” opens administration, sorted into five collapsible sections.
+
+## MyBrief s'ouvre plus vite
+<!-- id: ouverture-plus-rapide | genre: amelioration | pour: tous -->
+
+MyBrief démarre en lisant deux fois moins de code : l'administration et les réglages arrivent quand vous les ouvrez. L'application est trois fois plus légère à télécharger, et la liste de vos réunions arrive sans leur contenu : chacune se charge quand vous l'ouvrez. Sur téléphone et en connexion lente, l'écran est prêt plus tôt.
+
+### en: MyBrief opens faster
+
+MyBrief starts up reading half as much code: administration and settings arrive when you open them. The app is three times lighter to download, and your meeting list arrives without their content: each one loads when you open it. On phones and slow connections, the screen is ready sooner.
+
+## Longues réunions : moins de batterie et de mémoire
+<!-- id: longues-reunions-plus-legeres | genre: amelioration | pour: tous -->
+
+Sur téléphone comme sur ordinateur, une réunion de plusieurs heures sollicite moins l'appareil : la transcription en direct reste fluide, et MyBrief travaille moins quand vous êtes dans l'onglet de votre visio. L'audio à télécharger pèse environ 2,5 fois moins, sans perte audible sur la voix. La vague sonore défile de nouveau à son rythme.
+
+### en: Long meetings: less battery and memory
+
+On phones and computers alike, a meeting of several hours puts less load on your device: the live transcript stays smooth, and MyBrief works less while you are in your video call tab. The audio download is about 2.5 times smaller, with no audible loss on speech. The sound wave scrolls at its proper pace again.
+
+## Transcription : les phrases avec « par » ne disparaissent plus
+<!-- id: transcription-phrases-avec-par | genre: correctif | pour: tous -->
+
+Des phrases manquaient dans la transcription en direct : celles qui contenaient « par » (« On commence par le budget »), ou qui commençaient par un tiret. Elles s'affichent désormais, et le compte rendu, la détection d'actions et l'Aide IA les lisent. Dans l'application Android, un passage hors ligne rattrapé ne perd plus son texte pour la même raison.
+
+### en: Transcription: sentences with “par” no longer vanish
+
+Sentences were missing from the live transcription: those containing the French word “par” (“On commence par le budget”), or starting with a dash. They now show up, and the summary, action detection and AI Help read them. In the Android app, an offline passage caught up later no longer loses its text for the same reason.
+
+## Aide IA : une IA suit la réunion, alerte et répond
+<!-- id: aide-ia-reunion | genre: nouveaute | pour: tous -->
+
+L’Aide IA est là dès que la réunion démarre : elle alerte quand une décision contredit le projet, retient l’ordre du jour annoncé et rappelle à la fin ce qui reste. Appelez-la par son prénom pour une question ou un geste : poser un tag, prendre une note, sonner dans dix minutes, se retirer. Elle s’ouvre groupe par groupe dans Administration → Groupes.
+
+### en: AI Help: an AI follows the meeting, alerts and answers
+
+AI Help is there as soon as the meeting starts: it alerts when a decision contradicts the project, keeps the announced agenda and recalls at the end what is left. Call it by its first name for a question or an action: set a tag, take a note, ring in ten minutes, step back. It is opened group by group in Administration → Groups.
+
+## Infographie : l'ancien modèle d'image est déjà remplacé
+<!-- id: infographie-gpt-image-2-retire | genre: amelioration | pour: administrateurs -->
+
+OpenAI arrête le 10 février 2027 le modèle d'image de la génération précédente : Administration → IA ne le propose plus. S'il dessinait vos infographies, le modèle recommandé a déjà pris le relais ; la tuile Infographie le dit, et un clic confirme ce choix.
+
+### en: Infographics: the previous image model is already replaced
+
+OpenAI shuts down the previous-generation image model on 10 February 2027: Administration → AI no longer offers it. If it drew your infographics, the recommended model has already taken over; the Infographic tile says so, and one click confirms the choice.
+
+## Jusqu'à 30 tags par personne
+<!-- id: tags-plafond-30 | genre: amelioration | pour: tous -->
+
+Dans Ma configuration → Mes tags, chacun peut désormais créer jusqu'à 30 tags, contre 20 auparavant : de quoi garder un tag par client sans devoir en regrouper.
+
+### en: Up to 30 tags per person
+
+In My configuration → My tags, everyone can now create up to 30 tags, up from 20: enough to keep one tag per client without merging any.
+
+## Comptes rendus : choisissez qui les rédige, prix en regard, et Mistral en plus
+<!-- id: redaction-choix-du-modele | genre: nouveaute | pour: administrateurs -->
+
+Administration → IA, tuile Comptes rendus : le modèle qui rédige se choisit sur une liste, comme celui de la transcription, avec le coût estimé d'un résumé pour une réunion d'une heure. OpenAI y propose de nouveaux paliers, du plus économique au plus capable, et Mistral rédige aussi, avec la clé qui sert déjà à sa transcription.
+
+### en: Summaries: choose who writes them, with the price, and Mistral too
+
+Administration → AI, Summaries tile: the writing model is picked from a list, like the transcription one, with the estimated cost of a summary for a one-hour meeting. OpenAI offers new tiers there, from the cheapest to the most capable, and Mistral can write them too, with the key it already uses for transcription.
+
+## Le consentement des participants, rappelé au démarrage
+<!-- id: consentement-participants | genre: amelioration | pour: tous -->
+
+Sur ordinateur, la fenêtre « Quel type de réunion ? » rappelle désormais que tous les participants doivent accepter l'enregistrement qui va démarrer.
+
+### en: Participant consent, a reminder at start
+
+On a computer, the “What kind of meeting?” window now reminds you that every participant must agree to the recording about to start.
+
+## Choisissez ce qui accompagne le compte rendu
+<!-- id: options-du-compte-rendu | genre: amelioration | pour: tous -->
+
+En générant un résumé, deux tuiles sous « Ajouter au compte rendu » : « Actions détectées », allumée et avec leur nombre — éteignez-la pour un compte rendu sans la liste des actions —, et « Infographie », éteinte, si elle vous est proposée.
+
+### en: Choose what comes with the summary
+
+When generating a summary, two tiles under "Add to the summary": "Detected actions", on and showing how many — turn it off for a summary without the action list — and "Infographic", off, if it is offered to you.
+
+## La détection d'actions part en « Stricte »
+<!-- id: detection-stricte-par-defaut | genre: amelioration | pour: tous -->
+
+Pendant la réunion, seules les tâches annoncées comme telles — « Action : Marie envoie le compte rendu vendredi » — apparaissent désormais dans le panneau. Pour voir aussi les « je m'en occupe », passez en Équilibrée dans Ma configuration → Détection d'actions.
+
+### en: Action detection now starts on "Strict"
+
+During the meeting, only tasks announced as such — "Action: Marie sends the minutes on Friday" — now show up in the panel. To also catch "I'll take care of it", switch to Balanced in My configuration → Action detection.
+
+## Configuration, Authentification et Actions se lisent d'un coup d'œil
+<!-- id: admin-configuration-authentification-repliees | genre: amelioration | pour: administrateurs -->
+
+Administration → Configuration, Authentification et Actions s'ouvrent repliées, comme l'onglet IA. Des tuiles disent ce qui est en place — vocabulaire, couleurs, boutons proposés et où ils apparaissent ; une pastille par mode de connexion montre ce qui est affiché. Un clic déplie le réglage, et « Modifié » signale ce qui reste à enregistrer.
+
+### en: Configuration, Authentication and Actions at a glance
+
+Administration → Configuration, Authentication and Actions open folded, like the AI tab. Tiles show what is in place — vocabulary, colors, buttons offered and where they appear; one pill per sign-in method shows what is displayed. A click unfolds the setting, and “Changed” flags what is left to save.
+
+## Quota atteint en pleine réunion : un message, et la réunion continue
+<!-- id: quota-atteint-en-reunion | genre: amelioration | pour: tous -->
+
+Si vos minutes du mois s'épuisent pendant une réunion, un message vous prévient et reste affiché jusqu'à ce que vous le fermiez. La réunion n'est pas coupée : elle s'enregistre et se transcrit jusqu'à ce que vous l'arrêtiez, même si votre quota change en cours de route. Vous ne pourrez simplement pas en démarrer d'autre avant le renouvellement.
+
+### en: Quota reached mid-meeting: a message, and the meeting goes on
+
+If your monthly minutes run out during a meeting, a message tells you and stays until you close it. The meeting is not cut: it keeps recording and transcribing until you stop it, even if your quota changes along the way. You just won't be able to start another one before the reset.
+
+## La transcription peut aussi passer par Mistral, Speechmatics ou AssemblyAI
+<!-- id: transcription-mistral-voxtral | genre: nouveaute | pour: administrateurs -->
+
+Administration → IA devient un tableau de bord : une pastille par fournisseur, avec sa clé, et trois tuiles qui disent ce qui tourne ; un clic déplie le réglage. La clé de Mistral, Speechmatics ou AssemblyAI débloque ses modèles, comparés sur une ligne avec leur prix. En choisir un lui confie le direct comme les fichiers importés ; les comptes rendus restent chez OpenAI.
+
+### en: Transcription can also go through Mistral, Speechmatics or AssemblyAI
+
+Administration → AI becomes a dashboard: one pill per provider, with its key, and three tiles showing what runs; a click unfolds the setting. A Mistral, Speechmatics or AssemblyAI key unlocks its models, compared one per line with their price. Picking one has it transcribe live speech and imported files; summaries stay with OpenAI.
+
+## Un seul groupe par compte, et un groupe Admin illimité
+<!-- id: groupe-unique-et-admin | genre: amelioration | pour: administrateurs -->
+
+Administration → Groupes : un compte n'est plus que dans un groupe, dont il reçoit quota et droits ;
+le placer ailleurs l'enlève du précédent. Un compte passé Administrateur entre dans le nouveau
+groupe « Admin », illimité, comme les administrateurs actuels ; redevenu Utilisateur, il revient
+dans « Défaut ». Qui avait plusieurs groupes garde celui qui lui donnait le plus de minutes.
+
+### en: One group per account, and an unlimited Admin group
+
+Administration → Groups: an account now belongs to a single group, whose quota and rights it gets;
+placing it elsewhere removes it from the previous one. An account made Administrator joins the new
+“Admin” group, unlimited, like current administrators; back to User, it returns to “Default”.
+Accounts that had several groups keep the one that gave them the most minutes.
+
 ## Statistiques : filtres, usage par personne et rapport PDF
 <!-- id: statistiques-pilotage | genre: nouveaute | pour: administrateurs -->
 
@@ -770,7 +1091,7 @@ plus tard, quand vous le voulez, avec « Nouveau résumé ».
 Son icône, dans la barre de Chrome, ouvre MyBrief ou démarre une réunion depuis
 n'importe quel site, et affiche REC pendant l'enregistrement. En option, elle
 vous rappelle d'enregistrer quand une visio Meet, Teams, Zoom ou Webex
-commence. À installer depuis Ma configuration → Extension Chrome.
+commence. À installer depuis Réglages → Outils → Extension Chrome.
 
 ## Savoir qui parle, et nommer les voix de la visio
 <!-- id: qui-parle | genre: nouveaute | pour: tous | date: 2026-09-02 | version: 1.2.0.224 -->

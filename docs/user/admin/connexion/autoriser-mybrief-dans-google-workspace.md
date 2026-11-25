@@ -26,8 +26,9 @@ domaine.
 - Dans la console Google Cloud : le rôle **Propriétaire** — ou **Éditeur** — d'un projet **rattaché à
   l'organisation** de votre Google Workspace. C'est la condition du type **Interne**.
 - Dans la console d'administration Google : un **super-administrateur**.
-- Les deux URI, dans **Administration → Authentification**, carte **Connexion avec Google** : **URI de
-  redirection autorisée** et **URI de redirection (envoi par mail)**.
+- Les deux URI, dans **Administration → Organisation → Authentification**, pastille **Google** de la
+  carte **Page de connexion** : **URI de redirection autorisée** et **URI de redirection (envoi par
+  mail)**.
 
 ## Déclarer myBrief dans Google Cloud
 
@@ -40,7 +41,7 @@ domaine.
    Facultatif en interne, indispensable en externe.
 5. **Google Auth Platform → Clients → Créer un client** : type **Application Web**, et dans **URI de
    redirection autorisés**, les **deux** URI de myBrief, telles quelles.
-6. Recopiez l'**ID client** et le **secret client** dans la carte **Connexion avec Google** — voir
+6. Recopiez l'**ID client** et le **secret client** dans le détail de la pastille **Google** — voir
    [Activer la connexion Google](activer-la-connexion-google.md).
 
 | Scope | Classement Google | Ce que Google permet | Ce que myBrief en fait |
@@ -103,9 +104,9 @@ pas approuvées : approuvez myBrief d'abord.
 
 ## Vérifier
 
-1. **Administration → Authentification**, carte **Page de connexion** : **Tester** sur **Continuer avec
-   Google**.
-2. Avec un compte de test : **Ma configuration → Connexion → Connecter mon compte Google**, puis
+1. **Administration → Organisation → Authentification**, carte **Page de connexion** : dépliez la
+   pastille **Google**, puis **Tester**.
+2. Avec un compte de test : **Réglages → Comptes connectés → Connecter mon compte Google**, puis
    **Tester l'envoi** et **Tester le dépôt**.
 3. Dans **Entreposer**, la fenêtre de choix du dossier propose **Mon Drive** et les Drive partagés.
 
@@ -113,7 +114,7 @@ pas approuvées : approuvez myBrief d'abord.
 
 | Ce qui arrive | Cause | Quoi faire |
 |---|---|---|
-| Google affiche **redirect_uri_mismatch** | Une des deux URI manque, ou diffère d'un caractère | Les recopier depuis la carte **Connexion avec Google** |
+| Google affiche **redirect_uri_mismatch** | Une des deux URI manque, ou diffère d'un caractère | Les recopier depuis le détail de la pastille **Google** |
 | Google affiche « Accès bloqué », erreur **admin_policy_enforced** | Gmail ou Drive restreint, ou applications non configurées interdites | Approuver myBrief dans **Commandes des API** |
 | Google affiche l'erreur **org_internal** | Audience **Interne**, compte hors de l'organisation | Relier un compte de l'organisation, ou passer en externe |
 | Google affiche l'erreur **access_denied**, « n'a pas terminé la procédure de validation » | Externe en test, compte absent des utilisateurs test | L'ajouter aux **utilisateurs test** |

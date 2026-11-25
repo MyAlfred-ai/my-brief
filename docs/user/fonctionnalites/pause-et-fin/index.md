@@ -1,6 +1,6 @@
 ---
 title: La pause et la fin d'une réunion
-description: Suspendre l'enregistrement sans rien perdre, le terminer avec ou sans compte rendu, et reprendre après une coupure.
+description: Suspendre l'enregistrement sans rien perdre, le terminer avec ou sans compte rendu, le reprendre après l'arrêt, et reprendre après une coupure.
 sidebar:
   order: 3
 ---
@@ -23,8 +23,8 @@ atelier. Et à choisir, à la fin, entre un compte rendu tout de suite ou plus t
 | Au repos | **Démarrer** |
 | Pendant l'enregistrement | La vague sonore, **Pause** et **Terminer** |
 | En pause | « En pause — la réunion n'est pas terminée », **Reprendre** et **Terminer** |
-| Après l'arrêt, sans résumé | **Enregistrer** et **Résumer →** |
-| Réunion rangée, ou résumée | Plus rien : la barre s'efface, **Résumer** ou **Nouveau résumé** passe à droite des onglets |
+| Après l'arrêt, sans résumé | **Reprendre**, **Enregistrer** et **Résumer →** |
+| Réunion rangée, ou résumée | Plus rien : la barre s'efface, **Résumer** ou **Nouveau résumé** passe à droite des onglets, **Reprendre l'enregistrement** en bas de la transcription |
 
 **La pause suspend tout** : la capture, la transcription, la détection d'actions et le chronomètre.
 Elle n'a pas de limite de durée. La barre du haut affiche « En pause », celle du bas « En pause — la
@@ -46,7 +46,7 @@ téléphone, la barre du bas porte en plus **Notes** et **Actions** : voir
 ```mermaid
 stateDiagram-v2
   accTitle: Les états d'une réunion, et les boutons qui les relient
-  accDescr: Démarrer lance l'enregistrement, Pause le suspend, Reprendre le relance. Terminer, pendant l'enregistrement comme en pause, ouvre « Terminer la réunion ? » : Résumer maintenant arrête et rédige le compte rendu, en gardant tout ; Enregistrer sans résumé arrête et range la réunion avec sa transcription, ses notes et ses actions, sans compte rendu ; Supprimer la réunion abandonne tout ; Annuler revient à l'état d'avant.
+  accDescr: Démarrer lance l'enregistrement, Pause le suspend, Reprendre le relance. Terminer, pendant l'enregistrement comme en pause, ouvre « Terminer la réunion ? » : Résumer maintenant arrête et rédige le compte rendu, en gardant tout ; Enregistrer sans résumé arrête et range la réunion avec sa transcription, ses notes et ses actions, sans compte rendu ; Supprimer la réunion abandonne tout ; Annuler revient à l'état d'avant. Une réunion résumée ou rangée se reprend : l'enregistrement repart dans la même réunion.
   state "Enregistrement" as REC
   state "En pause" as PAUSE
   state "Terminer la réunion ?" as FIN
@@ -61,15 +61,23 @@ stateDiagram-v2
   FIN --> RESUMEE : Résumer maintenant
   FIN --> RANGEE : Enregistrer sans résumé
   FIN --> SUPPR : Supprimer la réunion
+  RESUMEE --> REC : Reprendre
+  RANGEE --> REC : Reprendre
 ```
+
+**Une réunion terminée se reprend.** **Reprendre**, juste après l'arrêt, ou **Reprendre
+l'enregistrement**, en bas de la transcription d'une réunion rouverte : la suite s'ajoute à la même
+réunion, et le chronomètre repart de sa durée.
 
 **Les longues réunions.** Au bout de trois heures d'enregistrement, pauses exclues, myBrief demande
 « Toujours en réunion ? » — puis de nouveau à chaque heure. Sans réponse en cinq minutes,
 l'enregistrement s'arrête. À huit heures, il s'arrête de lui-même.
 
 **Les coupures.** Fermer ou recharger la page pendant une réunion ne demande aucune confirmation. À la
-réouverture, myBrief propose de reprendre : la transcription est conservée, l'audio déjà capté ne
-l'est pas.
+réouverture, myBrief propose de reprendre la même réunion : la transcription, les notes, les actions et
+le chronomètre sont conservés, l'audio déjà capté ne l'est pas. Sur téléphone, un appel ou un passage
+sur une autre application n'arrête pas la réunion : le micro repart seul au retour, et un repère marque
+le trou dans la transcription.
 
 ## Les façons de s'en servir
 
@@ -78,6 +86,7 @@ l'est pas.
 | Suspendre l'enregistrement, puis le relancer | [Mettre en pause et reprendre](mettre-en-pause-et-reprendre.md) |
 | Arrêter la réunion : avec un compte rendu, sans, ou en l'effaçant | [Terminer une réunion](terminer-une-reunion.md) |
 | Retrouver une réunion après une fermeture de page, une longue réunion, une coupure | [Reprendre une réunion interrompue](reprendre-une-reunion-interrompue.md) |
+| Enregistrer la suite d'une réunion déjà arrêtée, tout de suite ou un autre jour | [Reprendre une réunion terminée](reprendre-une-reunion-terminee.md) |
 
 ## Ce que vous pouvez régler
 
@@ -94,6 +103,10 @@ tard. La transcription reprend à la suite, le chronomètre aussi.
 
 **Résumer plus tard.** Fin d'un atelier : **Terminer**, **Enregistrer sans résumé**. La réunion est
 titrée et rangée, avec ses notes et ses actions ; vous la résumerez demain depuis l'historique.
+
+**Une réunion en deux temps.** Pause déjeuner d'un atelier : **Terminer**, **Enregistrer sans
+résumé**. L'après-midi, ouvrez-le dans l'historique, onglet **Transcription**, **Reprendre
+l'enregistrement** : la suite s'écrit dans le même atelier.
 
 **Un faux départ.** Vous avez démarré par erreur : **Terminer**, **Supprimer la réunion**, puis
 **Supprimer** dans la confirmation. Rien n'est gardé.

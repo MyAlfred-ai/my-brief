@@ -5,7 +5,8 @@ sidebar:
   order: 4
 ---
 
-**Administration → Actions**, carte **Nom des fichiers par défaut**.
+**Administration → Capacités → Actions**, groupe **Réglages communs**, tuile **Nom des fichiers** : elle
+montre le format en place, ou « Format habituel » ; un clic déplie **Nom des fichiers par défaut**.
 
 ## Étapes
 

@@ -29,7 +29,8 @@ L'enregistrement s'arrête **définitivement**, puis la carte de génération s'
 template et cliquez **Générer →** — voir [Générer un résumé](../resumes/generer-un-resume.md).
 
 Si vous fermez la carte sans générer — **Annuler**, touche **Échap** ou onglet **Transcription** —,
-l'enregistrement reste arrêté : la barre du bas propose alors **Enregistrer** et **Résumer →**.
+l'enregistrement reste arrêté : la barre du bas propose alors **Reprendre**, **Enregistrer** et
+**Résumer →**.
 
 ## Enregistrer sans résumé
 
@@ -56,9 +57,13 @@ décomptées.
 ## Après la fin
 
 - La réunion reste affichée à l'écran, même après un rechargement de la page.
+- Elle n'est pas close pour de bon : **Reprendre** — ou **Reprendre l'enregistrement**, en bas de sa
+  transcription — relance l'enregistrement dans la même réunion. Voir
+  [Reprendre une réunion terminée](reprendre-une-reunion-terminee.md).
 - **Télécharger l'audio**, en bas de l'onglet **Transcription**, enregistre le son sur votre appareil,
-  au format webm. Seulement dans le navigateur qui a enregistré, et tant que vous n'avez ni rechargé la
-  page ni démarré une autre réunion : myBrief ne garde pas l'audio.
+  au format webm — environ 20 Mo par heure de réunion. Seulement dans le navigateur qui a enregistré, et tant que vous n'avez ni rechargé la
+  page ni démarré une autre réunion : myBrief ne garde pas l'audio. Après une reprise, il ne couvre
+  que la partie enregistrée depuis.
 - Pour enregistrer une autre réunion : **Nouvelle réunion**, en haut de la colonne de gauche — sur
   téléphone, le **+** en haut à droite. L'écran se vide et l'enregistrement démarre aussitôt.
 - La barre du bas disparaît une fois le compte rendu généré : **Nouveau résumé**, à droite des onglets

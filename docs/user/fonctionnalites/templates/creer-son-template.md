@@ -16,8 +16,9 @@ mettre en avant. Des exemples complets sont prêts à recopier dans
 
 ## Étapes
 
-1. Ouvrez **Ma configuration** (la roue crantée, en bas de la colonne de gauche — sur téléphone,
-   votre avatar, en haut à droite, puis **Configuration**), puis **Mes templates**. Le compteur indique combien il vous en reste, sur cinq.
+1. Ouvrez **Réglages** (le bouton, en bas de la colonne de gauche — sur téléphone, votre avatar, en
+   haut à droite, puis **Réglages**), puis **Mes templates**. Le compteur indique combien il vous en
+   reste, sur cinq.
 2. Cliquez **Ajouter un template**. La fenêtre **Partez d'un modèle** propose **Partir de zéro**, ou
    **Inspiré de** Standard, Réunion de décision, Brainstorming ou Rétrospective : ses directives et sa
    mise en forme sont alors recopiées, son nom suivi de « (copie) ».
@@ -44,7 +45,7 @@ mettre en avant. Des exemples complets sont prêts à recopier dans
 ## Résultat
 
 Le template apparaît dans la section **Mes templates** de la carte de génération, dès que vous avez
-fermé **Ma configuration**.
+fermé **Réglages**.
 
 ## Écrire de bonnes directives
 

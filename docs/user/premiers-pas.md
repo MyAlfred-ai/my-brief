@@ -50,21 +50,23 @@ sujet qui explique la zone en détail.
 | **2** | L'**historique** : vos réunions, groupées par semaine puis par mois. Au-dessus, **Rechercher…** et **Filtrer par tag**. Un clic sur une réunion l'ouvre. | [L'historique](fonctionnalites/historique/index.md) |
 | **3** | Les onglets de la réunion : **Transcription**, ce qui s'est dit, puis un onglet **Résumé** par version du compte rendu. **Nouveau résumé**, à droite, en rédige une autre. | [La transcription](fonctionnalites/transcription/index.md), [Les résumés](fonctionnalites/resumes/index.md) |
 | **4** | Le **template** qui a donné sa forme au compte rendu, ici **Standard**. | [Les templates](fonctionnalites/templates/index.md) |
-| **5** | Le **résumé**, que vous corrigez directement ; la barre au-dessus le met en forme. **Créer une infographie**, à droite, en tire une image, si votre administrateur la propose. | [Les résumés](fonctionnalites/resumes/index.md) |
+| **5** | Le **résumé**, que vous corrigez directement ; la barre au-dessus le met en forme. **Créer une infographie**, à droite, en tire une page visuelle à votre logo, si votre administrateur la propose. | [Les résumés](fonctionnalites/resumes/index.md) |
 | **6** | Le **tag** de la réunion, ici **Projet Atlas** : il la range, et peut porter ses destinataires et son dossier. Sa couleur marque la réunion dans l'historique. | [Les tags](fonctionnalites/tags/index.md) |
 | **7** | **Partager** : **Télécharger le PDF** et, quand ils sont disponibles, **Envoyer par mail** et **Entreposer**. | [Les actions après réunion](fonctionnalites/actions/index.md) |
 | **8** | Les **actions détectées** : qui fait quoi, pour quand. Chacune se corrige, et **Ajouter une action manuellement** complète la liste. | [La détection d'actions](fonctionnalites/detection-d-actions/index.md) |
 | **9** | Les **notes de réunion** : ce qui n'a pas été dit à voix haute, repris dans le compte rendu. | [La prise de notes](fonctionnalites/notes/index.md) |
-| **10** | Votre **nom**, qui ouvre le menu de compte — **Ce mois-ci**, la **Langue**, la sortie —, et la **roue crantée**, qui ouvre **Ma configuration**. Si votre groupe a un quota, l'anneau autour de l'avatar et la ligne sous votre nom disent ce qu'il vous reste ce mois-ci. | [Ma configuration](fonctionnalites/configuration/index.md) |
+| **10** | La **carte du compte** : votre avatar, votre nom, puis le bouton **Réglages** — votre profil, la langue, vos réglages personnels, la sortie — et, pour un administrateur, le bouton **Admin**. Si votre groupe a un quota, l'anneau autour de l'avatar et la ligne sous votre nom disent ce qu'il vous reste ce mois-ci. | [Réglages](fonctionnalites/configuration/index.md) |
 
 ### Ce que la capture ne montre pas
 
+- **Le bouton Admin**, sous **Réglages** dans la carte du compte (10), n'apparaît que pour un
+  administrateur : la capture montre le compte d'une utilisatrice.
 - **La barre du bas** — **Démarrer**, puis **Pause** et **Terminer** pendant la réunion — est masquée
   quand une réunion terminée est ouverte, comme ici. Voir
   [La pause et la fin d'une réunion](fonctionnalites/pause-et-fin/index.md).
 - **Sur un téléphone**, la colonne de gauche se replie derrière le menu, en haut à gauche, à côté du
-  logo. Votre **avatar** passe en haut à droite : il ouvre le menu de compte, qui porte aussi
-  **Configuration** et, pour un administrateur, **Administration**. Voir
+  logo. Votre **avatar** passe en haut à droite : il ouvre la carte du compte — **Ce mois-ci**, puis
+  les boutons **Réglages** et, pour un administrateur, **Admin**. Voir
   [Enregistrer sur son téléphone](fonctionnalites/enregistrement/enregistrer-sur-son-telephone.md).
 - **Sur une tablette tenue en hauteur, ou dans une fenêtre étroite**, elle se replie en barre
   d'icônes, et s'ouvre par-dessus la page. Voir [L'historique](fonctionnalites/historique/index.md).

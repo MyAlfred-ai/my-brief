@@ -3,7 +3,8 @@
  * « Réunion avec visio » ouvre le partage d'écran, « Réunion en présentiel »
  * démarre au micro seul ; « Annuler », le fond et Échap ne démarrent rien.
  * Dans Firefox et Safari, le rappel nomme le périphérique du son de
- * l'ordinateur au lieu d'une fenêtre de partage qui ne s'ouvrira pas.
+ * l'ordinateur au lieu d'une fenêtre de partage qui ne s'ouvrira pas. Sous le
+ * titre, le consentement obligatoire de tous les participants.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
@@ -57,6 +58,15 @@ describe('MeetingTypeModal', () => {
     expect(p.onCancel).not.toHaveBeenCalled();
   });
 
+  it('rappelle, sous le titre, que l’accord de tous les participants est obligatoire', () => {
+    const { container } = render(MeetingTypeModal, { props: props() });
+    const consent = container.querySelector('.mtm-consent');
+    expect(consent.textContent.replace(/\s+/g, ' ').trim()).toBe(
+      `${fr.consentTitle} ${fr.consent}`,
+    );
+    expect(consent.previousElementSibling).toBe(screen.getByRole('heading', { name: fr.title }));
+  });
+
   it('le focus arrive sur le premier choix : Entrée suffit au clavier', () => {
     render(MeetingTypeModal, { props: props() });
     expect(document.activeElement).toBe(screen.getByRole('button', { name: fr.inPerson }));
@@ -76,6 +86,7 @@ describe('MeetingTypeModal', () => {
     const en = uiTextData.en.meetingType;
     expect(screen.getByRole('dialog', { name: en.title })).toBeTruthy();
     expect(screen.getByText(en.visioHint)).toBeTruthy();
+    expect(screen.getByText(en.consentTitle)).toBeTruthy();
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: en.visio }));
     expect(p.onChoose).toHaveBeenCalledWith(true);

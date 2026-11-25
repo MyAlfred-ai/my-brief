@@ -3,10 +3,13 @@
  *
  *  - LIÉ : « Nouvelle réunion » (ou « Revenir à la réunion » si elle tourne),
  *    « Ouvrir MyBrief », deux liens, l'état : réunion en cours avec sa durée,
- *    sinon la session si l'API la connaît. Le rappel visio se règle ici.
+ *    sinon la session si l'API la connaît. Le rappel visio se règle ici. Si
+ *    la permission du site manque (autre ordinateur, retirée à la main), un
+ *    bouton la redemande en tête : sans elle, rien ne marche vraiment.
  *  - PAS LIÉ : on lit l'onglet courant (activeTab : accordé par le clic sur
- *    l'icône, le temps du popup), on demande à la sonde publique si c'est un
- *    MyBrief, et on propose « Utiliser ce site comme mon MyBrief ». Le clic
+ *    l'icône, le temps du popup), on demande à la sonde publique, DEPUIS
+ *    l'onglet, si c'est un MyBrief, et on propose « Utiliser ce site comme mon
+ *    MyBrief ». Le clic
  *    demande la permission d'hôte pour CE site — obligatoirement en premier
  *    dans le gestionnaire : Chrome n'accorde une permission que pendant le
  *    geste de l'utilisateur, un `await` avant l'invalide. Même règle pour la
@@ -26,9 +29,11 @@ import {
   getInstance,
   setInstance,
   clearInstance,
+  probeTab,
   probeInstance,
   fetchSession,
-  ensureContentScript,
+  hasSiteAccess,
+  activateBridge,
   openInstance,
 } from '../lib/instance.js';
 import {
@@ -87,6 +92,8 @@ async function renderLinked(instance) {
     await renderUnlinked();
   };
 
+  await renderAccess(instance);
+
   // Rappel visio : la case reflète la préférence ; l'activer demande la
   // permission de lire l'adresse des onglets de visio, en premier (geste).
   const reminder = $('reminder');
@@ -108,6 +115,39 @@ async function renderLinked(instance) {
   };
 
   await renderStatus(origin);
+}
+
+/**
+ * La permission du site lié manque-t-elle ? Alors le bouton qui la redemande
+ * passe en tête. Le clic demande la permission EN PREMIER (geste), puis
+ * remet le pont en route dans les onglets déjà ouverts.
+ *
+ * @param {{origin: string}} instance
+ */
+async function renderAccess(instance) {
+  const { origin } = instance;
+  const box = $('reauth');
+  const button = $('reauth-btn');
+  box.hidden = await hasSiteAccess(origin);
+  // Un seul bouton de marque à la fois : tant que l'accès manque, c'est lui.
+  $('new-meeting').classList.toggle('btn-brand', box.hidden);
+  if (box.hidden) return;
+  $('reauth-text').textContent = t('reauthHint', [hostLabel(origin)]);
+  button.textContent = t('reauthUse', [hostLabel(origin)]);
+  button.disabled = false;
+  button.onclick = async () => {
+    button.disabled = true;
+    let granted = false;
+    try {
+      granted = await chrome.permissions.request({ origins: [hostPattern(origin)] });
+    } catch {}
+    if (!granted) {
+      button.disabled = false;
+      return;
+    }
+    await activateBridge(origin).catch(() => {});
+    await renderLinked(instance);
+  };
 }
 
 /** La ligne d'état : réunion en cours (durée vivante) > visio ouverte > session. */
@@ -158,7 +198,13 @@ async function renderUnlinked() {
 
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   const origin = originOf(tab?.url);
-  const found = origin ? await probeInstance(origin) : null;
+  let found = null;
+  if (origin && tab?.id != null) {
+    found = await probeTab(tab.id);
+    // L'onglet refuse toute exécution (page protégée, politique) : sonde
+    // directe, qui ne passe que si la permission du site existe déjà.
+    if (found === undefined) found = await probeInstance(origin);
+  }
   if (!origin || !found) {
     probe.textContent = t('linkNotFound');
     return;
@@ -184,15 +230,7 @@ async function renderUnlinked() {
     try {
       const instance = { origin, logo: found.logo, linkedAt: Date.now() };
       await setInstance(instance);
-      await ensureContentScript(origin);
-      // Le script inscrit ne jouera qu'au prochain chargement : on l'exécute
-      // tout de suite dans l'onglet, pour que la page « Extension Chrome »
-      // passe au vert sans F5.
-      if (tab?.id) {
-        await chrome.scripting
-          .executeScript({ target: { tabId: tab.id }, files: ['content.js'] })
-          .catch(() => {});
-      }
+      await activateBridge(origin);
       await renderLinked(instance);
     } catch {
       error.textContent = t('linkFailed');

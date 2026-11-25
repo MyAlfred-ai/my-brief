@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest';
 import {
   applyTextTransform,
   clustersOf,
+  colorAt,
   isEmojiCluster,
   isWinAnsi,
   markerText,
   onWhite,
+  parseLinearGradient,
   parseRgb,
   stripIgnorable,
   wordsOf,
@@ -115,5 +117,53 @@ describe('divers', () => {
   it('WinAnsi (Courier) : Latin-1 et les 27 caractères de 0x80–0x9F', () => {
     expect([...'aé€’œ—'].every((c) => isWinAnsi(c.codePointAt(0)))).toBe(true);
     expect([...'→≥ł'].some((c) => isWinAnsi(c.codePointAt(0)))).toBe(false);
+  });
+});
+
+describe('parseLinearGradient — ce que getComputedStyle rend des dégradés de la feuille', () => {
+  it('horizontal : 90deg ou to right ; vertical : 180deg, to bottom ou sans direction', () => {
+    const stops = [
+      { at: 0, color: [243, 132, 0] },
+      { at: 1, color: [255, 175, 0] },
+    ];
+    const css = 'rgb(243, 132, 0), rgb(255, 175, 0)';
+    expect(parseLinearGradient(`linear-gradient(90deg, ${css})`)).toEqual({ axis: 'x', stops });
+    expect(parseLinearGradient(`linear-gradient(to right, ${css})`)).toEqual({ axis: 'x', stops });
+    expect(parseLinearGradient(`linear-gradient(180deg, ${css})`)).toEqual({ axis: 'y', stops });
+    expect(parseLinearGradient(`linear-gradient(to bottom, ${css})`)).toEqual({ axis: 'y', stops });
+    expect(parseLinearGradient(`linear-gradient(${css})`)).toEqual({ axis: 'y', stops });
+  });
+
+  it('lit les positions, répartit celles qui manquent, pose le translucide sur le blanc', () => {
+    const g = parseLinearGradient(
+      'linear-gradient(90deg, rgb(0, 0, 0) 10%, rgba(0, 0, 255, 0.5), rgb(255, 0, 0) 90%)',
+    );
+    expect(g.stops.map((s) => s.at)).toEqual([0.1, 0.5, 0.9]);
+    expect(g.stops[1].color).toEqual([128, 128, 255]);
+  });
+
+  it('ignore ce que le PDF ne sait pas peindre : oblique, image, couches multiples', () => {
+    expect(parseLinearGradient('none')).toBeNull();
+    expect(parseLinearGradient('linear-gradient(45deg, rgb(0, 0, 0), rgb(1, 1, 1))')).toBeNull();
+    expect(parseLinearGradient('radial-gradient(rgb(0, 0, 0), rgb(1, 1, 1))')).toBeNull();
+    expect(parseLinearGradient('linear-gradient(90deg, rgb(0, 0, 0))')).toBeNull();
+    expect(
+      parseLinearGradient('linear-gradient(90deg, rgb(0, 0, 0), rgb(1, 1, 1)), url("a.png")'),
+    ).toBeNull();
+    expect(
+      parseLinearGradient('linear-gradient(90deg, oklch(0.7 0.1 50), rgb(1, 1, 1))'),
+    ).toBeNull();
+  });
+
+  it('colorAt interpole entre les arrêts et borne aux extrémités', () => {
+    const stops = [
+      { at: 0.2, color: [0, 0, 0] },
+      { at: 0.6, color: [200, 100, 0] },
+      { at: 1, color: [200, 100, 200] },
+    ];
+    expect(colorAt(stops, 0)).toEqual([0, 0, 0]);
+    expect(colorAt(stops, 0.4)).toEqual([100, 50, 0]);
+    expect(colorAt(stops, 0.8)).toEqual([200, 100, 100]);
+    expect(colorAt(stops, 1)).toEqual([200, 100, 200]);
   });
 });

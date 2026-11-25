@@ -7,7 +7,7 @@
  *                « nourrir » ;
  *   - `policy` : qui envoie ses réunions —
  *       `off`    personne (défaut : déployer cette version ne change rien) ;
- *       `optin`  chaque utilisateur choisit, dans « Ma configuration », et rien
+ *       `optin`  chaque utilisateur choisit, dans « Réglages », et rien
  *                ne part tant qu'il n'a pas activé l'envoi ;
  *       `forced` tout le monde, sans interrupteur côté utilisateur.
  *

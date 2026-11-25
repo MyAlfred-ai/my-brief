@@ -48,7 +48,7 @@ site réponde en HTTPS. Vous répondez à ses questions ; il ne devine rien.
    |---|---|
    | **Nom de domaine** | L'adresse de myBrief, sans `https://`. L'installeur vérifie qu'elle pointe sur ce serveur, et prévient sinon |
    | **Email pour Let's Encrypt** | L'adresse qui recevra les avis d'expiration du certificat. Premier parcours seulement |
-   | **Clé API OpenAI** | La clé de l'organisation, en saisie masquée. Vide si vous ne l'avez pas : elle se saisit ensuite dans l'onglet **IA** |
+   | **Clé API OpenAI** | La clé de l'organisation, en saisie masquée. Vide si vous ne l'avez pas : elle se saisit ensuite dans **Administration → Modèles IA → Clés API** |
    | **Email du premier administrateur** | L'adresse du compte d'amorçage : la vôtre, ou celle de la personne qui administrera myBrief |
 
    Le second parcours demande en plus trois réglages du Traefik en place : **Réseau docker du

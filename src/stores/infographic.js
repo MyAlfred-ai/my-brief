@@ -25,13 +25,32 @@
 import { writable, get } from 'svelte/store';
 import { get as apiGet, post as apiPost } from '../services/apiClient.js';
 
-/** `status` : none | pending | loading | ready | error. */
-const IDLE = { meetingId: null, status: 'none', dataUrl: '', stamp: '' };
+/**
+ * `status` : none | pending | loading | ready | error.
+ * Une infographie prête porte SOIT `layout` (gabarit, depuis le 2026-11-17 :
+ * le contenu que components/infographic/ met en page), SOIT `dataUrl` (image
+ * d'avant les gabarits, servie telle quelle).
+ */
+const IDLE = { meetingId: null, status: 'none', dataUrl: '', layout: null, stamp: '' };
+
+/** Le contenu prêt d'une réponse de GET /infographic, ou null. */
+function readyContent(data) {
+  if (data?.status !== 'ready') return null;
+  if (data.layout && typeof data.layout === 'object') return { dataUrl: '', layout: data.layout };
+  if (data.dataUrl) return { dataUrl: data.dataUrl, layout: null };
+  return null;
+}
 
 export const infographicView = writable({ ...IDLE });
 
-const POLL_MS = 4000;
-const POLL_MAX = 90; // ~6 min — bien au-delà d'une génération réelle (1 à 3 min)
+/**
+ * Cadence de relecture pendant la génération. 2 s depuis le 2026-11-17 (4 s
+ * avant) : l'infographie ne dessine plus d'image et s'écrit en même temps que
+ * le compte rendu — elle est souvent prête à peine demandée, et 4 s d'attente
+ * en plus se voyaient. Une lecture d'état ne coûte presque rien au serveur.
+ */
+export const POLL_MS = 2000;
+const POLL_MAX = 180; // ~6 min — bien au-delà d'une génération réelle
 
 let pollTimer = null;
 let pollAttempts = 0;
@@ -56,13 +75,13 @@ function stillCurrent(id, status = null) {
 function applyStatus(id, status, stamp) {
   stopPolling();
   if (status === 'ready') {
-    infographicView.set({ meetingId: id, status: 'loading', dataUrl: '', stamp });
+    infographicView.set({ ...IDLE, meetingId: id, status: 'loading', stamp });
     loadImage(id);
   } else if (status === 'pending') {
-    infographicView.set({ meetingId: id, status: 'pending', dataUrl: '', stamp });
+    infographicView.set({ ...IDLE, meetingId: id, status: 'pending', stamp });
     schedulePoll(id);
   } else {
-    infographicView.set({ meetingId: id, status, dataUrl: '', stamp });
+    infographicView.set({ ...IDLE, meetingId: id, status, stamp });
   }
 }
 
@@ -70,16 +89,19 @@ async function loadImage(id) {
   const data = await fetchState(id);
   if (!stillCurrent(id, 'loading')) return;
   const stamp = data?.updatedAt || get(infographicView).stamp;
-  if (data?.status === 'ready' && data.dataUrl) {
-    infographicView.set({ meetingId: id, status: 'ready', dataUrl: data.dataUrl, stamp });
+  const content = readyContent(data);
+  if (content) {
+    infographicView.set({ meetingId: id, status: 'ready', ...content, stamp });
   } else if (data?.status === 'pending') {
     applyStatus(id, 'pending', stamp);
   } else if (data) {
-    infographicView.set({ meetingId: id, status: data.status || 'none', dataUrl: '', stamp });
+    // `ready` sans contenu lisible : rien à montrer — pas une miniature vide.
+    const status = data.status === 'ready' ? 'none' : data.status || 'none';
+    infographicView.set({ ...IDLE, meetingId: id, status, stamp });
   } else {
     // Réseau muet : on retombe sur « rien » plutôt que de laisser un squelette
     // de chargement à demeure — la prochaine sélection retentera.
-    infographicView.set({ meetingId: id, status: 'none', dataUrl: '', stamp });
+    infographicView.set({ ...IDLE, meetingId: id, status: 'none', stamp });
   }
 }
 
@@ -89,19 +111,20 @@ function schedulePoll(id) {
     const data = await fetchState(id);
     if (!stillCurrent(id, 'pending')) return;
     const stamp = data?.updatedAt || get(infographicView).stamp;
-    if (data?.status === 'ready' && data.dataUrl) {
+    const content = readyContent(data);
+    if (content) {
       stopPolling();
-      infographicView.set({ meetingId: id, status: 'ready', dataUrl: data.dataUrl, stamp });
+      infographicView.set({ meetingId: id, status: 'ready', ...content, stamp });
       return;
     }
     if (data?.status === 'error' || data?.status === 'none') {
       stopPolling();
-      infographicView.set({ meetingId: id, status: data.status, dataUrl: '', stamp });
+      infographicView.set({ ...IDLE, meetingId: id, status: data.status, stamp });
       return;
     }
     if (pollAttempts >= POLL_MAX) {
       stopPolling();
-      infographicView.set({ meetingId: id, status: 'error', dataUrl: '', stamp });
+      infographicView.set({ ...IDLE, meetingId: id, status: 'error', stamp });
       return;
     }
     // `pending` encore, ou réseau muet (data null) : on continue, le plafond borne.
@@ -173,9 +196,9 @@ export async function deleteInfographic(meetingId) {
   const current = get(infographicView);
   stopPolling();
   infographicView.set({
+    ...IDLE,
     meetingId: id,
     status: 'none',
-    dataUrl: '',
     stamp: current.meetingId === id ? current.stamp : '',
   });
   return { ok: true };

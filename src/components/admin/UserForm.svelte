@@ -11,6 +11,14 @@
    * (date exacte de connexion, « SSO uniquement ») et les gestes rares —
    * réinitialiser, supprimer. Ils sont émis vers UsersTab, qui porte déjà
    * leurs confirmations.
+   *
+   * Un compte est dans UN groupe. Changer le rôle déplace le choix comme le
+   * ferait le serveur (cf. `groupAfterRoleChange`,
+   * services/api/lib/repositories/groups.js) : administrateur, il passe dans
+   * le groupe « Admin » ; redevenu utilisateur, il en sort pour le groupe par
+   * défaut. La fiche envoie toujours le groupe affiché : ce que
+   * l'administrateur voit au moment d'enregistrer est ce qui s'applique, même
+   * s'il a choisi un autre groupe après le rôle.
    */
   import { createEventDispatcher } from 'svelte';
   import IconBack from '~icons/solar/arrow-left-linear';
@@ -28,9 +36,10 @@
   export let lang = 'fr';
   /** null = création */
   export let user = null;
-  /** Catalogue des groupes (onglet Groupes) : une case par groupe. */
+  /** Catalogue des groupes (onglet Groupes) : une puce par groupe, une seule choisie. */
   export let groups = [];
   export let defaultId = 'default';
+  export let adminId = 'admin';
   /** Le compte de l'administrateur lui-même : pas de suppression proposée. */
   export let isSelf = false;
 
@@ -42,17 +51,18 @@
   let disabled = !!user?.disabled;
   let password = '';
   let mustChangePassword = true;
-  // Un compte naît dans le groupe par défaut ; la fiche reprend ce qu'il a.
-  let groupIds = user?.groupIds?.length ? [...user.groupIds] : [defaultId];
+  // Un compte naît dans le groupe par défaut ; la fiche reprend le sien.
+  let groupId = user?.groupIds?.[0] || defaultId;
   let saveState = 'idle'; // 'idle' | 'saving' | 'error'
   let errorMessage = '';
 
   $: isEdit = !!user;
   $: lastSeen = formatDateTime(user?.lastConnecion, lang) || texts.never;
 
-  /** Réaffectation (jamais de mutation en place) : les cases suivent le tableau. */
-  function toggleGroup(id) {
-    groupIds = groupIds.includes(id) ? groupIds.filter((g) => g !== id) : [...groupIds, id];
+  /** Le groupe suit le rôle, comme côté serveur — s'il existe encore au catalogue. */
+  function onRoleChange() {
+    const next = role === 'admin' ? adminId : groupId === adminId ? defaultId : groupId;
+    if (groups.some((g) => g.id === next)) groupId = next;
   }
 
   async function submit() {
@@ -66,6 +76,7 @@
     }
 
     saveState = 'saving';
+    const groupIds = [groupId];
     const res = isEdit
       ? await updateUser({ email: user.email, name: name.trim(), role, disabled, groupIds })
       : await createUser({
@@ -126,31 +137,37 @@
     />
 
     <label class="uf-label" for="uf-role">{texts.roleLabel}</label>
-    <select id="uf-role" class="uf-input" disabled={saveState === 'saving'} bind:value={role}>
+    <select
+      id="uf-role"
+      class="uf-input"
+      disabled={saveState === 'saving'}
+      bind:value={role}
+      on:change={onRoleChange}
+    >
       <option value="user">{texts.roleUser}</option>
       <option value="admin">{texts.roleAdmin}</option>
     </select>
 
     {#if groups.length}
-      <!-- Groupes : des cases à cocher en forme de puces, la couleur du groupe
-           en pastille. Tout décoché = groupe par défaut, le serveur l'applique
-           et l'indication le dit. -->
+      <!-- Groupe : des boutons radio en forme de puces, la couleur du groupe
+           en pastille. Un seul choisi : en prendre un autre quitte le premier. -->
       <fieldset class="uf-groups">
         <legend class="uf-label">{texts.groupsLabel}</legend>
         <div class="uf-group-list">
           {#each groups as group (group.id)}
             <label
               class="uf-group"
-              class:uf-group-on={groupIds.includes(group.id)}
+              class:uf-group-on={groupId === group.id}
               style="--g-dot: {groupColorVars(group.color).dot}; --g-soft: {groupColorVars(
                 group.color,
               ).soft}"
             >
               <input
-                type="checkbox"
-                checked={groupIds.includes(group.id)}
+                type="radio"
+                name="uf-group"
+                value={group.id}
                 disabled={saveState === 'saving'}
-                on:change={() => toggleGroup(group.id)}
+                bind:group={groupId}
               />
               <span class="uf-group-dot" aria-hidden="true"></span>
               <span class="uf-group-name">{group.name}</span>

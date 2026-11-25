@@ -1,6 +1,6 @@
 /**
- * Apparence de l'installation (logo, phrase d'accueil, couleurs primaire et
- * secondaire).
+ * Apparence de l'installation (logo de l'application, logo de l'entreprise,
+ * phrase d'accueil, couleurs primaire et secondaire).
  *
  * Trois garanties : réservé aux administrateurs à l'écriture, servi à tout le
  * monde par la sonde publique /api/auth/config (l'écran de connexion porte le
@@ -14,6 +14,7 @@ import { toPublicBrandingSettings } from '../lib/repositories/settings.js';
 const ADMIN = 'patron@client.fr';
 const USER = 'simple@client.fr';
 const LOGO = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==';
+const COMPANY_LOGO = 'data:image/svg+xml;base64,PHN2Zy8+';
 
 const seed = () => ({ user: [userDoc(ADMIN, { role: 'admin' }), userDoc(USER)] });
 
@@ -174,6 +175,7 @@ describe('GET /api/auth/config', () => {
       secondaryColor: '#abc123',
     });
     // Sonde publique : aucune identité.
+    await post(app, '/api/admin/settings/branding', { companyLogo: COMPANY_LOGO });
     const res = await app.inject({ method: 'GET', url: '/api/auth/config' });
     expect(res.statusCode).toBe(200);
     expect(res.json().branding).toEqual({
@@ -184,5 +186,58 @@ describe('GET /api/auth/config', () => {
       secondaryColor: '#abc123',
     });
     expect(res.payload).not.toContain(ADMIN);
+  });
+});
+
+describe("logo de l'entreprise", () => {
+  it("se règle à côté du logo de l'application, sans y toucher, et se retire", async () => {
+    const { app } = buildTestApp({ seed: seed() });
+    await post(app, '/api/admin/settings/branding', { logo: LOGO });
+    const saved = await post(app, '/api/admin/settings/branding', { companyLogo: COMPANY_LOGO });
+    expect(saved.statusCode).toBe(200);
+    expect(saved.json().settings).toMatchObject({ logo: LOGO, companyLogo: COMPANY_LOGO });
+
+    const cleared = await post(app, '/api/admin/settings/branding', { companyLogo: '' });
+    expect(cleared.json().settings).toMatchObject({ logo: LOGO, companyLogo: '' });
+  });
+
+  it('refuse ce qui n’est pas une data-URL image', async () => {
+    const { app } = buildTestApp({ seed: seed() });
+    const res = await post(app, '/api/admin/settings/branding', {
+      companyLogo: 'https://exemple.test/logo.png',
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('ne passe PAS par la sonde publique : un compte connecté le lit à part', async () => {
+    const { app } = buildTestApp({ seed: seed() });
+    await post(app, '/api/admin/settings/branding', { companyLogo: COMPANY_LOGO });
+
+    const probe = await app.inject({ method: 'GET', url: '/api/auth/config' });
+    expect(probe.payload).not.toContain(COMPANY_LOGO);
+
+    const read = await app.inject({
+      method: 'GET',
+      url: '/api/branding/company-logo',
+      headers: identityHeaders(USER),
+    });
+    expect(read.statusCode).toBe(200);
+    expect(read.json()).toEqual({ companyLogo: COMPANY_LOGO });
+  });
+
+  it('sans identité, la route ne répond rien', async () => {
+    const { app } = buildTestApp({ seed: seed() });
+    const res = await app.inject({ method: 'GET', url: '/api/branding/company-logo' });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('non renseigné : une chaîne vide, que le frontend remplace par le logo de l’application', async () => {
+    const { app } = buildTestApp({ seed: seed() });
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/branding/company-logo',
+      headers: identityHeaders(USER),
+    });
+    expect(res.json()).toEqual({ companyLogo: '' });
   });
 });

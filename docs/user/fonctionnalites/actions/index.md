@@ -77,10 +77,10 @@ destinataires fixé par votre administrateur — dix, sauf réglage contraire.
 
 ## Ce que vous pouvez régler
 
-Dans **Ma configuration**, groupe **Actions** : **Envoi d'email** — vos destinataires, l'objet, le nom
-des fichiers —, **Entreposer** — votre dossier, un sous-dossier par tag, une confirmation avant chaque
-dépôt —, et **Connexion**, le compte qui envoie et dépose. Sur les deux premières, **Après le premier
-résumé** ouvre ou ferme la fenêtre **Votre résumé est prêt**.
+Dans **Réglages → Après la réunion**, deux onglets : **Envoi d'email** — vos destinataires, l'objet, le nom des
+fichiers — et **Entreposer** — votre dossier, un sous-dossier par tag, une confirmation avant chaque
+dépôt. Sur l'un comme sur l'autre, **Après le premier résumé** ouvre ou ferme la fenêtre **Votre résumé
+est prêt**. Dans **Réglages → Comptes connectés**, le compte qui envoie et dépose.
 
 Votre administrateur décide des boutons proposés, du fournisseur — Google ou Microsoft —, du plafond de
 destinataires et de ce que peut faire le relais du serveur. Vous réglez tout le reste, dans ses limites.

@@ -1,6 +1,6 @@
 /**
  * Empaquette extension/ en public/mybrief-extension.zip — le fichier que la
- * page « Extension Chrome » de « Ma configuration » propose au téléchargement
+ * page « Extension Chrome » de « Réglages » propose au téléchargement
  * tant que l'extension n'est pas sur le Chrome Web Store
  * (cf. EXTENSION_STORE_URL dans src/config/constants.js).
  *
@@ -12,7 +12,18 @@
  * fixes. Deux builds du même dossier donnent le même octet près, ce qui
  * évite un diff d'image Docker à chaque déploiement.
  *
- * Les tests unitaires (extension/lib/*.test.js) ne sont PAS empaquetés.
+ * Les tests unitaires (extension/lib/*.test.js) ne sont PAS empaquetés, ni la
+ * fiche du Chrome Web Store (extension/store/ : textes, images, leur rendu).
+ *
+ * Les fichiers sont à la RACINE du zip, sans dossier englobant :
+ *  - Windows « Extraire tout » décompresse déjà dans un dossier au nom du zip.
+ *    Un dossier `mybrief-extension/` dans le zip donnait
+ *    `mybrief-extension\mybrief-extension\manifest.json`, et Chrome, pointé sur
+ *    le premier, répondait « Fichier manifeste absent ou illisible »
+ *    (remonté d'une production, 2026-11-18) ;
+ *  - le Chrome Web Store exige `manifest.json` à la racine du zip téléversé.
+ * L'Utilitaire d'archive de macOS crée de lui-même le dossier au nom du zip
+ * quand la racine compte plusieurs entrées.
  *
  * Usage : node scripts/build-extension.mjs [--out chemin.zip]
  */
@@ -23,8 +34,6 @@ import { dirname, resolve, relative, join, sep } from 'node:path';
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '..');
 const SOURCE_DIR = resolve(repoRoot, 'extension');
-/** Nom du dossier une fois décompressé — celui que l'aide cite. */
-const ROOT_NAME = 'mybrief-extension';
 
 const outIndex = process.argv.indexOf('--out');
 const OUT_FILE =
@@ -39,6 +48,7 @@ export function isPackaged(rel) {
   if (rel.endsWith('.test.js')) return false;
   if (rel.startsWith('.') || rel.includes('/.')) return false;
   if (rel === 'README.md') return false;
+  if (rel.startsWith('store/')) return false;
   return true;
 }
 
@@ -138,13 +148,20 @@ export function buildZip(entries) {
 
 // ── Main ─────────────────────────────────────────────────────────────────────
 
+/**
+ * Entrées du zip : chemins relatifs à extension/, SANS dossier englobant
+ * (voir l'en-tête) — `manifest.json` est à la racine.
+ * @returns {Array<{name: string, data: Buffer}>}
+ */
+export function packagedEntries(sourceDir = SOURCE_DIR) {
+  return walk(sourceDir)
+    .filter(isPackaged)
+    .map((rel) => ({ name: rel, data: readFileSync(join(sourceDir, rel)) }));
+}
+
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const files = walk(SOURCE_DIR).filter(isPackaged);
-  const entries = files.map((rel) => ({
-    name: `${ROOT_NAME}/${rel}`,
-    data: readFileSync(join(SOURCE_DIR, rel)),
-  }));
+  const entries = packagedEntries();
   mkdirSync(dirname(OUT_FILE), { recursive: true });
   writeFileSync(OUT_FILE, buildZip(entries));
-  console.log(`extension : ${files.length} fichiers → ${relative(repoRoot, OUT_FILE)}`);
+  console.log(`extension : ${entries.length} fichiers → ${relative(repoRoot, OUT_FILE)}`);
 }

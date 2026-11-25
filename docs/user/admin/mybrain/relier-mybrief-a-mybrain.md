@@ -5,14 +5,15 @@ sidebar:
   order: 1
 ---
 
-**Administration → MyBrain.**
+**Administration → Capacités → MyBrain.**
 
 ## Avant de commencer
 
 - L'**adresse** de votre myBrain.
 - Une **clé d'API** créée pour myBrief dans myBrain, avec le droit **Nourrir le cerveau** — voir
   [Créer une clé d'API](https://docs.myalfred.ai/my-brain/admin/applications/creer-une-cle-d-api/). Le
-  droit **Lire le cerveau** n'est pas nécessaire.
+  droit **Lire le cerveau** n'est pas nécessaire à l'envoi ; l'Aide IA s'en sert pour lire myBrain —
+  voir [L'Aide IA en réunion](../aide-ia/index.md).
 - Le serveur de myBrief doit pouvoir joindre myBrain.
 
 ## Étapes
@@ -26,7 +27,7 @@ sidebar:
    exemple.
 4. Carte **Envoi des réunions** : choisissez **Désactivé**, **Au choix de chaque utilisateur** ou
    **Imposé à tous**.
-5. Cliquez **Enregistrer**, en bas de l'onglet. L'adresse et la clé sont vérifiées de nouveau auprès
+5. Cliquez **Enregistrer**, en bas de la page. L'adresse et la clé sont vérifiées de nouveau auprès
    de myBrain avant d'être enregistrées : une clé refusée, ou sans le droit **Nourrir le cerveau**,
    l'est ici.
 
@@ -36,7 +37,7 @@ Le badge passe à **Connecté**, et la carte indique « Connecté en tant que «
 de la clé. **Clé enregistrée** en montre le début et la fin, « mbk_AbCd…wxyz » — le même aperçu que
 dans la liste des clés de myBrain. La clé ne quitte jamais le serveur.
 
-Sauf **Désactivé**, vos utilisateurs trouvent la section **MyBrain** dans **Ma configuration**.
+Sauf **Désactivé**, vos utilisateurs trouvent l'onglet **MyBrain** dans **Réglages → Après la réunion**.
 
 ## Remplacer, retirer
 

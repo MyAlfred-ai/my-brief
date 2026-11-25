@@ -22,9 +22,10 @@ suffit. En visio, suivez plutôt [Enregistrer une réunion en visio](enregistrer
    aussitôt.
 2. La première fois, le navigateur demande l'accès au micro : acceptez. Le bouton affiche
    « Accès micro… » pendant ce temps.
-3. Sur un ordinateur, dans Chrome ou Edge, l'écran **Quel type de réunion ?** s'affiche : cliquez
-   **Réunion en présentiel**. **Annuler**, en bas — ou un clic à côté, ou Échap — renonce à démarrer :
-   le micro est relâché et aucune réunion n'est créée.
+3. Sur un ordinateur, dans Chrome ou Edge, l'écran **Quel type de réunion ?** s'affiche. Sous le
+   titre, **Consentement obligatoire** : assurez-vous que tous les participants acceptent
+   l'enregistrement, puis cliquez **Réunion en présentiel**. **Annuler**, en bas — ou un clic à
+   côté, ou Échap — renonce à démarrer : le micro est relâché et aucune réunion n'est créée.
 4. L'écran d'enregistrement s'affiche : « Enregistrement en cours… », le chronomètre, puis « En
    attente de la transcription… » jusqu'aux premiers mots.
 5. Parlez : les mots s'écrivent en moins d'une seconde, une ligne par prise de parole. La vague sonore
@@ -49,23 +50,22 @@ fil de l'eau : si l'onglet se ferme, vous la retrouvez — voir
 - **Nommez les gens en parlant** : « Paul, tu t'en occupes ? ». Les actions et le compte rendu en
   gardent la trace, alors que le micro attribue toutes les voix de la pièce à votre nom.
 - **Ne fermez pas l'onglet** avant la fin : aucune confirmation n'est demandée.
-- Sur ordinateur, le message « App en arrière-plan » s'affiche quand vous changez d'onglet :
-  l'enregistrement continue.
+- Sur ordinateur, changer d'onglet n'arrête pas l'enregistrement.
 
 ## En cas de problème
 
 | Ce qui arrive | Quoi faire |
 |---|---|
 | « Micro refusé : autorisez-le pour MyBrief dans les réglages du navigateur ou du téléphone, puis relancez l'enregistrement. » | Autorisez le micro pour ce site dans le navigateur (le cadenas de la barre d'adresse), puis **Démarrer**. |
-| « Aucun micro détecté. Branchez-en un, ou choisissez-en un autre dans Ma configuration, puis réessayez. » | Branchez un micro, ou choisissez-en un autre dans **Ma configuration → Réglages audio**, puis **Démarrer**. |
+| « Aucun micro détecté. Branchez-en un, ou choisissez-en un autre dans Réglages → Pendant la réunion → Micro et son, puis réessayez. » | Branchez un micro, ou choisissez-en un autre dans **Réglages → Pendant la réunion → Micro et son**, puis **Démarrer**. |
 | « Le micro est déjà utilisé par une autre application. Fermez-la, puis réessayez. » | Fermez l'application qui l'occupe, puis **Démarrer**. |
 | « L'enregistrement n'a pas pu démarrer. Réessayez dans un instant. » | **Démarrer** de nouveau ; si cela se répète, rechargez la page. |
 | Le bouton reste sur « Accès micro… » | Le navigateur attend votre réponse : acceptez l'accès au micro dans sa fenêtre. |
-| Le bouton affiche « Quota atteint » | Vos minutes de réunion du mois sont épuisées : la ligne sous votre nom, en bas de la colonne de gauche, donne la date du renouvellement. Votre administrateur peut relever le quota de votre groupe : cliquez alors de nouveau sur **Démarrer**, sans recharger la page. |
-| La vague ne bouge pas quand vous parlez | Le mauvais micro est sélectionné : **Ma configuration → Réglages audio**. |
-| « ⚠️ Microphone muet détecté » | Le micro est coupé par le système ou par un bouton du casque : réactivez-le. |
-| « ❌ Microphone désactivé » | Le micro a été débranché : rebranchez-le. myBrief réessaie toutes les dix secondes. Si vos phrases ne s'écrivent plus ensuite, terminez la réunion et démarrez-en une nouvelle. |
-| « ⚠️ Connexion perdue, reconnexion... » | myBrief se reconnecte seul. Ce qui s'est dit pendant la coupure manque à la transcription, mais figure dans l'audio téléchargeable. |
+| Le bouton affiche « Quota atteint » | Vos minutes de réunion du mois sont épuisées : la ligne sous votre nom, en bas de la colonne de gauche, le dit, et son infobulle donne la date du renouvellement. Votre administrateur peut relever le quota de votre groupe : cliquez alors de nouveau sur **Démarrer**, sans recharger la page. |
+| « Vos minutes de réunion du mois sont épuisées. L'enregistrement continue… » | Rien à faire : la réunion continue de s'enregistrer et de se transcrire jusqu'à ce que vous l'arrêtiez. Vous ne pourrez pas en démarrer d'autre avant le renouvellement, sauf si votre administrateur relève le quota de votre groupe. |
+| La vague ne bouge pas quand vous parlez | Le mauvais micro est sélectionné : **Réglages → Pendant la réunion → Micro et son**. |
+| « ⚠️ Enregistrement interrompu (appel, autre application) — touchez l'écran pour le reprendre » | Le micro ne rend plus de son : coupé par le système ou par un bouton du casque, ou débranché. Réactivez-le ou rebranchez-le, puis cliquez n'importe où dans la page. myBrief réessaie aussi seul ; au retour, « ✅ Enregistrement repris après … d'interruption » s'affiche et un repère « Enregistrement interrompu pendant … » marque le trou dans la transcription. Si rien ne repart, **Pause** puis **Reprendre**. |
+| « ⚠️ Connexion perdue, reconnexion... » | myBrief se reconnecte seul. Le repère « Passage hors ligne » marque la coupure dans la transcription, et ce qui s'est dit y prend place au retour du réseau. Gardez la page ouverte jusque-là : fermée avant, elle emporte ce passage. |
 | « ❌ Crédit d'IA épuisé — transcription suspendue » | Prévenez votre administrateur. |
 | « ⚠️ Service de transcription momentanément limité » | Le service est saturé : la transcription reprend d'elle-même. |
 | La transcription est dans la mauvaise langue | Passez l'interface dans la langue de la réunion avant de démarrer. |

@@ -8,8 +8,16 @@
  */
 import { readFileSync } from 'node:fs';
 import { jsPDF } from 'jspdf';
-import { describe, expect, it } from 'vitest';
-import { contentHeightMm, drawLayout, PAGE, pdfBytes, textRuns, usedFontStyles } from './draw.js';
+import { describe, expect, it, vi } from 'vitest';
+import {
+  contentHeightMm,
+  drawLayout,
+  gradientBands,
+  PAGE,
+  pdfBytes,
+  textRuns,
+  usedFontStyles,
+} from './draw.js';
 import { PDF_FONT_FACES, pdfFontMetrics, registerPdfFonts } from './fonts.js';
 
 const FONT_FILES = {
@@ -222,5 +230,130 @@ describe('poids du document', () => {
       drawLayout(pdf, layout, { footerText: 'Document généré par MyBrief', metrics }),
     ).toBeGreaterThanOrEqual(6);
     expect(pdfBytes(pdf).byteLength).toBeLessThan(100 * 1024);
+  });
+});
+
+describe('dégradés peints en bandes', () => {
+  const stops = [
+    { at: 0, color: [0, 0, 0] },
+    { at: 1, color: [250, 100, 0] },
+  ];
+
+  it('couvrent le segment exactement, de la première couleur à la dernière', () => {
+    const bands = gradientBands({ start: 0, length: 210, refStart: 0, refLength: 210, stops });
+    expect(bands.length).toBeGreaterThan(100);
+    expect(bands[0].from).toBe(0);
+    expect(bands.reduce((sum, b) => sum + b.size, 0)).toBeCloseTo(210, 6);
+    expect(bands[0].color[0]).toBeLessThan(5);
+    expect(bands[bands.length - 1].color[0]).toBeGreaterThan(245);
+  });
+
+  it('une marque à une seule teinte ne coûte qu’un aplat', () => {
+    const flat = [
+      { at: 0, color: [9, 9, 9] },
+      { at: 1, color: [9, 9, 9] },
+    ];
+    expect(
+      gradientBands({ start: 5, length: 100, refStart: 5, refLength: 100, stops: flat }),
+    ).toEqual([{ from: 5, size: 100, color: [9, 9, 9] }]);
+  });
+
+  it('un morceau coupé par un saut de page garde sa part du dégradé', () => {
+    const second = gradientBands({ start: 50, length: 50, refStart: 0, refLength: 100, stops });
+    expect(second[0].color[0]).toBeGreaterThan(120);
+    expect(second[0].color[0]).toBeLessThan(130);
+  });
+});
+
+// PNG 1 × 1 avec transparence : le logo de MyBrief, en miniature.
+const LOGO_PNG =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
+describe('habillage à la marque', () => {
+  const chrome = {
+    from: [30, 107, 87],
+    to: [227, 167, 47],
+    logo: { data: LOGO_PNG, width: 26, height: 26 },
+  };
+
+  /** Couleurs de remplissage employées, page par page. */
+  function fillsByPage(pdf) {
+    const pages = {};
+    const setFill = pdf.setFillColor.bind(pdf);
+    vi.spyOn(pdf, 'setFillColor').mockImplementation((...rgb) => {
+      const page = pdf.getCurrentPageInfo().pageNumber;
+      (pages[page] ||= []).push(rgb.join(','));
+      return setFill(...rgb);
+    });
+    return pages;
+  }
+
+  it('bande et filet de la marque à chaque page, logo de MyBrief embarqué une seule fois', () => {
+    const layout = layoutOf(Array.from({ length: 120 }, (_, n) => [[`ligne${n}`, SANS]]));
+    const pdf = newPdf(layout);
+    const fills = fillsByPage(pdf);
+
+    expect(
+      drawLayout(pdf, layout, { footerText: 'Document généré par MyBrief', metrics, chrome }),
+    ).toBe(3);
+
+    for (const page of [1, 2, 3]) {
+      expect(fills[page]).toContain(chrome.from.join(','));
+      expect(fills[page]).toContain(chrome.to.join(','));
+    }
+    const out = pdf.output();
+    expect(out.match(/\/Subtype \/Image/g)).toHaveLength(2); // le PNG et son masque de transparence
+    expect(out.match(/\/I\d+ Do/g)).toHaveLength(3); // posé sur chacune des trois pages
+    expect(out).toContain('(3 / 3)');
+    expect(out).toContain('Document g');
+  });
+
+  it('un fond en dégradé coupé entre deux pages reprend là où il s’arrêtait', () => {
+    const lines = layoutOf(Array.from({ length: 60 }, (_, n) => [[`ligne${n}`, SANS]]));
+    // Bande verticale noire → rouge sur toute la hauteur des 60 lignes.
+    const span = { x: 2, top: 20, width: 4, height: 60 * 23.5 };
+    const gradient = {
+      axis: 'y',
+      stops: [
+        { at: 0, color: [0, 0, 0] },
+        { at: 1, color: [250, 0, 0] },
+      ],
+    };
+    const layout = {
+      ...lines,
+      items: [
+        {
+          kind: 'rect',
+          role: 'fill',
+          x: 2,
+          top: 20,
+          bottom: 20 + span.height,
+          width: 4,
+          color: [0, 0, 0],
+          gradient,
+          span,
+        },
+        ...lines.items,
+      ],
+    };
+    const pdf = newPdf(layout);
+    const fills = fillsByPage(pdf);
+    drawLayout(pdf, layout, { footerText: 'pied', metrics });
+
+    const red = (page) => fills[page].map((c) => Number(c.split(',')[0]));
+    // Page 1 : du noir jusqu'aux trois quarts environ ; page 2 : la suite, jusqu'au rouge.
+    expect(red(1)[0]).toBeLessThan(10);
+    expect(Math.max(...red(1))).toBeLessThan(220);
+    expect(red(2)[0]).toBeGreaterThan(150);
+    expect(Math.max(...red(2))).toBeGreaterThan(240);
+  });
+
+  it('sans habillage (rapport des statistiques) : le pied d’origine, sans image ni bande', () => {
+    const layout = layoutOf([[['Bonjour', SANS]]]);
+    const pdf = newPdf(layout);
+    const fills = fillsByPage(pdf);
+    drawLayout(pdf, layout, { footerText: 'pied', metrics });
+    expect(pdf.output()).not.toContain('/Subtype /Image');
+    expect(fills[1] || []).toEqual([]);
   });
 });

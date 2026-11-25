@@ -186,7 +186,7 @@
           ? [fill(t.assumptions.inferred, { count: formatCount(usage.inferredDurations, lang) })]
           : []),
         fill(t.assumptions.detection, { calls: formatCount(assumed.detectionCallsPerHour, lang) }),
-        fill(t.assumptions.image, { tokens: formatCount(assumed.imageTokens, lang) }),
+        fill(t.assumptions.image, { tokens: formatCount(assumed.infographicOutputTokens, lang) }),
         t.assumptions.excluded,
       ]
     : [];

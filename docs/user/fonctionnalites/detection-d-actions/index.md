@@ -15,7 +15,8 @@ télécharger le compte rendu.
 ## À quoi ça sert
 
 À repartir de la réunion avec la liste de qui fait quoi, sans l'avoir saisie. Les actions rejoignent le
-compte rendu quand le template les appelle, et l'infographie.
+compte rendu quand le template les appelle et que la tuile **Actions détectées** est allumée, et
+l'infographie.
 
 ## Comment ça marche
 
@@ -54,18 +55,23 @@ déclaré par votre administrateur, et sur les noms donnés aux participants de 
 
 ## Ce que vous pouvez régler
 
-Tout, et pour vous seul, dans **Ma configuration → Détection d'actions** : la détection elle-même, sa
-**sensibilité**, les **mots déclencheurs**, la correction des actions au fil de la réunion, et le
-**rythme** des analyses. Un **banc d'essai** juge un réglage sur un extrait avant de l'adopter.
+Tout, et pour vous seul, dans **Réglages → Pendant la réunion → Détection d'actions** : la détection
+elle-même, sa **sensibilité**, les **mots déclencheurs**, la correction des actions au fil de la
+réunion, et le **rythme** des analyses. Un **banc d'essai** juge un réglage sur un extrait avant de
+l'adopter.
+
+Par défaut, la sensibilité est **Stricte** : seules les tâches annoncées comme telles remontent —
+« Action : Marie envoie le compte rendu vendredi ». Un engagement pris au détour d'une phrase demande
+**Équilibrée**.
 
 Votre administrateur n'a pas de réglage sur la détection, sauf le vocabulaire de l'organisation.
 
 ## Exemples
 
-**« Je m'en occupe. »** Sophie dit : « je relance le client demain ». Une carte apparaît : *Relancer le
+**« Je m'en occupe. »** En sensibilité **Équilibrée**, Sophie dit : « je relance le client demain ». Une carte apparaît : *Relancer le
 client*, porteur Sophie, échéance au lendemain.
 
-**Une action précisée plus tard.** « Il faudra préparer le devis. » … « Julie, tu peux le faire pour
+**Une action précisée plus tard.** En **Équilibrée** aussi : « Il faudra préparer le devis. » … « Julie, tu peux le faire pour
 vendredi ? » La carte *Préparer le devis* reçoit Julie et la date de vendredi.
 
 **Une fausse action.** « On verra ça à l'occasion » a produit une carte : vous la masquez d'un clic sur

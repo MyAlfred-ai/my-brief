@@ -16,7 +16,7 @@ organisation — dans le dossier que vous avez choisi.
 
 ## Choisir votre dossier
 
-1. Ouvrez **Ma configuration → Entreposer**.
+1. Ouvrez **Réglages → Après la réunion → Entreposer**.
 2. Dans **Dossier de dépôt**, tapez le chemin — « Clients/Acme/Comptes-rendus » — ou cliquez
    **Parcourir…** :
    - choisissez la **Bibliothèque** : Mon Drive et vos Drive partagés chez Google ; votre OneDrive et
@@ -62,9 +62,9 @@ déposé en PDF, la transcription en fichier texte.
 
 | Ce qui arrive | Quoi faire |
 |---|---|
-| « Le dépôt vers … n'est pas configuré. Connectez votre compte dans « Ma configuration »… » | Reliez votre compte. |
-| « Votre compte n'autorise pas (ou plus) le dépôt de fichiers… » | Reliez-le à nouveau, en acceptant l'accès aux fichiers : **Reconnecter mon compte**, dans **Ma configuration → Entreposer**. |
+| « Le dépôt vers … n'est pas configuré. Connectez votre compte dans « Réglages → Comptes connectés »… » | Reliez votre compte. |
+| « Votre compte n'autorise pas (ou plus) le dépôt de fichiers… » | Reliez-le à nouveau, en acceptant l'accès aux fichiers : **Reconnecter mon compte**, dans **Réglages → Après la réunion → Entreposer**. |
 | « Le dépôt a échoué. Réessayez dans quelques instants. » | Réessayez ; si cela se répète, testez le dépôt — voir [Tester l'envoi et le dépôt](tester-l-envoi-et-le-depot.md). |
-| Vos Drive partagés n'apparaissent pas dans **Parcourir…** | Votre compte a été relié avant que myBrief sache les lister : **Déconnecter**, puis reliez-le de nouveau, dans **Ma configuration → Connexion**. |
+| Vos Drive partagés n'apparaissent pas dans **Parcourir…** | Votre compte a été relié avant que myBrief sache les lister : **Déconnecter**, puis reliez-le de nouveau, dans **Réglages → Comptes connectés**. |
 | Vos bibliothèques SharePoint n'apparaissent pas | L'autorisation SharePoint n'a pas été accordée par votre organisation, ou vous ne suivez pas le site. Voyez avec votre service informatique. |
 | « Un nom de dossier ne peut pas contenir « / ». » | Choisissez un autre nom de dossier. |

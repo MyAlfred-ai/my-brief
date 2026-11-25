@@ -16,8 +16,53 @@
  *
  * fakeOpenai : réponses scriptées par méthode + journal des appels.
  */
+import { createRequire } from 'node:module';
 import { buildApp } from '../app.js';
 import { UpstreamError } from '../lib/openai.js';
+import { KEYED_PROVIDERS } from '../lib/transcriptionModels.js';
+
+/**
+ * Compilateur de schémas PARTAGÉ par toutes les applications d'un fichier de
+ * test. Chaque test construit son application, et Fastify crée alors un Ajv
+ * neuf qui recompile les schémas de toutes les routes : ~70 % du temps d'un
+ * `app.ready()`, multiplié par ~1 800 tests (mesuré le 2026-11-18). Partagé,
+ * Ajv retrouve dans son cache le validateur d'un schéma déjà vu — les corps de
+ * requête sont des constantes de module — et les validateurs sont ceux que
+ * compilerait la production : même module, résolu depuis Fastify lui-même,
+ * mêmes options par défaut.
+ *
+ * Un seul écart avec la production, et il est verrouillé : Fastify tient un
+ * compilateur fourni pour « personnalisé » et ne passe plus alors les clés d'un
+ * schéma d'EN-TÊTES en minuscules. Aucune route n'en déclare ; la première qui
+ * le ferait casse ici, au lieu d'être validée autrement qu'en production.
+ */
+const fastifyRequire = createRequire(createRequire(import.meta.url).resolve('fastify'));
+const sharedValidators = fastifyRequire('@fastify/ajv-compiler')();
+const compiledByShape = new WeakMap();
+const TEST_SCHEMA_CONTROLLER = {
+  compilersFactory: {
+    buildValidator(externalSchemas, options) {
+      const compile = sharedValidators(externalSchemas, options);
+      return (route) => {
+        if (route.httpPart === 'headers') {
+          throw new Error(
+            `${route.method} ${route.url} : schéma d'en-têtes — le compilateur partagé ` +
+              'des tests ne le validerait pas comme la production (clés en minuscules). ' +
+              'Voir TEST_SCHEMA_CONTROLLER dans test/helpers.js.',
+          );
+        }
+        // Clé par FORME : quelques routes écrivent leur schéma en littéral, un
+        // objet neuf à chaque application, que le cache d'Ajv (par identité)
+        // ne reconnaîtrait pas. Même JSON, même validation.
+        let byShape = compiledByShape.get(compile);
+        if (!byShape) compiledByShape.set(compile, (byShape = new Map()));
+        const shape = JSON.stringify(route.schema);
+        if (!byShape.has(shape)) byShape.set(shape, compile(route));
+        return byShape.get(shape);
+      };
+    },
+  },
+};
 
 /** Lecture d'un chemin pointé (`a.b.c`), comme Mongo. */
 function getPath(doc, path) {
@@ -274,8 +319,21 @@ function project(doc, spec) {
     if (spec._id !== 0 && doc._id !== undefined) out._id = doc._id;
     return out;
   }
-  const out = { ...doc };
-  for (const [k, v] of Object.entries(spec)) if (!v) delete out[k];
+  let out = { ...doc };
+  for (const [k, v] of Object.entries(spec)) if (!v) out = omitPath(out, k.split('.'));
+  return out;
+}
+
+/**
+ * Exclusion par chemin, comme Mongo : `'versions.html': 0` retire `html` de
+ * CHAQUE élément du tableau `versions`. Copie le long du chemin, ne mute rien.
+ */
+function omitPath(value, [head, ...rest]) {
+  if (Array.isArray(value)) return value.map((item) => omitPath(item, [head, ...rest]));
+  if (!value || typeof value !== 'object' || !(head in value)) return value;
+  const out = { ...value };
+  if (rest.length === 0) delete out[head];
+  else out[head] = omitPath(out[head], rest);
   return out;
 }
 
@@ -498,6 +556,12 @@ export function createFakeOpenai(script = {}) {
       if (typeof fn === 'function') return fn(lang, model);
       return fn ?? { value: 'ek_test', expires_at: 123, session: {} };
     },
+    async speech(params) {
+      calls.push({ method: 'speech', params });
+      const fn = script.speech;
+      if (typeof fn === 'function') return fn(params);
+      return fn ?? Buffer.from('ID3-audio-openai');
+    },
     async generateImage(params) {
       calls.push({ method: 'generateImage', params });
       const fn = script.generateImage;
@@ -505,6 +569,81 @@ export function createFakeOpenai(script = {}) {
       return fn ?? { b64: 'aW1hZ2UtZmFjdGljZQ==' };
     },
   };
+}
+
+/**
+ * Client factice d'UN fournisseur tiers (lib/speechProviders.js) : même
+ * contrat de script que createFakeOpenai. Jeton par défaut sous l'enveloppe
+ * commune `client_secret.value` ; `chat` pour la rédaction (Mistral).
+ */
+function createFakeSpeechClient(provider, script = {}) {
+  const calls = [];
+  return {
+    calls,
+    async realtimeClientSecret(model, options = {}) {
+      calls.push({ method: 'realtimeClientSecret', model, key: options.key });
+      const fn = script.realtimeClientSecret;
+      if (typeof fn === 'function') return fn(model, options);
+      return fn ?? { client_secret: { value: `${provider}_token_test` } };
+    },
+    async transcribe(params) {
+      calls.push({ method: 'transcribe', params });
+      const fn = script.transcribe;
+      if (typeof fn === 'function') return fn(params);
+      return fn ?? { text: `transcription ${provider} par défaut` };
+    },
+    async chat(params) {
+      calls.push({ method: 'chat', params });
+      const fn = script.chat;
+      if (typeof fn === 'function') return fn(params, calls);
+      return fn ?? `réponse ${provider} par défaut`;
+    },
+    async speech(params) {
+      calls.push({ method: 'speech', params });
+      const fn = script.speech;
+      if (typeof fn === 'function') return fn(params);
+      return fn ?? Buffer.from(`ID3-audio-${provider}`);
+    },
+    async voices(options = {}) {
+      calls.push({ method: 'voices', options });
+      const fn = script.voices;
+      if (typeof fn === 'function') return fn(options);
+      return fn ?? [{ id: 'fr_marie_neutral', label: 'Marie', languages: ['fr'] }];
+    },
+  };
+}
+
+/**
+ * Clients factices des fournisseurs tiers, par fournisseur (`speech.mistral`…).
+ * @param {Record<string, object>} [scripts] - un script par fournisseur
+ */
+export function createFakeSpeech(scripts = {}) {
+  return Object.fromEntries(
+    KEYED_PROVIDERS.map((provider) => [
+      provider,
+      createFakeSpeechClient(provider, scripts[provider]),
+    ]),
+  );
+}
+
+/**
+ * Sonde factice des clés tierces `(provider, key)`. Accepte par défaut ;
+ * `{reject: {status, message}}` simule un refus.
+ */
+export function createFakeProviderKeyVerifier(script = {}) {
+  const calls = [];
+  const verify = async (provider, key) => {
+    calls.push({ provider, key });
+    if (script.reject) {
+      throw new UpstreamError(
+        script.reject.status || 401,
+        JSON.stringify({ error: script.reject.message || 'Unauthorized' }),
+      );
+    }
+    return { ok: true };
+  };
+  verify.calls = calls;
+  return verify;
 }
 
 /** Mailer factice : journalise au lieu d'envoyer. `enabled: false` simule l'absence de SMTP. */
@@ -647,9 +786,11 @@ export function createFakeDriveBrowser(script = {}) {
  * Client myBrain scripté (lib/myBrain/client.js) : journal des appels, réponses
  * et échecs programmables, sans jamais joindre un vrai cerveau.
  *
- * @param {{whoami?: object|Function, feed?: object|Function}} [script] — une
- *   valeur, ou une fonction `(payload, calls) => valeur` qui peut lever (une
- *   MyBrainError, typiquement) pour simuler un refus.
+ * @param {{whoami?: object|Function, feed?: object|Function,
+ *   search?: object|Function, sheet?: object|Function, context?: object|Function}} [script]
+ *   — une valeur, ou une fonction `(payload, calls) => valeur` qui peut lever
+ *   (une MyBrainError, typiquement) pour simuler un refus. Les trois lectures
+ *   (Aide IA) rendent par défaut une fiche « Projet Atlas ».
  */
 export function createFakeMyBrain(script = {}) {
   const calls = [];
@@ -673,6 +814,22 @@ export function createFakeMyBrain(script = {}) {
         jobs += 1;
         return { job: `job-${jobs}`, pour: payload.deposit?.pour || null, avertissements: [] };
       }),
+    search: (payload) =>
+      run('search', payload, () => [
+        { path: 'wiki/projets/atlas.md', title: 'Projet Atlas', type: 'projet', excerpt: '' },
+      ]),
+    sheet: (payload) =>
+      run('sheet', payload, () => ({
+        path: payload.path || 'wiki/projets/atlas.md',
+        title: 'Projet Atlas',
+        content: 'Périmètre du lot 2 : espace client, signature électronique.',
+      })),
+    context: (payload) =>
+      run('context', payload, () => ({
+        context: 'Projet Atlas — livraison du lot 2 : 15 mars 2027.',
+        truncated: false,
+        sheets: [{ path: 'wiki/projets/atlas.md', title: 'Projet Atlas' }],
+      })),
   };
 }
 
@@ -725,9 +882,11 @@ export function buildTestApp({
   seed,
   openai,
   openaiClient,
+  speech,
   mailer,
   config,
   verifyApiKey,
+  verifyProviderKey,
   gmailSend,
   graphSend,
   driveStore,
@@ -740,6 +899,9 @@ export function buildTestApp({
   const ai = openaiClient || createFakeOpenai(openai);
   const mail = mailer === undefined ? createFakeMailer() : mailer;
   const verify = verifyApiKey === undefined ? createFakeKeyVerifier() : verifyApiKey;
+  const speechClients = createFakeSpeech(speech);
+  const verifyProvider =
+    verifyProviderKey === undefined ? createFakeProviderKeyVerifier() : verifyProviderKey;
   const gmail = gmailSend === undefined ? createFakeGmailSend() : gmailSend;
   const graph = graphSend === undefined ? createFakeGmailSend() : graphSend;
   const drive = driveStore === undefined ? createFakeDriveStore() : driveStore;
@@ -760,6 +922,8 @@ export function buildTestApp({
     mailer: mail,
     config,
     verifyApiKey: verify,
+    speech: speechClients,
+    verifyProviderKey: verifyProvider,
     gmailSend: gmail,
     graphSend: graph,
     gmailRevoke,
@@ -768,6 +932,7 @@ export function buildTestApp({
     myBrain: brain,
     priceSources: sources,
     audioChunker: chunker,
+    schemaController: TEST_SCHEMA_CONTROLLER,
   });
   return {
     app,
@@ -775,6 +940,8 @@ export function buildTestApp({
     ai,
     mailer: mail,
     verifyApiKey: verify,
+    speech: speechClients,
+    verifyProviderKey: verifyProvider,
     gmailSend: gmail,
     graphSend: graph,
     gmailRevoke,
@@ -826,6 +993,16 @@ export function groupDoc(id, { name = id, color = 'slate', isDefault = false, ..
 
 export const defaultGroupDoc = (over = {}) =>
   groupDoc('default', { name: 'Défaut', isDefault: true, ...over });
+
+/** Le groupe des administrateurs, tel que `ensureAdmin` le crée. */
+export const adminGroupDoc = (over = {}) =>
+  groupDoc('admin', {
+    name: 'Admin',
+    color: 'violet',
+    meetingMinutesPerMonth: null,
+    infographicAllowed: true,
+    ...over,
+  });
 
 /** En-têtes d'identité tels qu'injectés par Traefik. */
 export function identityHeaders(email = 'user@example.com', name = 'Test User') {

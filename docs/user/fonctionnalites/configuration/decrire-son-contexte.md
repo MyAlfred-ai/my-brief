@@ -10,7 +10,7 @@ vos interlocuteurs habituels. L'IA sait alors de quoi parlent vos réunions.
 
 ## Étapes
 
-1. Ouvrez **Ma configuration → Mon contexte**.
+1. Ouvrez **Réglages → Préférences IA → Mon contexte**.
 2. Écrivez votre contexte — 4 000 caractères au plus.
 3. Cliquez **Enregistrer**.
 

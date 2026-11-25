@@ -1,8 +1,20 @@
 /**
- * Capture audio hors ligne (app native uniquement) — filet « tout terrain ».
+ * Capture audio des passages que le direct a manqués — filet « tout terrain ».
+ *
+ * Deux niveaux, selon ce que la plateforme permet :
+ *  - app native (`isOfflineCaptureSupported`) : les segments sont écrits sur
+ *    le Filesystem natif. Elle peut DÉMARRER sans réseau, et un segment
+ *    survit à un plantage ;
+ *  - web et PWA (`isGapCaptureSupported`) : les segments d'une coupure restent
+ *    en mémoire, le temps d'être transcrits au retour du réseau. Avant cela,
+ *    tout ce qui se disait pendant une coupure réseau en cours de réunion
+ *    n'était jamais transcrit hors de l'app native — or une PWA sur téléphone
+ *    change de réseau (Wi-Fi, 4G, tunnel) bien plus qu'un ordinateur. Le
+ *    démarrage, lui, exige toujours le réseau sur le web : rien n'y est écrit
+ *    sur disque, une page fermée emporterait un enregistrement jamais transcrit.
  *
  * Un 2e MediaRecorder, indépendant de celui de l'export, découpe le mix en
- * SEGMENTS autonomes écrits immédiatement sur le Filesystem natif :
+ * SEGMENTS autonomes :
  *  - rotation forcée quand la transcription live tombe/revient : les segments
  *    d'une même coupure forment un « gap » à transcrire en différé ;
  *  - rotation périodique (SEGMENT_MAX_MS) pour rester sous les plafonds
@@ -10,20 +22,22 @@
  *    cas de crash au segment courant.
  *
  * Les segments couverts par le live ne servent que de filet crash : supprimés
- * à la fin propre de la session. Les segments d'un gap partent vers
+ * à la fin propre de la session (natif), jamais gardés (web — 14 Mo par heure
+ * en mémoire pour un audio déjà transcrit). Les segments d'un gap partent vers
  * /api/record (Whisper batch, endpoint de l'import manuel) via une
  * file avec retry — déclenchée au retour réseau, à la reconnexion du live, à
  * l'arrêt, et par un tick périodique. Le texte remonte à App.svelte par gap
  * COMPLET (onGapTranscribed) pour remplacer le marqueur ⟨hors ligne⟩.
  *
  * L'auth des uploads est portée par l'intercepteur fetch global (Bearer natif,
- * cf. httpErrorHandler.js) : aucun header à gérer ici. Web : no-op intégral
- * (isOfflineCaptureSupported() = false).
+ * cf. httpErrorHandler.js) et, sur le web, par le cookie de session : aucun
+ * header à gérer ici.
  */
 
 import { isNative, nativePlugin } from './index.js';
 import { baseUrl } from '../config/constants.js';
 import { extractTranscriptionText } from '../utils/audioProcessing.js';
+import { recordUrl } from '../utils/recordUrl.js';
 
 const ROOT_DIR = 'offline-rec';
 const DIRECTORY = 'DATA';
@@ -42,7 +56,14 @@ const SEGMENT_MIME_TYPES = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4',
  * segments enregistrés sont transcrits.
  */
 export class SegmentLedger {
-  constructor() {
+  /**
+   * @param {string} [prefix] - rend les identifiants de coupure uniques d'une
+   *   capture à l'autre. Sans lui, chaque capture repartait de `gap-1` : après
+   *   un arrêt puis un nouveau départ sur la même transcription, le texte de la
+   *   nouvelle coupure allait remplacer le marqueur resté de la précédente.
+   */
+  constructor(prefix = '') {
+    this.prefix = prefix;
     this.segments = [];
     this.currentGapId = null;
     this.gapSeq = 0;
@@ -55,7 +76,7 @@ export class SegmentLedger {
       return { gapOpened: null };
     }
     if (this.currentGapId) return { gapOpened: null };
-    this.currentGapId = `gap-${++this.gapSeq}`;
+    this.currentGapId = `gap-${this.prefix}${++this.gapSeq}`;
     return { gapOpened: this.currentGapId };
   }
 
@@ -140,6 +161,7 @@ let session = null;
 const drainingSessions = new Set();
 let flushTimer = null;
 
+/** App native avec Filesystem : la capture y est persistée, le démarrage peut se passer de réseau. */
 export function isOfflineCaptureSupported() {
   if (!isNative || typeof MediaRecorder === 'undefined') return false;
   try {
@@ -149,6 +171,58 @@ export function isOfflineCaptureSupported() {
     return false;
   }
 }
+
+/** Les coupures EN COURS de réunion sont rattrapables : natif, web et PWA. */
+export function isGapCaptureSupported() {
+  return typeof MediaRecorder !== 'undefined';
+}
+
+/**
+ * Où vivent les segments. Natif : fichiers base64 du Filesystem (+ manifeste).
+ * Web : les Blob eux-mêmes, en mémoire — et seulement ceux d'une coupure.
+ */
+const nativeStore = {
+  persistent: true,
+  async write(s, file, blob) {
+    await nativePlugin('Filesystem').writeFile({
+      path: `${s.dir}/${file}`,
+      data: await blobToBase64(blob),
+      directory: DIRECTORY,
+      recursive: true,
+    });
+  },
+  async read(s, file) {
+    const { data } = await nativePlugin('Filesystem').readFile({
+      path: `${s.dir}/${file}`,
+      directory: DIRECTORY,
+    });
+    return base64ToBlob(data, s.mimeType || 'audio/webm');
+  },
+  async remove(s, file) {
+    await nativePlugin('Filesystem').deleteFile({ path: `${s.dir}/${file}`, directory: DIRECTORY });
+  },
+  async removeAll(s) {
+    await nativePlugin('Filesystem').rmdir({ path: s.dir, directory: DIRECTORY, recursive: true });
+  },
+};
+
+const memoryStore = {
+  persistent: false,
+  async write(s, file, blob) {
+    s.blobs.set(file, blob);
+  },
+  async read(s, file) {
+    const blob = s.blobs.get(file);
+    if (!blob) throw new Error(`segment absent: ${file}`);
+    return blob;
+  },
+  async remove(s, file) {
+    s.blobs.delete(file);
+  },
+  async removeAll(s) {
+    s.blobs.clear();
+  },
+};
 
 function pickSegmentMime() {
   for (const type of SEGMENT_MIME_TYPES) {
@@ -183,6 +257,7 @@ function blobToBase64(blob) {
 }
 
 async function writeManifest(s) {
+  if (!s.store.persistent) return; // rien à retrouver après un plantage : tout est en mémoire
   try {
     await nativePlugin('Filesystem').writeFile({
       path: `${s.dir}/manifest.json`,
@@ -261,16 +336,17 @@ async function finalizeSegment(s, index, chunks, mimeType) {
     afterSegmentSettled(s, index);
     return;
   }
+  // Web : un segment couvert par le direct n'est pas gardé — sans disque, il ne
+  // protège de rien et ne ferait qu'occuper la mémoire.
+  const seg = s.ledger.segments.find((it) => it.index === index);
+  if (!s.store.persistent && !seg?.gapId) {
+    s.ledger.closeSegment(index, elapsedEndS, null);
+    afterSegmentSettled(s, index);
+    return;
+  }
   const file = `seg-${String(index).padStart(3, '0')}.${fileExtension(mimeType || '')}`;
   try {
-    const blob = new Blob(chunks, { type: mimeType || 'audio/webm' });
-    const base64 = await blobToBase64(blob);
-    await nativePlugin('Filesystem').writeFile({
-      path: `${s.dir}/${file}`,
-      data: base64,
-      directory: DIRECTORY,
-      recursive: true,
-    });
+    await s.store.write(s, file, new Blob(chunks, { type: mimeType || 'audio/webm' }));
     s.ledger.closeSegment(index, elapsedEndS, file);
   } catch (e) {
     // Écriture impossible (disque plein ?) : le segment est perdu pour le
@@ -307,13 +383,15 @@ function afterSegmentSettled(s, index) {
  * @returns {{ started: boolean, gapOpened: string|null }}
  */
 export function startOfflineCapture(stream, { live, getElapsedS, onGapTranscribed }) {
-  if (!isOfflineCaptureSupported() || session) return { started: false, gapOpened: null };
+  if (!isGapCaptureSupported() || session) return { started: false, gapOpened: null };
   const s = {
+    store: isOfflineCaptureSupported() ? nativeStore : memoryStore,
+    blobs: new Map(),
     id: `rec-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
     dir: '',
     stream,
     mimeType: pickSegmentMime(),
-    ledger: new SegmentLedger(),
+    ledger: new SegmentLedger(`${Date.now().toString(36)}-`),
     segIndex: 0,
     recorder: null,
     rotateTimer: null,
@@ -419,17 +497,15 @@ async function flushSession(s) {
   }
   s.flushing = true;
   try {
-    const fs = nativePlugin('Filesystem');
     for (const seg of pending) {
-      const { data } = await fs.readFile({ path: `${s.dir}/${seg.file}`, directory: DIRECTORY });
-      const blob = base64ToBlob(data, s.mimeType || 'audio/webm');
+      const blob = await s.store.read(s, seg.file);
       const formData = new FormData();
       formData.append('data', blob, `${s.id}-${seg.file}`);
       // `source=offline` : un segment appartient à une réunion déjà commencée,
       // dont le quota de minutes a été vérifié au démarrage — le serveur ne le
       // refuse jamais pour ça (cf. services/api/routes/ai.js). Sans ce marqueur,
       // un quota atteint entre-temps ferait perdre ce qui a été dit.
-      const response = await fetch(`${baseUrl}/record?source=offline`, {
+      const response = await fetch(recordUrl(baseUrl, { source: 'offline' }), {
         method: 'POST',
         body: formData,
       });
@@ -440,7 +516,7 @@ async function flushSession(s) {
       );
       s.ledger.markUploaded(seg.index, (text || '').trim());
       try {
-        await fs.deleteFile({ path: `${s.dir}/${seg.file}`, directory: DIRECTORY });
+        await s.store.remove(s, seg.file);
       } catch (_) {}
       console.log(`📤 offline-rec: segment ${seg.index} transcrit (${seg.gapId})`);
       if (s.ledger.gapCompleted(seg.gapId)) {
@@ -463,7 +539,7 @@ async function maybeCleanupEnded(s) {
   if (s.ledger.segments.some((seg) => seg.status === 'recording')) return;
   drainingSessions.delete(s);
   try {
-    await nativePlugin('Filesystem').rmdir({ path: s.dir, directory: DIRECTORY, recursive: true });
+    await s.store.removeAll(s);
     console.log(`🧹 offline-rec: session ${s.id} nettoyée`);
   } catch (_) {
     /* déjà absente */

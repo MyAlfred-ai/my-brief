@@ -7,7 +7,7 @@
  * bornes de taille tiennent les mésusages à l'écart.
  */
 import { describe, it, expect } from 'vitest';
-import { buildTestApp, identityHeaders } from './helpers.js';
+import { buildTestApp, identityHeaders, userDoc } from './helpers.js';
 import { refineTranscriptPrompt, parseRefineOutput } from '../lib/prompts.js';
 
 function post(app, body) {
@@ -121,5 +121,58 @@ describe('POST /api/refine-transcript', () => {
     const prompt = ai.calls[0].params.messages[0].content;
     expect(prompt).not.toContain('n'.repeat(4001));
     expect(prompt).toContain('n'.repeat(4000));
+  });
+});
+
+describe('POST /api/refine-transcript — le contexte du tag en référence', () => {
+  const EMAIL = 'user@example.com';
+  const tag = (email, context) => ({
+    email,
+    emailLower: email,
+    id: 't-atlas',
+    label: 'Projet Atlas',
+    labelLower: 'projet atlas',
+    color: 'teal',
+    context,
+  });
+  const CONTEXT = 'Acteurs : Hugo Bernard, bureau d’études. PAC = pompe à chaleur.';
+
+  it('sans notes : le contexte, relu en base, sert de référence', async () => {
+    const { app, ai } = buildTestApp({
+      seed: { user: [userDoc(EMAIL)], userTags: [tag(EMAIL, CONTEXT)] },
+      openai: { chat: '{"sentences": ["Hugo Bernard envoie la note."]}' },
+    });
+    const res = await post(app, { sentences: ['Hugo Bernar envoie la note.'], tagId: 't-atlas' });
+    expect(res.json()).toEqual({ sentences: ['Hugo Bernard envoie la note.'] });
+    const prompt = ai.calls[0].params.messages[0].content;
+    expect(prompt).toContain('Contexte du dossier « Projet Atlas »');
+    expect(prompt).toContain('Hugo Bernard, bureau d’études');
+  });
+
+  it('avec des notes : les deux, notes d’abord', async () => {
+    const { app, ai } = buildTestApp({
+      seed: { user: [userDoc(EMAIL)], userTags: [tag(EMAIL, CONTEXT)] },
+      openai: { chat: '{"sentences": ["A."]}' },
+    });
+    await post(app, { sentences: ['A.'], notes: 'Client : Globex', tagId: 't-atlas' });
+    const prompt = ai.calls[0].params.messages[0].content;
+    expect(prompt.indexOf('Client : Globex')).toBeLessThan(prompt.indexOf('Contexte du dossier'));
+  });
+
+  it('le tag d’un AUTRE compte ne prête rien — et sans notes, aucun appel', async () => {
+    const { app, ai } = buildTestApp({
+      seed: { user: [userDoc(EMAIL)], userTags: [tag('autre@example.com', CONTEXT)] },
+      openai: { chat: '{"sentences": ["X."]}' },
+    });
+    const res = await post(app, { sentences: ['Hugo Bernar.'], tagId: 't-atlas' });
+    expect(res.json()).toEqual({ sentences: ['Hugo Bernar.'] });
+    expect(ai.calls).toHaveLength(0);
+  });
+
+  it('un tagId qui n’est pas une chaîne n’atteint pas la base', async () => {
+    const { app, ai } = buildTestApp({ openai: { chat: '{"sentences": ["X."]}' } });
+    const res = await post(app, { sentences: ['Hugo Bernar.'], tagId: { $ne: null } });
+    expect(res.statusCode).toBe(200);
+    expect(ai.calls).toHaveLength(0);
   });
 });

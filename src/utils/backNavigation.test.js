@@ -9,7 +9,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { BACK_LAYERS, resolveBackAction, performBackAction } from './backNavigation.js';
+import {
+  BACK_LAYERS,
+  shellIsTopLayer,
+  resolveBackAction,
+  performBackAction,
+} from './backNavigation.js';
 
 const visible = () => true;
 const decide = () => resolveBackAction(document, { isVisible: visible });
@@ -89,6 +94,38 @@ describe('resolveBackAction — quoi fermer', () => {
   it('bouton de fermeture introuvable : Échap plutôt qu’un retour muet', () => {
     document.body.innerHTML = '<div class="shell-overlay"></div>';
     expect(decide()).toEqual({ action: 'escape' });
+  });
+});
+
+/**
+ * Échap ne referme « Réglages » ou l'administration que si le panneau est le
+ * calque du dessus (PanelShell) : c'est cette fonction qui le dit.
+ */
+describe('shellIsTopLayer — Échap referme-t-il CE panneau ?', () => {
+  const onTop = (id = 'panneau') =>
+    shellIsTopLayer(document, document.getElementById(id), { isVisible: visible });
+  const PANEL = '<div class="shell-overlay"><button class="shell-close" id="panneau"></button>';
+
+  it('le panneau seul : oui', () => {
+    document.body.innerHTML = `${PANEL}</div>`;
+    expect(onTop()).toBe(true);
+  });
+
+  it('une fenêtre du panneau est ouverte : non — Échap n’est pas pour lui', () => {
+    document.body.innerHTML = `${PANEL}<div class="trd-backdrop"></div></div>`;
+    expect(onTop()).toBe(false);
+  });
+
+  it('un menu est ouvert (déroulant des sections sur téléphone) : non', () => {
+    document.body.innerHTML = `${PANEL}<div class="pt-dd-menu"></div></div>`;
+    expect(onTop()).toBe(false);
+  });
+
+  it('un panneau emboîté : c’est lui qui est dessus, pas celui qui le contient', () => {
+    document.body.innerHTML = `${PANEL}
+      <div class="shell-overlay"><button class="shell-close" id="editeur"></button></div></div>`;
+    expect(onTop('panneau')).toBe(false);
+    expect(onTop('editeur')).toBe(true);
   });
 });
 

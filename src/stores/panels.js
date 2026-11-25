@@ -1,6 +1,7 @@
 /**
- * Panneau plein écran actif — « Ma configuration », Administration, « Mes
- * statistiques ».
+ * Panneau plein écran actif — « Réglages » (le compte de l'utilisateur) ou
+ * Administration (l'organisation). Deux espaces, deux boutons sur la carte du
+ * compte, comme dans MIA : une page n'est que dans l'un des deux.
  *
  * Remplace trois booléens `showConfig`/`showUserTemplates`/`showAdmin`
  * d'App.svelte dont l'exclusion mutuelle était réécrite à la main dans chaque
@@ -9,7 +10,7 @@
  * STRUCTURELLE : ouvrir l'un ferme l'autre, il n'y a plus rien à maintenir.
  *
  * Le hash reste la source de vérité au chargement et au retour arrière
- * (deep-links #config / #my-templates / #my-tags / #admin / #my-stats, callback OAuth Gmail
+ * (deep-links #config / #my-templates / #my-tags / #my-stats / #admin, callback OAuth Gmail
  * qui revient sur #config) : App.svelte écoute hashchange et appelle
  * syncFromHash.
  * Les effets de bord de fermeture (recharger templates/statut mail) restent
@@ -17,23 +18,24 @@
  */
 import { writable } from 'svelte/store';
 
-/** @typedef {'config'|'admin'|'stats'} PanelName */
+/** @typedef {'config'|'admin'} PanelName */
 
 export const PANEL_HASHES = {
   config: '#config',
   admin: '#admin',
-  stats: '#my-stats',
 };
 
 /**
- * Anciens panneaux devenus des SECTIONS de « Ma configuration » — les réglages
- * de l'utilisateur tiennent désormais dans un seul panneau, dont la colonne de
- * gauche porte toute la navigation. Leurs hash restent valables : ils sont dans
- * des favoris, dans la documentation, et rien ne justifie de les casser.
+ * Anciens panneaux devenus des SECTIONS des réglages — tout ce qui regarde le
+ * compte tient désormais dans un seul panneau, dont la colonne de gauche porte
+ * toute la navigation (« Mes statistiques » y est la page « Usage & crédits »).
+ * Leurs hash restent valables : ils sont dans des favoris, dans la
+ * documentation, et rien ne justifie de les casser.
  */
 export const SECTION_HASHES = {
   '#my-templates': 'templates',
   '#my-tags': 'tags',
+  '#my-stats': 'usage',
 };
 
 /** @param {string} hash @returns {PanelName|null} */
@@ -50,12 +52,25 @@ export const activePanel = writable(null);
  * Ouvre `name` (et ferme l'éventuel autre panneau — une seule valeur).
  * `section` préselectionne une entrée de sa colonne de gauche : c'est ce qui
  * permet à « Mes tags » ou « Importer un audio » d'ouvrir le panneau
- * DIRECTEMENT sur le bon écran, sans étape intermédiaire.
+ * DIRECTEMENT sur le bon écran, sans étape intermédiaire ; `sub`, l'un de ses
+ * onglets.
+ *
+ * Depuis l'AUTRE panneau (une recherche dans « Réglages » qui mène à
+ * l'administration), la sélection ne peut pas être posée sur la nav en place :
+ * elle appartient au panneau qui se ferme, et le nouveau, en s'enregistrant,
+ * repartirait sur sa page d'accueil. Elle est posée sur une nav VIDE, que
+ * registerPanelNav() garde.
  */
-export function openPanel(name, section = '') {
+export function openPanel(name, section = '', sub = '') {
   if (!PANEL_HASHES[name]) return;
   activePanel.set(name);
-  if (section) selectPanelSection(section);
+  if (section) {
+    panelNav.update((nav) =>
+      nav.owner && nav.owner !== name
+        ? { ...EMPTY_NAV, active: section, sub }
+        : { ...nav, active: section, sub },
+    );
+  }
   window.location.hash = PANEL_HASHES[name];
 }
 
@@ -97,15 +112,28 @@ export function syncFromHash() {
 //
 // `href` fait d'une entrée un LIEN (« Aide ») : rendu en `<a>` qui s'ouvre dans
 // un nouvel onglet, hors de la liste d'onglets, et jamais sélectionné.
+// `action` en fait un GESTE (« Se déconnecter ») : un bouton, rangé avec les
+// liens, qui remonte son identifiant au lieu d'ouvrir un écran.
+//
+// `collapsible` (Administration) : les groupes deviennent des RUBRIQUES qu'on
+// replie. Chaque entrée porte alors `groupId` (clé stable, la langue change le
+// libellé) et `groupIcon`.
+//
+// `sub` désigne un onglet À L'INTÉRIEUR de la section active (« Actions » →
+// « Entreposer ») : c'est ce qui permet à un raccourci d'aboutir au bon écran
+// d'une page qui en regroupe plusieurs.
 
-const EMPTY_NAV = { owner: null, title: '', items: [], active: '' };
+const EMPTY_NAV = { owner: null, title: '', items: [], active: '', sub: '', collapsible: false };
 
 /**
  * @type {import('svelte/store').Writable<{
  *   owner: PanelName|null,
  *   title: string,
- *   items: { id: string, label: string, icon: any, group?: string, href?: string }[],
+ *   items: { id: string, label: string, icon: any, group?: string, groupId?: string,
+ *     groupIcon?: any, href?: string, action?: string, danger?: boolean }[],
  *   active: string,
+ *   sub: string,
+ *   collapsible: boolean,
  * }>}
  */
 export const panelNav = writable(EMPTY_NAV);
@@ -126,16 +154,27 @@ export const panelNav = writable(EMPTY_NAV);
  * En revanche un changement de panneau (config → admin) repart sur la section
  * par défaut du nouveau : ses identifiants n'ont rien à voir.
  */
-export function registerPanelNav(owner, { title, items, active }) {
+export function registerPanelNav(owner, { title, items, active, collapsible = false }) {
   panelNav.update((nav) => {
-    const keep = nav.active && (nav.owner === owner || nav.owner === null) ? nav.active : active;
-    return { owner, title, items, active: keep };
+    const kept = !!nav.active && (nav.owner === owner || nav.owner === null);
+    return {
+      owner,
+      title,
+      items,
+      active: kept ? nav.active : active,
+      sub: kept ? nav.sub : '',
+      collapsible,
+    };
   });
 }
 
-/** Sélectionne une section du panneau ouvert (sidebar, deep-link). */
-export function selectPanelSection(id) {
-  panelNav.update((nav) => ({ ...nav, active: id }));
+/**
+ * Sélectionne une section du panneau ouvert (sidebar, deep-link) et, si elle
+ * en a, l'un de ses onglets. Sans `sub`, la section s'ouvre sur son premier
+ * onglet — y compris quand on y revient depuis la colonne.
+ */
+export function selectPanelSection(id, sub = '') {
+  panelNav.update((nav) => ({ ...nav, active: id, sub }));
 }
 
 /**

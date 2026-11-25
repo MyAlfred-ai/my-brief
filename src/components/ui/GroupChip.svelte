@@ -3,7 +3,7 @@
    * Puce d'un groupe d'utilisateurs : pastille de couleur + nom.
    *
    * Un seul composant pour tous les endroits où un groupe se lit en ligne :
-   * la ligne d'un compte et sa fiche (administration), le menu de compte de
+   * la ligne d'un compte et sa fiche (administration), la page « Mon profil » de
    * l'utilisateur. C'est la seule garantie que le même groupe se reconnaisse
    * d'un écran à l'autre. La couleur passe par `groupColorVars` : un slug sans
    * jeton retombe sur le repli.

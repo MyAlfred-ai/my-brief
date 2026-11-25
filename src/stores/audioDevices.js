@@ -1,5 +1,5 @@
 /**
- * Périphériques audio choisis dans « Ma configuration → Réglages audio », PAR
+ * Périphériques audio choisis dans « Réglages → Pendant la réunion → Micro et son », PAR
  * APPAREIL (localStorage) : un identifiant de périphérique n'a aucun sens d'une
  * machine à l'autre, il ne suit donc pas le compte.
  *

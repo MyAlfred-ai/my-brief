@@ -9,6 +9,8 @@ Un **template** décide de la forme du compte rendu : ce que l'IA doit y écrire
 est construit. Vous le choisissez juste avant de générer le résumé ; myBrief rédige alors toujours
 le même type de document pour le même type de réunion.
 
+![La carte de génération d'un compte rendu : sous Templates, les six templates fournis — Standard, coché, avec sa pastille 1 p., Réunion de décision, Entretien RH, Brainstorming, Planification, Rétrospective —, puis le Pagimètre et les tuiles Actions détectées et Infographie, et le bouton Générer.](../../images/nouveau-resume.png)
+
 ## À quoi ça sert
 
 À ne plus réécrire ses consignes à chaque réunion. Un point d'équipe, un comité de pilotage, un
@@ -69,7 +71,7 @@ Supprimer un template ne touche pas aux comptes rendus déjà produits avec lui.
 
 ## Ce que vous pouvez régler
 
-- **Mes templates** : cinq au maximum, dans **Ma configuration → Mes templates**. Vous les créez,
+- **Mes templates** : cinq au maximum, dans **Réglages → Mes templates**. Vous les créez,
   les modifiez et les supprimez à tout moment.
 - Au moment de générer, des **Instructions supplémentaires** orientent un seul résumé sans toucher au
   template — voir [Générer un résumé](../resumes/generer-un-resume.md).

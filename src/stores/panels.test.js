@@ -50,6 +50,26 @@ describe('panels store', () => {
     expect(get(panelNav).active).toBe('tags');
   });
 
+  it('openPanel vers l’AUTRE panneau garde la page et l’onglet visés', () => {
+    // Une recherche dans « Réglages » mène à l'administration : la nav en
+    // place est celle de « Réglages », que le panneau suivant écraserait.
+    openPanel('config');
+    registerPanelNav('config', { title: 'Réglages', items: [], active: 'profile' });
+    openPanel('admin', 'branding', 'logo');
+    registerPanelNav('admin', { title: 'Administration', items: [], active: 'dashboard' });
+    expect(get(panelNav)).toMatchObject({ owner: 'admin', active: 'branding', sub: 'logo' });
+    // …et l'ancien panneau, démonté après, n'efface pas la nav du nouveau.
+    clearPanelNav('config');
+    expect(get(panelNav).active).toBe('branding');
+  });
+
+  it('openPanel dans le panneau ouvert change de page et d’onglet', () => {
+    openPanel('config');
+    registerPanelNav('config', { title: 'Réglages', items: [], active: 'profile' });
+    openPanel('config', 'actions', 'storage');
+    expect(get(panelNav)).toMatchObject({ owner: 'config', active: 'actions', sub: 'storage' });
+  });
+
   it('closePanel ne touche pas un hash étranger', () => {
     window.location.hash = '#autre-chose';
     activePanel.set(null);
@@ -75,6 +95,12 @@ describe('panels store', () => {
     window.location.hash = '#my-templates';
     syncFromHash();
     expect(get(panelNav).active).toBe('templates');
+
+    // « Mes statistiques » était un panneau : c'est la page « Usage & crédits ».
+    window.location.hash = '#my-stats';
+    syncFromHash();
+    expect(get(activePanel)).toBe('config');
+    expect(get(panelNav).active).toBe('usage');
   });
 
   it('panelFromHash : deux panneaux, plus les alias de section', () => {
@@ -82,6 +108,7 @@ describe('panels store', () => {
     expect(panelFromHash('#config')).toBe('config');
     expect(panelFromHash('#my-templates')).toBe('config');
     expect(panelFromHash('#my-tags')).toBe('config');
+    expect(panelFromHash('#my-stats')).toBe('config');
     expect(panelFromHash('#nimporte')).toBe(null);
     expect(panelFromHash('')).toBe(null);
   });
@@ -100,12 +127,14 @@ describe('panelNav — sections du panneau ouvert, rendues par la sidebar', () =
   ];
 
   it("l'enregistrement pose owner, titre, sections et section par défaut", () => {
-    registerPanelNav('config', { title: 'Ma configuration', items, active: 'audio' });
+    registerPanelNav('config', { title: 'Réglages', items, active: 'audio' });
     expect(get(panelNav)).toEqual({
       owner: 'config',
-      title: 'Ma configuration',
+      title: 'Réglages',
       items,
       active: 'audio',
+      sub: '',
+      collapsible: false,
     });
   });
 
@@ -136,5 +165,55 @@ describe('panelNav — sections du panneau ouvert, rendues par la sidebar', () =
     clearPanelNav('admin');
     expect(get(panelNav).owner).toBe(null);
     expect(get(panelNav).items).toEqual([]);
+  });
+});
+
+describe('panelNav — onglets d’une section, rubriques repliables', () => {
+  const items = [
+    { id: 'profile', label: 'Mon profil' },
+    { id: 'actions', label: 'Actions' },
+  ];
+
+  beforeEach(() => {
+    clearPanelNav('config');
+    clearPanelNav('admin');
+  });
+
+  it('une section peut être visée SUR un onglet — « Entreposer » dans « Actions »', () => {
+    registerPanelNav('config', { title: 'Réglages', items, active: 'profile' });
+    selectPanelSection('actions', 'storage');
+    expect(get(panelNav)).toMatchObject({ active: 'actions', sub: 'storage' });
+
+    // Revenir à la section depuis la colonne repart de son premier onglet.
+    selectPanelSection('actions');
+    expect(get(panelNav).sub).toBe('');
+  });
+
+  it('l’onglet visé survit au montage du panneau et à un ré-enregistrement', () => {
+    // Raccourci pris AVANT le montage (owner `null`), comme un deep-link.
+    selectPanelSection('actions', 'storage');
+    registerPanelNav('config', { title: 'Réglages', items, active: 'profile' });
+    expect(get(panelNav)).toMatchObject({ active: 'actions', sub: 'storage' });
+    registerPanelNav('config', { title: 'Settings', items, active: 'profile' });
+    expect(get(panelNav)).toMatchObject({ active: 'actions', sub: 'storage' });
+  });
+
+  it('changer de panneau oublie l’onglet de l’ancien', () => {
+    registerPanelNav('config', { title: 'Réglages', items, active: 'profile' });
+    selectPanelSection('actions', 'storage');
+    registerPanelNav('admin', { title: 'Administration', items: [], active: 'users' });
+    expect(get(panelNav)).toMatchObject({ owner: 'admin', active: 'users', sub: '' });
+  });
+
+  it('`collapsible` demande des rubriques repliables, et se déclare à chaque fois', () => {
+    registerPanelNav('admin', {
+      title: 'Administration',
+      items: [],
+      active: 'users',
+      collapsible: true,
+    });
+    expect(get(panelNav).collapsible).toBe(true);
+    registerPanelNav('config', { title: 'Réglages', items, active: 'profile' });
+    expect(get(panelNav).collapsible).toBe(false);
   });
 });

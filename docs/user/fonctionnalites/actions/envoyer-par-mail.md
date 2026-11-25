@@ -13,7 +13,7 @@ sidebar:
 
 ## Régler vos destinataires
 
-1. Ouvrez **Ma configuration → Envoi d'email**.
+1. Ouvrez **Réglages → Après la réunion → Envoi d'email**.
 2. Dans la carte **Envoyer par mail**, tapez une adresse puis Entrée, une virgule ou **Ajouter**. Une
    croix sur chaque adresse la retire. Le compteur indique la limite fixée par votre administrateur.
 3. Facultatif : réglez l'**Objet du mail** — voir

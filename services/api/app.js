@@ -18,6 +18,7 @@ import clientEventsRoutes from './routes/clientEvents.js';
 import aiRoutes from './routes/ai.js';
 import meetingsRoutes from './routes/meetings.js';
 import templatesRoutes from './routes/templates.js';
+import transcriptCorrectionsRoutes from './routes/transcriptCorrections.js';
 import tagsRoutes from './routes/tags.js';
 import quotaRoutes from './routes/quota.js';
 import statsRoutes from './routes/stats.js';
@@ -25,6 +26,7 @@ import actionsRoutes from './routes/actions/index.js';
 import authRoutes from './routes/auth/index.js';
 import adminRoutes from './routes/admin/index.js';
 import myBrainRoutes from './routes/myBrain.js';
+import aiHelpRoutes from './routes/aiHelp.js';
 import oauth2Routes from './routes/oauth2.js';
 import mobileAuthRoutes from './routes/mobileAuth.js';
 import connectRoutes from './routes/connect.js';
@@ -50,6 +52,7 @@ import { createResetTokenStore } from './lib/auth/resetTokens.js';
 import { createOAuthStateStore } from './lib/auth/oauthState.js';
 import { loadConfig } from './lib/config.js';
 import { verifyOpenAiKey } from './lib/openai.js';
+import { createSpeechClients, verifyProviderKey } from './lib/speechProviders.js';
 import { createAudioChunker } from './lib/audioChunks.js';
 import { slugErrorHandler } from './lib/errors.js';
 import { createBackgroundTracker } from './lib/background.js';
@@ -81,6 +84,11 @@ const DISABLED_MAILER = {
  * @param {Object} [deps.mailer] - créé par lib/mailer.js ou fake de test
  * @param {Function} [deps.verifyApiKey] - sonde de validité d'une clé OpenAI
  *   candidate ; injectable pour que les tests n'appellent pas le réseau
+ * @param {Object} [deps.speech] - clients des fournisseurs de transcription
+ *   tiers (lib/speechProviders.js), par fournisseur, ou fakes de test ; par
+ *   défaut, branchés sur les clés de l'administration
+ * @param {Function} [deps.verifyProviderKey] - sonde d'une clé tierce candidate
+ *   `(provider, key)`, injectable pour la même raison que `verifyApiKey`
  * @param {Function} [deps.gmailSend] - envoi via l'API Gmail (lib/gmail.js) ;
  *   injectable pour que les tests n'appellent pas Google
  * @param {Function} [deps.driveStore] - dépôt sur le Drive du compte relié
@@ -95,6 +103,10 @@ const DISABLED_MAILER = {
  *   (lib/audioChunks.js) ; injectable : aucun test n'exige ffmpeg
  * @param {Object} [deps.config] - surcharges de lib/config.js (tests)
  * @param {Object|boolean} [deps.logger]
+ * @param {Object} [deps.schemaController] - option `schemaController` de
+ *   Fastify. Tests seulement : chaque test construit SON application, et
+ *   compiler les schémas des routes faisait ~70 % du coût — test/helpers.js y
+ *   passe un compilateur partagé. Absent en production (une seule application).
  * @returns {import('fastify').FastifyInstance}
  */
 export function buildApp({
@@ -102,6 +114,8 @@ export function buildApp({
   openai,
   mailer = DISABLED_MAILER,
   verifyApiKey,
+  speech,
+  verifyProviderKey: verifyProvider,
   gmailSend,
   graphSend,
   gmailRevoke,
@@ -112,6 +126,7 @@ export function buildApp({
   audioChunker,
   config: configOverride,
   logger = false,
+  schemaController,
 }) {
   const config = { ...loadConfig(), ...(configOverride || {}) };
 
@@ -119,7 +134,12 @@ export function buildApp({
   // les requêtes, et le rate-limit par IP de /login deviendrait un verrou
   // global qui bloquerait tout le monde dès qu'un seul client se trompe.
   // Sûr ici : l'API n'est jamais exposée directement (réseaux docker internes).
-  const app = Fastify({ logger, bodyLimit: BODY_LIMIT, trustProxy: true });
+  const app = Fastify({
+    logger,
+    bodyLimit: BODY_LIMIT,
+    trustProxy: true,
+    ...(schemaController ? { schemaController } : {}),
+  });
 
   app.decorate('db', db);
   app.decorate('openai', openai);
@@ -136,6 +156,7 @@ export function buildApp({
           ...(config.openai?.baseUrl ? { baseUrl: config.openai.baseUrl } : {}),
         })),
   );
+  app.decorate('verifyProviderKey', verifyProvider || verifyProviderKey);
   app.decorate('config', config);
   app.decorate('users', createUsersRepo(db));
   // Groupes d'utilisateurs : catalogue à part, appartenance sur le compte
@@ -145,6 +166,12 @@ export function buildApp({
   // démarrage (cf. lib/quota.js).
   app.decorate('quota', createQuotaService({ db, users: app.users, groups: app.groups }));
   app.decorate('settings', createSettingsRepo(db));
+  // Créés ici et non dans server.js : ils ne dépendent que des clés
+  // enregistrées en administration, relues à chaque appel (pas d'environnement).
+  app.decorate(
+    'speech',
+    speech || createSpeechClients((provider) => app.settings.resolveProviderKey(provider)),
+  );
   // Coffre des refresh tokens. Construit ICI et non dans server.js : la clé
   // vient de `config`, comme toute lecture d'environnement, et les tests
   // l'obtiennent en passant `configOverride` — sans variable d'environnement.
@@ -202,12 +229,14 @@ export function buildApp({
       aiRoutes(api);
       meetingsRoutes(api);
       templatesRoutes(api);
+      transcriptCorrectionsRoutes(api);
       tagsRoutes(api);
       quotaRoutes(api);
       statsRoutes(api);
       actionsRoutes(api);
       connectRoutes(api);
       myBrainRoutes(api);
+      aiHelpRoutes(api);
       configChecksRoutes(api);
       authRoutes(api);
       adminRoutes(api);

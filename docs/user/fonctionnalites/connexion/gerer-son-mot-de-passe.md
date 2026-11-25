@@ -24,16 +24,17 @@ pas avant.
 
 ## Changer de mot de passe
 
-1. Cliquez votre nom, en bas de la colonne de gauche — sur téléphone, votre avatar, en haut à
-   droite —, puis **Changer de mot de passe**.
+1. Ouvrez **Réglages → Mon profil** — le bouton **Réglages**, en bas de la colonne de gauche ; sur
+   téléphone, votre avatar, en haut à droite, puis **Réglages**. Dans la carte **Mot de passe**,
+   cliquez **Changer de mot de passe**.
 2. Saisissez le **Mot de passe actuel**, le **Nouveau mot de passe**, puis **Confirmer le nouveau mot de
    passe**.
 3. Cliquez **Enregistrer**.
 
 « Mot de passe modifié. Vos autres appareils ont été déconnectés. » : vous restez connecté ici.
 
-L'entrée n'apparaît pas si vous vous êtes connecté par Google, Microsoft ou le SSO, ni dans
-l'application mobile.
+La carte **Mot de passe** n'apparaît pas si vous vous êtes connecté par Google, Microsoft ou le SSO, ni
+dans l'application mobile.
 
 ## Mot de passe oublié
 

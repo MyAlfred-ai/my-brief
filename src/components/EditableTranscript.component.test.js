@@ -129,3 +129,36 @@ describe('EditableTranscript — colonne d’heure', () => {
     expect(container.querySelectorAll('.transcript-time-container').length).toBe(0);
   });
 });
+
+describe('EditableTranscript — le prénom qui a déclenché l’Aide IA', () => {
+  const items = [
+    { time: '00:00:01', itemId: 'a', text: 'Alfred, rappelle-moi la date de livraison ?' },
+    { time: '00:00:05', itemId: 'b', text: 'J’en ai parlé à Alfred hier.' },
+  ];
+  // Ce que LiveTranscript fournit : la seule ligne « a » a appelé l'IA.
+  const aiMark = (item) =>
+    item.itemId === 'a'
+      ? {
+          before: '',
+          word: 'Alfred',
+          after: ', rappelle-moi la date de livraison ?',
+          label: 'Question à Alfred',
+        }
+      : null;
+
+  it('écrit le prénom dans la teinte de l’IA, sans toucher au texte de la ligne', () => {
+    const { container } = render(EditableTranscript, { props: { items, aiMark } });
+    const marks = container.querySelectorAll('.transcript-ai-mark');
+    expect(marks).toHaveLength(1);
+    expect(marks[0].textContent).toBe('Alfred');
+    expect(marks[0].getAttribute('title')).toBe('Question à Alfred');
+    // La phrase se lit toujours d'un trait — et s'édite toujours entière.
+    const lines = [...container.querySelectorAll('.transcript-text')].map((n) => n.textContent);
+    expect(lines).toEqual(items.map((item) => item.text));
+  });
+
+  it('sans Aide IA (réunion rouverte, autre écran) : aucune marque', () => {
+    const { container } = render(EditableTranscript, { props: { items } });
+    expect(container.querySelectorAll('.transcript-ai-mark')).toHaveLength(0);
+  });
+});

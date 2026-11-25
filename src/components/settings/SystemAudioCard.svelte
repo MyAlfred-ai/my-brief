@@ -1,6 +1,6 @@
 <script>
   /**
-   * Carte « Son de l'ordinateur » de Ma configuration → Réglages audio —
+   * Carte « Son de l'ordinateur » de Réglages → Pendant la réunion → Micro et son —
    * Firefox et Safari sur ordinateur seulement (SettingsPanel décide de la
    * monter).
    *

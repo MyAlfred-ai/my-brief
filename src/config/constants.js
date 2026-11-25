@@ -16,7 +16,7 @@ export const baseUrl = `${apiOrigin}/api`;
 export const aiBaseUrl = 'https://api.openai.com/v1/realtime';
 
 // Documentation utilisateur — docs/user/, publiée en ligne. « Aide », dans
-// « Ma configuration », l'ouvre dans un nouvel onglet : elle remplace l'aide
+// « Réglages », l'ouvre dans un nouvel onglet : elle remplace l'aide
 // intégrée, qui en tenait une seconde copie et finissait par la contredire.
 export const DOCS_URL = 'https://docs.myalfred.ai/my-brief/';
 
@@ -53,6 +53,14 @@ export const REALTIME_SILENT_STREAM_MS = 40 * 1000;
 // détection tombe au pire 5 s après l'échéance, et un tick coûte deux
 // comparaisons (aucun travail par frame audio).
 export const REALTIME_SILENCE_CHECK_MS = 5 * 1000;
+// Pause au-delà de laquelle la reprise renouvelle le canal de transcription.
+// En pause, rien ne passe sur le socket, dans un sens ni dans l'autre : au bout
+// de quelques minutes, un NAT, un proxy d'entreprise ou le fournisseur a pu le
+// couper sans que le navigateur le sache. Sans renouvellement, la parole de la
+// reprise partait dans un socket mort jusqu'au chien de garde — 40 s perdues au
+// meilleur cas. Sous une minute, le socket vient de servir : on le garde.
+// Coût : une clé éphémère (rotation sans coupure, cf. channel.js).
+export const REALTIME_PAUSE_REFRESH_MS = 60 * 1000;
 // Plafond absolu : arrêt PROPRE (sauvegarde + toast persistant), jamais silencieux.
 export const MAX_RECORDING_DURATION_MS = 8 * 60 * 60 * 1000; // 8 heures
 // Transcription du direct poussée en base pendant l'enregistrement. La réunion
@@ -79,6 +87,46 @@ export const SILENCE_THRESHOLD_MS = 1000;
 export const KEEP_ALIVE_INTERVAL_MS = 500;
 export const KEEP_ALIVE_VOLUME = 0.002;
 export const AUDIO_ACTIVITY_THRESHOLD = 0.015;
+// Enregistrement de la réunion (MediaRecorder), gardé en mémoire jusqu'à la fin
+// puis proposé au téléchargement. Sans débit fixé, Chromium encode à 128 kb/s
+// (mesuré : 58 Mo/h en RAM, 173 Mo pour 3 h). 48 kb/s Opus reste transparent
+// pour la parole : 22 Mo/h. Les segments hors ligne, qui partent en
+// transcription, tournent déjà à 32 kb/s (platform/offlineRecording.js).
+export const RECORDING_AUDIO_BITS_PER_SECOND = 48000;
+// Sauvegarde locale du direct (« Reprendre » après une coupure) : les phrases
+// finalisées d'une rafale sont écrites en une fois. Jamais plus tard que la
+// fermeture ou la mise en arrière-plan de la page (utils/session.js).
+export const SESSION_SAVE_COALESCE_MS = 2000;
+// Témoin « une réunion enregistre » (utils/liveSession.js), réécrit à ce rythme :
+// un téléphone tue une PWA en arrière-plan sans prévenir la page, la reprise
+// repart donc au pire de cet âge-là. 5 s : une écriture de quelques octets.
+export const LIVE_SESSION_BEAT_MS = 5000;
+
+// Garde de capture (lib/recording/captureGuard.js) — micro, contexte audio et
+// page surveillés pendant l'enregistrement.
+// Le processor du micro rend ~12 trames par seconde : au-delà de ce silence de
+// TRAMES (pas de son), la capture est tenue pour arrêtée — page gelée en
+// arrière-plan, contexte audio interrompu par un appel.
+export const CAPTURE_STALL_MS = 4000;
+// Vérification périodique : un état cassé sans événement (piste restée muette
+// après un appel) est repris au plus tard à ce rythme.
+export const CAPTURE_CHECK_MS = 3000;
+// Une piste muette se rétablit le plus souvent seule (fin d'appel, retour au
+// premier plan). Passé ce délai, écran visible, un nouveau micro est demandé.
+export const CAPTURE_MUTE_GRACE_MS = 5000;
+// Écart minimal entre deux demandes de micro : pendant un appel, chacune
+// échoue — inutile d'insister à chaque vérification.
+export const CAPTURE_MIC_RETRY_MS = 12000;
+// En deçà, une interruption ne laisse ni marqueur dans la transcription ni
+// message : un changement d'application d'une seconde n'a rien fait perdre.
+export const CAPTURE_MARKER_MIN_MS = 8000;
+// Au-delà, le canal de transcription est renouvelé au retour sans attendre le
+// chien de garde (40 s) : un socket resté « ouvert » sous une page gelée est
+// le plus souvent mort.
+export const CAPTURE_REFRESH_MIN_MS = 15000;
+// Interruption que rien ne débloque seul (iOS exige parfois un geste pour
+// relancer l'audio) : l'utilisateur est prévenu, et son prochain toucher relance.
+export const CAPTURE_BLOCKED_NOTICE_MS = 10000;
 
 // Mise en page — largeurs de fenêtre, en px CSS. Les media queries ne lisent pas
 // le JavaScript : style.css et Sidebar.svelte répètent ces valeurs en dur.
@@ -89,10 +137,59 @@ export const PHONE_MAX_WIDTH = 768;
 // barre (280) + colonne Actions/Notes (340) laissaient ~150 px au document.
 export const SIDEBAR_DRAWER_MAX_WIDTH = 1100;
 
-// Crédit de temps (anneau de l'avatar, « Ce mois-ci », « Mes statistiques ») :
+// Crédit de temps (anneau de l'avatar, « Ce mois-ci », « Usage & crédits ») :
 // la couleur suit la part du crédit qui RESTE — au moins la moitié : vert ; au
 // moins un cinquième : ambre ; en dessous : orange ; épuisé (moins d'une
 // minute) : rouge. Le cinquième est l'ancien seuil unique du compteur, qui ne
 // distinguait que « normal », « bas » et « épuisé ».
 export const CREDIT_TONE_HIGH = 0.5;
 export const CREDIT_TONE_LOW = 0.2;
+
+// Aide IA d'une réunion (stores/aiHelp.js). Une LECTURE est un appel au modèle :
+// elle attend au moins deux phrases finalisées, laisse retomber la rafale, et ne
+// repart pas avant vingt secondes — au plus 180 lectures par heure, sous le
+// plafond du serveur (240, lib/config.js). Plus court, l'IA commenterait des
+// demi-phrases ; plus long, une contradiction serait signalée quand la réunion
+// est déjà passée à autre chose.
+export const AI_HELP_WATCH_MIN_LINES = 2;
+export const AI_HELP_WATCH_DEBOUNCE_MS = 1500;
+export const AI_HELP_WATCH_MIN_INTERVAL_MS = 20 * 1000;
+// Après un plafond atteint ou une panne du modèle : une minute de silence.
+export const AI_HELP_WATCH_BACKOFF_MS = 60 * 1000;
+// Ce qui part avec une lecture ou une question, en caractères : la FIN du texte.
+export const AI_HELP_FRESH_MAX_CHARS = 6000;
+export const AI_HELP_BEFORE_MAX_CHARS = 10000;
+export const AI_HELP_ASK_TRANSCRIPT_MAX_CHARS = 48000;
+// « Alfred ? » lancé seul : la phrase suivante est la question, si elle vient vite.
+export const AI_HELP_ARMED_MS = 12 * 1000;
+// Demande DICTÉE à l'IA (utils/voiceRequest.js) : elle ne part qu'une fois la
+// personne tue — temps écoulé depuis le dernier mot transcrit de sa demande.
+// Avant, elle partait à la première ligne bouclée : l'IA répondait à la moitié
+// d'une phrase (signalé le 2026-11-13, « il coupe trop tôt »).
+// 2,5 s quand la demande a l'air finie : une respiration en milieu de phrase
+// fait 1 à 2 s, et la transcription suit la voix avec une demi-seconde de retard.
+export const AI_HELP_REQUEST_QUIET_MS = 2500;
+// 4 s quand elle a l'air en suspens (« j'ai une question », une virgule, un
+// mot de liaison en dernier, pas de ponctuation) : la suite arrive.
+export const AI_HELP_REQUEST_OPEN_MS = 4000;
+// Un geste (« ferme », « agrandis ») reste vif : juste le temps de voir si la
+// phrase continue (« ferme le dossier Atlas » n'en est pas un).
+export const AI_HELP_REQUEST_GESTURE_MS = 900;
+// Plafond d'écoute : au-delà, la demande part telle qu'elle est.
+export const AI_HELP_REQUEST_MAX_MS = 30 * 1000;
+// L'orbe « parle » ce temps-là après une intervention.
+export const AI_HELP_SPEAK_MS = 2600;
+// Minuteur demandé à l'IA (stores/aiHelpTimer.js). L'horloge est relue quatre
+// fois par seconde : l'affichage ne saute jamais une seconde, et la fin tombe à
+// un quart de seconde près — sans se fier à un `setTimeout` long, qu'un poste
+// mis en veille ou un onglet ralenti fait sonner en retard.
+export const AI_HELP_TIMER_TICK_MS = 250;
+// Arrivé à zéro, il reste affiché « Temps écoulé » une minute, puis s'efface
+// seul : assez pour qui revient de pause, sans rien laisser traîner à l'écran.
+export const AI_HELP_TIMER_DONE_MS = 60 * 1000;
+// L'orbe « parle » le temps de la mélodie de fin (utils/chime.js).
+export const AI_HELP_TIMER_RING_MS = 4000;
+// Les templates de compte rendu nommés à l'IA avec une question, pour qu'elle
+// puisse en commander un : mêmes bornes que l'API (lib/aiHelp/prompts.js).
+export const AI_HELP_TEMPLATES_MAX = 60;
+export const AI_HELP_TEMPLATE_NAME_MAX = 120;

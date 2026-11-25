@@ -1,7 +1,16 @@
 <script>
   /**
-   * Administration — coquille PanelShell ; sections dans la sidebar (desktop)
-   * et dans le déroulant PanelTabs (mobile), via stores/panels.js.
+   * Administration — l'espace de l'ORGANISATION, ouvert par le bouton « Admin »
+   * de la carte du compte. Coquille PanelShell ; sections dans la sidebar
+   * (desktop) et dans le déroulant PanelTabs (mobile), via stores/panels.js.
+   *
+   * Un TABLEAU DE BORD pour accueil (ce qui reste à régler, et où), puis cinq
+   * RUBRIQUES repliables, celles de MIA, à la place de onze onglets à plat qui
+   * mêlaient ce qu'on règle une fois, ce qu'on gère et ce qu'on consulte :
+   * Personnes, Modèles IA, Capacités, Coûts, Organisation. Les identifiants
+   * des pages sont ceux sous lesquels le diagnostic du serveur
+   * (lib/configChecks.js) range ses constats : `ai` est « Clés API »,
+   * `branding` « Marque & apparence », `company` « Entreprise ».
    *
    * Depuis la Phase 5 du
    * refactoring, la gestion des templates transverses passe par le composant
@@ -10,10 +19,10 @@
    * 200 + {ok:false} de routes/templates.js : un `value_invalid` s'affichait
    * « sauvegardé » alors que rien n'était écrit).
    *
-   * Les autres onglets (Configuration/Users/Groupes/Crédit de temps/Auth/IA/
-   * Actions/MyBrain/Stats) sont autonomes : ils portent leur propre chargement, leurs erreurs
-   * et leurs appels API. Le vocabulaire de l'organisation se règle dans Configuration
-   * (BrandingTab), avec le reste de l'identité de l'installation.
+   * Les autres pages sont autonomes : elles portent leur propre chargement,
+   * leurs erreurs et leurs appels API. Deux composants servent chacun deux
+   * pages, par leur prop `view` : AiTab (« Clés API », « Modèles ») et
+   * BrandingTab (« Entreprise », « Marque & apparence »).
    */
   import IconShield from '~icons/solar/shield-user-linear';
   import IconTemplates from '~icons/solar/clipboard-list-linear';
@@ -25,7 +34,16 @@
   import IconChart from '~icons/solar/chart-2-linear';
   import IconPalette from '~icons/solar/palette-linear';
   import IconClock from '~icons/solar/clock-circle-linear';
+  import IconCapabilities from '~icons/solar/widget-add-linear';
+  import IconCosts from '~icons/solar/wallet-money-linear';
+  import IconOrganization from '~icons/solar/buildings-2-linear';
+  import IconDashboard from '~icons/solar/widget-5-linear';
+  import IconCompany from '~icons/solar/notebook-linear';
+  import IconModels from '~icons/solar/cpu-bolt-linear';
   import IconBrain from './icons/BrainIcon.svelte';
+  import IconAiHelp from './icons/AiHelpIcon.svelte';
+  import AiHelpTab from './admin/AiHelpTab.svelte';
+  import DashboardTab from './admin/DashboardTab.svelte';
 
   import { onDestroy } from 'svelte';
 
@@ -41,6 +59,7 @@
   } from '../stores/panels.js';
   import TemplateEditor from './TemplateEditor.svelte';
   import { DEFAULT_EDITABLE_TEMPLATES } from '../config/templates.js';
+  import { ADMIN_RUBRICS, ADMIN_SECTIONS } from '../config/adminSections.js';
   import UsersTab from './admin/UsersTab.svelte';
   import GroupsTab from './admin/GroupsTab.svelte';
   import AuthTab from './admin/AuthTab.svelte';
@@ -65,38 +84,58 @@
   // l'écran ne saurait afficher que des 403.
   $: authenticated = $auth.user?.role === 'admin';
 
-  // « Configuration » ouvre la liste et sert de section d'accueil : c'est
-  // l'identité de l'installation (vocabulaire de l'organisation, logo, phrase,
-  // couleur), ce qu'un administrateur règle en premier. Les statistiques
-  // ferment la liste : on les consulte, on ne les règle pas.
-  $: SECTIONS = [
-    { id: 'branding', label: $uiText.adminBranding.tabLabel, icon: IconPalette },
-    { id: 'templates', label: $uiText.adminTemplates.tabLabel, icon: IconTemplates },
-    { id: 'actions', label: $uiText.adminActions.tabLabel, icon: IconShare },
-    { id: 'users', label: $uiText.adminUsers.tabLabel, icon: IconUsers },
-    // Les groupes juste après les comptes : ce sont des ensembles de comptes,
-    // et la fiche d'un compte y renvoie.
-    { id: 'groups', label: $uiText.adminGroups.tabLabel, icon: IconGroups },
-    // Le crédit de temps de chacun, juste après les groupes qui le fixent.
-    { id: 'credits', label: $uiText.myStats.creditsTabLabel, icon: IconClock },
-    { id: 'auth', label: $uiText.adminAuth.tabLabel, icon: IconKey },
-    { id: 'ai', label: $uiText.adminAi.tabLabel, icon: IconMagic },
-    // Le cerveau partagé de l'organisation : une intégration qu'on règle une
-    // fois, rangée avant les statistiques qui ferment la liste.
-    { id: 'mybrain', label: $uiText.adminMyBrain.tabLabel, icon: IconBrain },
-    { id: 'stats', label: $uiText.adminStats.tabLabel, icon: IconChart },
-  ];
+  // Les pages, leurs rubriques et leurs raisons vivent dans
+  // config/adminSections.js (la recherche des réglages les lit aussi). Ne
+  // restent ici que les icônes.
+  const RUBRIC_ICONS = {
+    people: IconUsers,
+    models: IconMagic,
+    capabilities: IconCapabilities,
+    costs: IconCosts,
+    organization: IconOrganization,
+  };
+  const SECTION_ICONS = {
+    dashboard: IconDashboard,
+    users: IconUsers,
+    groups: IconGroups,
+    ai: IconKey,
+    'ai-models': IconModels,
+    templates: IconTemplates,
+    actions: IconShare,
+    aihelp: IconAiHelp,
+    mybrain: IconBrain,
+    credits: IconClock,
+    stats: IconChart,
+    company: IconCompany,
+    branding: IconPalette,
+    auth: IconKey,
+  };
   // Pastille de chaque section : ce que le diagnostic d'organisation y trouve à
   // régler (stores/configChecks.js). La sidebar et le déroulant mobile la rendent.
   $: alerts = alertsBySection($configChecks.organization, $uiText.configChecks);
-  $: TABS = SECTIONS.map((tab) => ({ ...tab, alert: alerts[tab.id] || null }));
-  const HOME_TAB = 'branding';
+  // Une page sans rubrique (le tableau de bord) n'a ni groupe ni icône de
+  // groupe : la colonne la rend comme une entrée simple, au-dessus des autres.
+  $: TABS = ADMIN_SECTIONS.map(({ id, rubric, label }) => ({
+    id,
+    label: label($uiText),
+    icon: SECTION_ICONS[id],
+    groupId: rubric || '',
+    group: rubric ? ADMIN_RUBRICS[rubric].label($uiText) : '',
+    groupIcon: rubric ? RUBRIC_ICONS[rubric] : null,
+    alert: alerts[id] || null,
+  }));
+  const HOME_TAB = 'dashboard';
   // Sections rendues par la SIDEBAR (desktop) et le déroulant PanelTabs
   // (mobile) — voir stores/panels.js. Enregistrées seulement pour un admin :
   // pour tout autre compte, ce panneau n'affiche qu'un refus, et un menu de
   // sections à gauche promettrait des écrans inaccessibles.
   $: if (authenticated) {
-    registerPanelNav('admin', { title: 'Administration', items: TABS, active: HOME_TAB });
+    registerPanelNav('admin', {
+      title: $uiText.buttons.administration,
+      items: TABS,
+      active: HOME_TAB,
+      collapsible: true,
+    });
   }
   $: activeTab =
     $panelNav.owner === 'admin' && TABS.some((t) => t.id === $panelNav.active)
@@ -152,6 +191,8 @@
       {/if}
       <button class="ap-btn-primary" on:click={onClose}>{$uiText.buttons.close}</button>
     </div>
+  {:else if activeTab === 'dashboard'}
+    <div class="ap-body"><DashboardTab pages={TABS} /></div>
   {:else if activeTab === 'stats'}
     <div class="ap-body"><StatsTab /></div>
   {:else if activeTab === 'templates'}
@@ -180,13 +221,19 @@
   {:else if activeTab === 'auth'}
     <div class="ap-body"><AuthTab /></div>
   {:else if activeTab === 'ai'}
-    <div class="ap-body"><AiTab /></div>
+    <div class="ap-body"><AiTab view="keys" /></div>
+  {:else if activeTab === 'ai-models'}
+    <div class="ap-body"><AiTab view="models" /></div>
   {:else if activeTab === 'actions'}
     <div class="ap-body"><ActionsTab /></div>
+  {:else if activeTab === 'company'}
+    <div class="ap-body"><BrandingTab view="company" /></div>
   {:else if activeTab === 'branding'}
-    <div class="ap-body"><BrandingTab /></div>
+    <div class="ap-body"><BrandingTab view="look" /></div>
   {:else if activeTab === 'mybrain'}
     <div class="ap-body"><MyBrainTab /></div>
+  {:else if activeTab === 'aihelp'}
+    <div class="ap-body"><AiHelpTab /></div>
   {/if}
 </PanelShell>
 

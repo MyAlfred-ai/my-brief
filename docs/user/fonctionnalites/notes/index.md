@@ -31,6 +31,7 @@ dans la barre du bas pendant la réunion, en bas à droite après — ouvre les 
 | **Le compte rendu** | Points clés, décisions et chiffres des notes y sont intégrés, même s'ils n'ont pas été dits |
 | **L'orthographe** | Un nom corrigé par une consigne claire — « Remplace Alexe par Alex » — ou un sigle défini est écrit juste dans le compte rendu |
 | **La transcription en direct** | Pendant l'enregistrement, les deux dernières phrases sont relues avec vos notes : un nom corrigé y est remplacé, et s'éclaire un instant |
+| **Vos réunions suivantes** | Un remplacement écrit dans les notes — « Remplace Durend par Durand » — rejoint vos **Mots remplacés** : il sera fait d'office, sans réécrire la consigne |
 | **L'infographie** | Vos notes font partie de ce qu'elle illustre |
 
 Les notes ne servent pas à la détection d'actions : une tâche écrite dans les notes n'apparaît pas dans
@@ -53,9 +54,13 @@ rendu qu'au résumé suivant.
 
 ## Ce que vous pouvez régler
 
-Rien à régler : les notes s'écrivent réunion par réunion. Pour ce qui vaut pour toutes vos réunions —
-votre métier, vos clients —, écrivez plutôt [Mon contexte](../configuration/decrire-son-contexte.md).
-Votre administrateur peut déclarer le vocabulaire de toute l'organisation.
+Les notes s'écrivent réunion par réunion. Les remplacements qu'elles portent, eux, sont retenus pour les
+suivantes : la liste, et l'interrupteur qui coupe cette mémoire, sont dans **Réglages → Pendant la réunion →
+Mots remplacés** — voir
+[Faire remplacer d'office un mot mal transcrit](../transcription/faire-remplacer-d-office-un-mot-mal-transcrit.md).
+Pour ce qui vaut pour toutes vos réunions — votre métier, vos clients —, écrivez plutôt
+[Mon contexte](../configuration/decrire-son-contexte.md). Votre administrateur peut déclarer le
+vocabulaire de toute l'organisation.
 
 ## Exemples
 
@@ -63,7 +68,8 @@ Votre administrateur peut déclarer le vocabulaire de toute l'organisation.
 « Budget 2027 validé : 480 k€ ». Le compte rendu le mentionne.
 
 **Un client au nom difficile.** Vous écrivez, sur une ligne : « Remplace Durend par Durand ». La
-transcription le corrige au vol, et le compte rendu l'écrit juste.
+transcription le corrige au vol, et le compte rendu l'écrit juste. À la réunion suivante, « Durend » est
+corrigé sans que vous ayez rien à écrire.
 
 **Un sigle maison.** « SAL : système d'aide pour les lentilles ». Quand la transcription entend « sale »,
 le compte rendu écrit **SAL**.

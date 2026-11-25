@@ -5,8 +5,8 @@ sidebar:
   order: 5
 ---
 
-**Administration → Actions** : **Tester l'envoi** dans la carte **Envoyer par mail**, **Tester le
-dépôt** dans la carte **Entreposer**.
+**Administration → Capacités → Actions** : **Tester l'envoi** dans la tuile **Envoyer par mail** dépliée,
+**Tester le dépôt** dans la tuile **Entreposer** dépliée.
 
 ## Ce que fait le test
 
@@ -27,7 +27,7 @@ l'organisation ; le dépôt va dans le dossier cible de l'organisation.
 ## Ce qu'il faut savoir
 
 - **Tester l'envoi** est grisé sans relais d'envoi sur le serveur, même si vous avez relié votre
-  compte : testez alors depuis **Ma configuration → Envoi d'email**.
+  compte : testez alors depuis **Réglages → Après la réunion → Envoi d'email**.
 - **Tester le dépôt** est grisé sans fournisseur. Il demande que votre propre compte soit relié.
 - **Dix tests par heure** au plus.
 - Le fichier de test déposé n'est pas supprimé : effacez-le vous-même.
@@ -36,5 +36,5 @@ l'organisation ; le dépôt va dans le dossier cible de l'organisation.
 
 Votre test ne prouve pas que tout fonctionne **pour lui** : il n'utilise ni ses destinataires, ni son
 dossier, ni ses tags. Après chaque changement important, demandez à un utilisateur de lancer **Tester
-l'envoi** et **Tester le dépôt** depuis **Ma configuration** — voir
+l'envoi** et **Tester le dépôt** depuis **Réglages → Après la réunion** — voir
 [Tester l'envoi et le dépôt](../../fonctionnalites/actions/tester-l-envoi-et-le-depot.md).

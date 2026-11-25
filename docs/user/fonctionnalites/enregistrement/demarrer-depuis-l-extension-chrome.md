@@ -44,3 +44,5 @@ pas le son elle-même.
 | Un « ! » sur l'icône au raccourci clavier | L'extension n'est liée à aucun site : liez-la en restant sur l'onglet myBrief — voir [Installer myBrief sur ses appareils](../installer-mybrief-sur-ses-appareils.md). |
 | « Extension non détectée dans ce navigateur » | L'extension n'est pas installée, ou pas liée : [Installer myBrief sur ses appareils](../installer-mybrief-sur-ses-appareils.md). |
 | L'extension a disparu | Le dossier décompressé a été déplacé ou supprimé : rechargez-la depuis `chrome://extensions`. |
+| Le menu de l'extension affiche **Autoriser** suivi de l'adresse de votre myBrief | L'extension n'a pas accès à votre myBrief sur cet ordinateur — autre poste, ou accès retiré : cliquez le bouton et acceptez la demande de Chrome. Sans cet accès, pas de badge REC, et chaque clic ouvre un nouvel onglet. |
+| « Une nouvelle version de l'extension est disponible » | Voir [Mettre l'extension à jour](../installer-mybrief-sur-ses-appareils.md#mettre-lextension-à-jour). |

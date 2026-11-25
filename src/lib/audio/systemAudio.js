@@ -8,7 +8,7 @@
  *    navigateur (getDisplayMedia), un onglet ou « Tout l'écran » avec le son du
  *    système. Le chemin historique, inchangé ;
  *  - `device` — Firefox et Safari sur ordinateur, quand un périphérique a été
- *    choisi dans Ma configuration → Réglages audio. Leur partage d'écran ne
+ *    choisi dans Réglages → Pendant la réunion → Micro et son. Leur partage d'écran ne
  *    transporte jamais de son (utils/browserAudioSupport.js) : seul un
  *    périphérique virtuel (BlackHole, VB-CABLE, Mixage stéréo, moniteur
  *    PulseAudio) peut présenter la sortie de l'ordinateur comme une entrée. Il

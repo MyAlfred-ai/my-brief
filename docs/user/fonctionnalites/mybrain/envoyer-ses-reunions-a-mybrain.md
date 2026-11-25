@@ -5,7 +5,7 @@ sidebar:
   order: 1
 ---
 
-**Ma configuration → MyBrain.** La section n'apparaît que si votre administrateur a relié myBrief à
+**Réglages → Après la réunion → MyBrain.** L'onglet n'apparaît que si votre administrateur a relié myBrief à
 myBrain, et qu'il n'y a pas désactivé l'envoi.
 
 ## Avant de commencer
@@ -15,7 +15,7 @@ la même adresse que votre compte myBrief.
 
 ## Étapes
 
-1. Ouvrez **Ma configuration**, puis **MyBrain**, dans le groupe **Actions**.
+1. Ouvrez **Réglages → Après la réunion**, puis l'onglet **MyBrain**.
 2. Activez **Envoyer mes réunions à MyBrain**. C'est enregistré aussitôt : le badge passe à **Activé**.
 3. Terminez vos réunions comme d'habitude, par **Générer le résumé** ou par **Enregistrer**.
 
@@ -57,4 +57,4 @@ Une réunion en **Échec** se renvoie par **Réessayer**.
 | « La connexion à MyBrain est à revoir : prévenez votre administration. » | Prévenez votre administrateur ; une fois la connexion corrigée, **Réessayer**. |
 | « Votre adresse n'a pas de compte MyBrain… » | La réunion est bien partie ; la validation ira au responsable de la fiche, ou aux curateurs. |
 | « Trop d'essais en peu de temps. Réessayez dans un moment. » | **Réessayer** est limité à trente fois par heure : attendez un peu. |
-| La section **MyBrain** n'apparaît pas | myBrain n'est pas relié à votre instance, ou l'envoi y est désactivé : voyez avec votre administrateur. |
+| L'onglet **MyBrain** n'apparaît pas | myBrain n'est pas relié à votre instance, ou l'envoi y est désactivé : voyez avec votre administrateur. |

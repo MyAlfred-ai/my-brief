@@ -1,6 +1,6 @@
 <script>
   /**
-   * Section « Importer un audio » de « Ma configuration ».
+   * Section « Importer un audio » de « Réglages ».
    *
    * L'entrée du menu ouvrait jadis le sélecteur de fichier du système, sans un
    * mot : on ne savait ni ce qui était accepté, ni ce qui allait se passer

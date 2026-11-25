@@ -73,7 +73,7 @@ du serveur ».
 |---|---|---|---|
 | Préparer le serveur | Chez l'hébergeur et chez le gestionnaire du nom de domaine | Un serveur, un domaine qui pointe dessus, les ports 80 et 443 ouverts | [Préparer le serveur](preparer-le-serveur.md) |
 | Installer myBrief | Sur le serveur : `bash install.sh` | myBrief en ligne, en HTTPS, avec son compte d'amorçage | [Installer myBrief sur le serveur](installer-mybrief-sur-le-serveur.md) |
-| Faire les réglages de base | Dans myBrief : **Administration**, dans le menu de compte, puis ses onglets | Votre propre mot de passe, la clé OpenAI, la connexion, les comptes | [Faire les réglages de base](faire-les-reglages-de-base.md) |
+| Faire les réglages de base | Dans myBrief : le bouton **Admin**, en bas de la colonne de gauche, puis les pages de l'administration | Votre propre mot de passe, la clé OpenAI, la connexion, les comptes | [Faire les réglages de base](faire-les-reglages-de-base.md) |
 | Mettre myBrief à jour | Sur le serveur : `bash install.sh backup`, puis `bash install.sh update` | La dernière version, la base sauvegardée avant | [Mettre à jour myBrief](mettre-a-jour-mybrief.md) |
 
 ## Exemples de configuration
@@ -81,7 +81,7 @@ du serveur ».
 **Un serveur neuf pour un client.** Un VPS Ubuntu, le domaine `mybrief.exemple.fr` pointé dessus la
 veille. Premier parcours de l'installeur, **VPS vierge** : il installe Docker, obtient le certificat et
 démarre myBrief. La clé OpenAI du client n'est pas encore là : la question reste vide, et la clé est
-saisie le lendemain dans l'onglet **IA**.
+saisie le lendemain dans **Administration → Modèles IA → Clés API**.
 
 **Un serveur qui héberge déjà d'autres applications derrière Traefik.** Second parcours, **Serveur avec
 un Traefik déjà en place** : l'installeur trouve le conteneur de Traefik et propose son réseau ; on lui

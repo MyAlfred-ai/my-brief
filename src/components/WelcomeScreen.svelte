@@ -9,6 +9,9 @@
    * le prénom n'est affiché que s'il ressemble à un prénom (isValidUserName :
    * un identifiant technique ne salue personne). Les styles (.welcome-*)
    * restent globaux, dans style.css.
+   *
+   * L'Aide IA n'y figure plus (2026-11-12) : une réunion démarre avec elle
+   * allumée, tous domaines compris ; on ne la règle que pendant, d'un geste.
    */
   import { isValidUserName } from '../utils/userIdentity.js';
   import { uiText } from '../store.js';

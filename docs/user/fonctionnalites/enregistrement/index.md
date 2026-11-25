@@ -34,6 +34,11 @@ le partage d'écran. L'écran d'enregistrement s'affiche ensuite : « Enregistre
 chronomètre, et la transcription qui s'écrit ligne après ligne. La réunion apparaît aussitôt dans
 l'historique, en italique.
 
+**Le consentement des participants.** Enregistrer une réunion suppose l'accord de chacun : c'est à
+vous, qui la lancez, de le demander avant de démarrer. Sur ordinateur, la fenêtre **Quel type de
+réunion ?** le rappelle sous son titre — **Consentement obligatoire**. Sur téléphone, cette fenêtre
+ne s'affiche pas, et le rappel non plus.
+
 **Pas de séparation automatique des voix.** myBrief distingue deux sources, pas les personnes : tout ce
 que capte votre micro vous est attribué, et tous vos interlocuteurs à distance partagent l'étiquette
 **Visio**, que vous pouvez renommer — voir [Nommer les participants](../transcription/nommer-les-participants.md).
@@ -61,10 +66,13 @@ flowchart TB
 votre avatar, en bas de la colonne de gauche — en haut à droite sur téléphone —, et la ligne sous votre
 nom dit ce qu'il vous reste : « 1 h 15 restantes ». L'anneau se vide au fil du mois,
 descend en direct pendant une réunion, et change de couleur avec ce qui reste : vert, ambre sous la
-moitié, orange sous un cinquième. Le bloc **Ce mois-ci** du menu de compte détaille le crédit et votre
-rythme ; **Voir mes statistiques** ouvre [Mes statistiques](../statistiques/index.md). Quota atteint,
+moitié, orange sous un cinquième. [Usage & crédits](../statistiques/index.md), dans **Réglages**,
+détaille le crédit et votre rythme ; sur téléphone, le bloc **Ce mois-ci** de la carte du compte —
+votre avatar — le résume, et **Voir le détail** y mène. Quota atteint,
 l'anneau passe en rouge, **Démarrer** affiche **Quota atteint**, et un message donne la date du
-renouvellement, le 1er du mois suivant. Une réunion commencée n'est jamais coupée. Supprimer une réunion
+renouvellement, le 1er du mois suivant. Une réunion commencée n'est jamais coupée : si vos minutes
+s'épuisent pendant qu'elle tourne, un message vous prévient et reste affiché jusqu'à ce que vous le
+fermiez, et l'enregistrement comme la transcription continuent jusqu'à ce que vous l'arrêtiez. Supprimer une réunion
 ne rend pas ses minutes : elles restent décomptées jusqu'au renouvellement. Sans quota, pas d'anneau :
 la ligne sous votre nom donne votre adresse.
 
@@ -89,7 +97,7 @@ la ligne sous votre nom donne votre adresse.
 
 ## Ce que vous pouvez régler
 
-- **Le micro**, appareil par appareil : **Ma configuration → Réglages audio** — voir
+- **Le micro**, appareil par appareil : **Réglages → Pendant la réunion → Micro et son** — voir
   [Choisir son micro](../configuration/choisir-son-micro.md).
 - **Le son de l'ordinateur**, dans Firefox et Safari : au même endroit, carte **Son de
   l'ordinateur** — voir
@@ -114,8 +122,8 @@ répliques du client arrivent avec l'étiquette **Visio**, que vous renommez à 
 **Un salon, sans réseau.** Avec l'application Android, vous enregistrez hors ligne ; la transcription
 rattrape son retard dès que le téléphone retrouve le réseau.
 
-**Un entretien enregistré sur dictaphone.** Vous importez le fichier depuis **Ma configuration →
-Importer un audio**, puis vous générez le compte rendu.
+**Un entretien enregistré sur dictaphone.** Vous importez le fichier depuis **Réglages → Outils**,
+puis vous générez le compte rendu.
 
 ## Voir aussi
 

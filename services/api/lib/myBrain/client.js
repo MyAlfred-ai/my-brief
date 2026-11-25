@@ -4,12 +4,25 @@
  * myBrain est le cerveau partagé de l'équipe : un wiki qui ingère des sources et
  * en tire des faits datés. myBrief s'y branche comme une application — une clé
  * émise par un administrateur de myBrain (Administration → Clés d'API), avec le
- * droit « nourrir » — et lui donne les réunions à lire. Deux appels suffisent :
+ * droit « nourrir » — et lui donne les réunions à lire :
  *
  *   GET  /api/v1          qui suis-je : l'application, ses droits (le test)
  *   POST /api/v1/nourrir  un texte à ingérer — 202 et un `job` ; TOUT part en
  *                         proposition dans la revue de myBrain, rien n'atteint
  *                         le cerveau sans un humain.
+ *
+ * Avec le droit « lire » en plus, l'Aide IA d'une réunion (lib/aiHelp/) le
+ * consulte — trois lectures SANS modèle côté myBrain, donc rapides et sans
+ * coût chez lui :
+ *
+ *   GET  /api/v1/recherche  plein texte dans les fiches (choisir un projet)
+ *   GET  /api/v1/fiche      une fiche par son chemin ou par un nom ; un nom
+ *                           ambigu répond 404 avec des `candidats`
+ *   POST /api/v1/contexte   ce que le cerveau sait autour d'une question
+ *
+ * Écarté pour le direct : `POST /api/v1/question`, un tour d'agent chez myBrain
+ * — jusqu'à 4 minutes, trois de front par clé. C'est le modèle de myBrief qui
+ * rédige, myBrain fournit la matière.
  *
  * Le contrat de myBrain est lu dans son code (web/src/lib/server/applications.ts)
  * et non deviné : erreurs en JSON `{ erreur }`, 120 000 caractères par texte,
@@ -84,6 +97,12 @@ export class MyBrainError extends Error {
     this.retryable = retryable;
     this.ambiguous = ambiguous;
     this.location = location;
+    /**
+     * Fiches que myBrain propose quand un nom ne désigne pas UNE fiche (404 de
+     * `/fiche?nom=`). Vide partout ailleurs.
+     * @type {{path: string, title: string}[]}
+     */
+    this.candidates = [];
   }
 
   /** Ce qu'une route d'administration peut joindre à sa réponse d'erreur. */
@@ -94,6 +113,30 @@ export class MyBrainError extends Error {
       ...(this.location ? { location: this.location } : {}),
     };
   }
+}
+
+/**
+ * Plafond d'une LECTURE (recherche, fiche, contexte). Plus court que celui d'un
+ * dépôt : elle se fait pendant qu'une réunion tourne, et une intervention qui
+ * arrive une minute après la phrase qu'elle commente ne sert plus à rien.
+ */
+export const MYBRAIN_READ_TIMEOUT_MS = 10_000;
+
+/** Bornes de ce qu'on garde d'une réponse de lecture — myBrain n'est pas cru sur parole. */
+const SHEET_PATH_MAX = 400;
+const SHEET_CONTENT_MAX = 60_000;
+const CONTEXT_MAX = 24_000;
+
+/** `[{ chemin, titre }]` de myBrain → `[{ path, title }]`, bornés. */
+function sheetRefs(list) {
+  if (!Array.isArray(list)) return [];
+  return list
+    .filter((f) => f && typeof f.chemin === 'string' && f.chemin)
+    .slice(0, 12)
+    .map((f) => ({
+      path: f.chemin.slice(0, SHEET_PATH_MAX),
+      title: String(f.titre || '').slice(0, 200),
+    }));
 }
 
 /** Statut HTTP de myBrain → slug. */
@@ -134,7 +177,7 @@ export function createMyBrainClient({
    * @returns {Promise<{ok: true, data: object|null}>} `data` null : réponse 2xx
    *   dont le corps n'a pas pu être lu — à l'appelant d'en juger.
    */
-  async function call({ url, apiKey, path, body }) {
+  async function call({ url, apiKey, path, body, timeout = timeoutMs }) {
     let res;
     try {
       res = await fetchImpl(`${url}${path}`, {
@@ -146,7 +189,7 @@ export function createMyBrainClient({
           ...(body === undefined ? {} : { 'content-type': 'application/json' }),
         },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-        signal: AbortSignal.timeout(timeoutMs),
+        signal: AbortSignal.timeout(timeout),
       });
     } catch (err) {
       throw networkFailure(err);
@@ -169,23 +212,109 @@ export function createMyBrainClient({
     if (data && (typeof data !== 'object' || Array.isArray(data))) data = null;
 
     if (!res.ok) {
-      throw new MyBrainError(codeForStatus(res.status), {
+      const failure = new MyBrainError(codeForStatus(res.status), {
         status: res.status,
         upstreamMessage: typeof data?.erreur === 'string' ? data.erreur.slice(0, 300) : '',
         retryable: RETRYABLE_STATUSES.has(res.status),
         ambiguous: res.status === 500,
       });
+      if (res.status === 404) failure.candidates = sheetRefs(data?.candidats);
+      throw failure;
     }
     return { ok: true, data };
   }
 
+  /** Une lecture : le direct n'attend pas 15 s une réponse qui ne vient pas. */
+  const read = (args) => call({ ...args, timeout: Math.min(timeoutMs, MYBRAIN_READ_TIMEOUT_MS) });
+
   return {
     /**
+     * Recherche plein texte dans les fiches. `type` est celui que myBrain donne
+     * à la fiche (`projet`, `client`, `personne`…) : à l'appelant de filtrer.
+     * @returns {Promise<{path: string, title: string, type: string, excerpt: string}[]>}
+     */
+    async search({ url, apiKey, query, limit = 8 }) {
+      const params = new URLSearchParams({
+        q: String(query || '').slice(0, 300),
+        limite: String(limit),
+      });
+      const { data } = await read({ url, apiKey, path: `/api/v1/recherche?${params}` });
+      if (!Array.isArray(data?.resultats)) throw new MyBrainError('mybrain_invalid_response');
+      return data.resultats
+        .filter((r) => r && typeof r.chemin === 'string' && r.chemin)
+        .slice(0, 20)
+        .map((r) => ({
+          path: r.chemin.slice(0, SHEET_PATH_MAX),
+          title: String(r.titre || '').slice(0, 200),
+          type: String(r.type || '').slice(0, 40),
+          excerpt: String(r.extrait || '').slice(0, 600),
+        }));
+    },
+
+    /**
+     * Une fiche, par son chemin (`path`) ou par le nom de ce qu'elle décrit
+     * (`name`). Un nom qui ne désigne pas une fiche lève `mybrain_not_found`
+     * avec `candidates`.
+     * @returns {Promise<{path: string, title: string, content: string}>}
+     */
+    async sheet({ url, apiKey, path = '', name = '' }) {
+      const params = new URLSearchParams(
+        path
+          ? { chemin: String(path).slice(0, SHEET_PATH_MAX) }
+          : { nom: String(name).slice(0, 200) },
+      );
+      const { data } = await read({ url, apiKey, path: `/api/v1/fiche?${params}` });
+      if (typeof data?.chemin !== 'string' || typeof data?.contenu !== 'string') {
+        throw new MyBrainError('mybrain_invalid_response');
+      }
+      return {
+        path: data.chemin.slice(0, SHEET_PATH_MAX),
+        title: String(data.titre || '').slice(0, 200),
+        content: data.contenu.slice(0, SHEET_CONTENT_MAX),
+      };
+    },
+
+    /**
+     * Ce que le cerveau sait autour d'une question : des extraits de fiches et
+     * leurs faits datés, sans rédaction. `budget` plafonne les extraits, en
+     * caractères (myBrain le borne lui-même entre 2 000 et 16 000).
+     * @returns {Promise<{context: string, truncated: boolean, sheets: {path: string, title: string}[]}>}
+     */
+    async context({ url, apiKey, question, budget, history = [] }) {
+      const { data } = await read({
+        url,
+        apiKey,
+        path: '/api/v1/contexte',
+        body: {
+          question: String(question || '').slice(0, 4000),
+          ...(budget ? { budget } : {}),
+          // Les tours PRÉCÉDENTS : c'est ce qui permet à myBrain de comprendre
+          // une question de suite (« et son budget ? »).
+          ...(history.length ? { historique: history.slice(-10) } : {}),
+        },
+      });
+      if (typeof data?.contexte !== 'string') throw new MyBrainError('mybrain_invalid_response');
+      return {
+        context: data.contexte.slice(0, CONTEXT_MAX),
+        truncated: !!data.tronque,
+        sheets: sheetRefs(data.fiches),
+      };
+    },
+
+    /**
      * Qui suis-je : l'application que la clé désigne et ses droits.
+     * @param {{url: string, apiKey: string, timeoutMs?: number}} input
      * @returns {Promise<{application: string, droits: string[], api: string}>}
      */
-    async whoami({ url, apiKey }) {
-      const { data } = await call({ url, apiKey, path: '/api/v1' });
+    async whoami({ url, apiKey, timeoutMs: quick }) {
+      // `quick` : une relecture des droits faite PENDANT une requête d'utilisateur
+      // (lib/aiHelp/session.js) n'attend pas quinze secondes un myBrain absent.
+      const { data } = await call({
+        url,
+        apiKey,
+        path: '/api/v1',
+        ...(quick ? { timeout: Math.min(timeoutMs, quick) } : {}),
+      });
       // 2xx sans la forme attendue : l'adresse sert une page (le SPA d'un autre
       // site, un portail) — ce n'est pas un myBrain.
       if (typeof data?.application !== 'string' || !Array.isArray(data?.droits)) {

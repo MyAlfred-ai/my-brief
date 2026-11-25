@@ -531,7 +531,7 @@ describe('échecs et relances', () => {
   });
 });
 
-describe('Ma configuration → MyBrain', () => {
+describe('Réglages → Après la réunion → MyBrain', () => {
   it("sans myBrain branché : indisponible, et le choix ne s'écrit pas", async () => {
     const { app } = build();
     expect((await getJson(app, '/api/mybrain/settings')).json()).toMatchObject({

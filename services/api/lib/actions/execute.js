@@ -173,7 +173,7 @@ export async function executeEmail(
         await trace(via, connection.account, to, cc, false, err.message, null);
         return { error: 'mail_send_failed', status: 502 };
       }
-      // Accès retiré côté fournisseur : on purge pour que « Ma configuration »
+      // Accès retiré côté fournisseur : on purge pour que « Réglages »
       // montre « non connecté » au lieu d'échouer en boucle.
       await app.connections.delete(user.emailLower, connection.provider);
       log.warn('connexion révoquée, purge de la connexion');
@@ -301,7 +301,7 @@ export async function executeStore(
     };
   } catch (err) {
     if (err instanceof ConnectionAuthError) {
-      // Accès retiré : on purge pour que « Ma configuration » montre
+      // Accès retiré : on purge pour que « Réglages » montre
       // « non connecté » au lieu d'échouer à chaque dépôt.
       await app.connections.delete(user.emailLower, providerId);
       log.warn({ provider: providerId }, 'connexion révoquée, purge de la connexion');

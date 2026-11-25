@@ -118,7 +118,7 @@ export default [
   {
     files: ['src/App.svelte'],
     rules: {
-      'max-lines': ['error', { max: 4515, skipBlankLines: false, skipComments: false }],
+      'max-lines': ['error', { max: 4218, skipBlankLines: false, skipComments: false }],
     },
   },
 

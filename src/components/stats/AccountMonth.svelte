@@ -10,16 +10,15 @@
 
 <script>
   /**
-   * « Ce mois-ci » — le bloc du menu de compte qui résume « Mes
-   * statistiques » : le crédit de temps du mois (reste, barre, rythme
-   * régulier), puis trois chiffres (réunions, temps enregistré, comptes
+   * « Ce mois-ci » — le bloc de la carte du compte du téléphone (AccountMenu)
+   * qui résume « Usage & crédits » : le crédit de temps du mois (reste, barre,
+   * rythme régulier), puis trois chiffres (réunions, temps enregistré, comptes
    * rendus), et le lien vers la page complète.
    *
-   * Pourquoi dans le menu : les statistiques avaient trois portes (la carte
-   * « Temps de réunion », une icône muette à côté de la roue crantée, une ligne
-   * du menu de compte) et aucune ne montrait rien avant d'ouvrir une page
-   * plein écran. Le menu de compte est l'endroit où l'on vient voir « où j'en
-   * suis » : il le dit, et ne renvoie à la page que pour le détail.
+   * Pourquoi sur la carte : sur téléphone, la capsule de la colonne (et sa
+   * ligne « reste du mois ») est masquée. La carte que l'avatar ouvre est donc
+   * le seul endroit où l'on voit « où j'en suis » sans ouvrir une page plein
+   * écran : elle le dit, et ne renvoie à la page que pour le détail.
    *
    * Deux sources, chacune pour ce qu'elle sait :
    * - le crédit vient de `quotaNow` (stores/quota.js), déjà là et vivant — la
@@ -48,7 +47,7 @@
   import { fill } from '../../utils/i18nFormat.js';
   import { formatMinutes, formatDay, monthLabel, periodMonths } from '../../utils/quotaFormat.js';
 
-  /** Ouvre « Mes statistiques ». */
+  /** Ouvre « Usage & crédits », la page des réglages. */
   export let onOpen = () => {};
 
   const emailNow = () => get(auth).user?.email || '';
@@ -176,7 +175,7 @@
     </dl>
   {/if}
 
-  <button type="button" class="amo-open" role="menuitem" on:click={onOpen}>
+  <button type="button" class="amo-open" on:click={onOpen}>
     {t.seeStats}
     <IconArrow width="14" height="14" aria-hidden="true" />
   </button>
